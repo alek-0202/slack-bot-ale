@@ -32,15 +32,34 @@ async function fetchPokemonSpeciesPayload(id) {
   const stage = evolvesFromId ? 2 : 1;
   const rarity = rarityByPokemonId(id, rarityByStage(stage));
 
+  const normalizedName = species.name || pokemon.name || null;
+
   return {
     id,
-    name: pokemon.name,
+    name: normalizedName,
     generation: Number(species.generation?.name?.replace("generation-", "")) || null,
     sprite_url: pokemon.sprites?.front_default || null,
     rarity,
     evolution_stage: stage,
     evolves_from: evolvesFromId,
     base_value: stage === 1 ? 10 : 18,
+  };
+}
+
+function validateSpeciesPayload(species) {
+  const issues = [];
+
+  if (!Number.isInteger(species.id) || species.id <= 0) {
+    issues.push("id ausente ou inválido");
+  }
+
+  if (!species.name || typeof species.name !== "string" || !species.name.trim()) {
+    issues.push("name ausente");
+  }
+
+  return {
+    isValid: issues.length === 0,
+    issues,
   };
 }
 
@@ -81,10 +100,34 @@ function buildEvolutionUpdates(speciesPayload, existingSpeciesIds) {
 async function importPokemonSpecies({ limit = 151 } = {}) {
   const supabase = getSupabaseClient();
   const payload = [];
+  const invalidPayload = [];
 
   for (let id = 1; id <= limit; id += 1) {
     const species = await fetchPokemonSpeciesPayload(id);
+    const validation = validateSpeciesPayload(species);
+
+    if (!validation.isValid) {
+      invalidPayload.push({
+        id,
+        name: species.name,
+        issues: validation.issues,
+      });
+
+      console.warn(
+        `[pokedex-import] Registro inválido ignorado (id=${id}, name=${species.name || "<null>"}): ${validation.issues.join(", ")}`
+      );
+      continue;
+    }
+
     payload.push(species);
+  }
+
+  if (invalidPayload.length > 0) {
+    console.warn(
+      `[pokedex-import] ${invalidPayload.length} registro(s) inválido(s) foram ignorados. Amostra: ${JSON.stringify(
+        invalidPayload.slice(0, 10)
+      )}`
+    );
   }
 
   const basePayload = payload.map((species) => ({
@@ -97,11 +140,13 @@ async function importPokemonSpecies({ limit = 151 } = {}) {
     base_value: species.base_value,
   }));
 
-  const { error: baseUpsertError } = await supabase
-    .from("pokemon_species")
-    .upsert(basePayload, { onConflict: "id" });
+  if (basePayload.length > 0) {
+    const { error: baseUpsertError } = await supabase
+      .from("pokemon_species")
+      .upsert(basePayload, { onConflict: "id" });
 
-  if (baseUpsertError) throw baseUpsertError;
+    if (baseUpsertError) throw baseUpsertError;
+  }
 
   const { data: existingSpecies, error: existingSpeciesError } = await supabase
     .from("pokemon_species")
@@ -112,11 +157,13 @@ async function importPokemonSpecies({ limit = 151 } = {}) {
   const existingSpeciesIds = new Set((existingSpecies || []).map((species) => species.id));
   const evolutionPayload = buildEvolutionUpdates(payload, existingSpeciesIds);
 
-  const { error: evolutionUpsertError } = await supabase
-    .from("pokemon_species")
-    .upsert(evolutionPayload, { onConflict: "id" });
+  if (evolutionPayload.length > 0) {
+    const { error: evolutionUpsertError } = await supabase
+      .from("pokemon_species")
+      .upsert(evolutionPayload, { onConflict: "id" });
 
-  if (evolutionUpsertError) throw evolutionUpsertError;
+    if (evolutionUpsertError) throw evolutionUpsertError;
+  }
 
   return payload.length;
 }
