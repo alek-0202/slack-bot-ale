@@ -13,8 +13,8 @@ create table if not exists public.pokemon_species (
   sprite_url text,
   rarity text not null check (rarity in ('common', 'uncommon', 'rare', 'epic', 'legendary')),
   evolution_stage integer not null default 1,
-  evolves_from integer references public.pokemon_species(id) on delete set null,
-  evolves_to integer references public.pokemon_species(id) on delete set null,
+  evolves_from integer references public.pokemon_species(id),
+  evolves_to integer references public.pokemon_species(id),
   base_value integer not null default 10,
   created_at timestamptz not null default now()
 );

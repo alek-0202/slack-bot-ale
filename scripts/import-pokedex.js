@@ -4,10 +4,8 @@ const { importPokemonSpecies } = require("../services/pokedexImportService");
 
 async function main() {
   const limit = Number(process.argv[2] || 151);
-  const result = await importPokemonSpecies({ limit });
-  console.log(
-    `Importação concluída. total=${result.totalSpecies}, primeira_passada=${result.firstPassRows}, segunda_passada=${result.secondPassRows}`,
-  );
+  const total = await importPokemonSpecies({ limit });
+  console.log(`Importação concluída. ${total} espécies processadas.`);
 }
 
 main().catch((error) => {
