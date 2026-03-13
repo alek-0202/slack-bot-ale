@@ -1,0 +1,36 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente (tokens, chaves etc)
+.env
+.env.*
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Arquivos temporários
+tmp/
+temp/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Arquivos de build ou cache
+dist/
+build/
+.cache/
+
+# Testes
+coverage/
+
+# Arquivos locais do Ollama (caso apareçam no projeto)
+*.gguf
