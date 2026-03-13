@@ -37,7 +37,8 @@ async function fetchPokemonSpeciesPayload(id) {
   return {
     id,
     name: normalizedName,
-    generation: Number(species.generation?.name?.replace("generation-", "")) || null,
+    generation:
+      Number(species.generation?.name?.replace("generation-", "")) || null,
     sprite_url: pokemon.sprites?.front_default || null,
     rarity,
     evolution_stage: stage,
@@ -53,7 +54,11 @@ function validateSpeciesPayload(species) {
     issues.push("id ausente ou inválido");
   }
 
-  if (!species.name || typeof species.name !== "string" || !species.name.trim()) {
+  if (
+    !species.name ||
+    typeof species.name !== "string" ||
+    !species.name.trim()
+  ) {
     issues.push("name ausente");
   }
 
@@ -69,7 +74,8 @@ function buildEvolutionUpdates(speciesPayload, existingSpeciesIds) {
 
   const evolvesToBySpecies = new Map();
   for (const species of speciesPayload) {
-    if (!species.evolves_from || !knownSpeciesIds.has(species.evolves_from)) continue;
+    if (!species.evolves_from || !knownSpeciesIds.has(species.evolves_from))
+      continue;
 
     const nextSpecies = evolvesToBySpecies.get(species.evolves_from) || [];
     nextSpecies.push(species.id);
@@ -80,14 +86,20 @@ function buildEvolutionUpdates(speciesPayload, existingSpeciesIds) {
     const canReferencePrevious =
       species.evolves_from && knownSpeciesIds.has(species.evolves_from);
 
-    const possibleNextSpecies = (evolvesToBySpecies.get(species.id) || []).sort((a, b) => a - b);
-    const evolvesTo = possibleNextSpecies.length === 1 ? possibleNextSpecies[0] : null;
+    const possibleNextSpecies = (evolvesToBySpecies.get(species.id) || []).sort(
+      (a, b) => a - b,
+    );
+    const evolvesTo =
+      possibleNextSpecies.length === 1 ? possibleNextSpecies[0] : null;
 
     const evolutionStage = canReferencePrevious ? 2 : 1;
     const rarity = rarityByPokemonId(species.id, rarityByStage(evolutionStage));
 
     return {
       id: species.id,
+      name: species.name,
+      generation: species.generation,
+      sprite_url: species.sprite_url,
       evolves_from: canReferencePrevious ? species.evolves_from : null,
       evolves_to: evolvesTo,
       evolution_stage: evolutionStage,
@@ -114,7 +126,7 @@ async function importPokemonSpecies({ limit = 151 } = {}) {
       });
 
       console.warn(
-        `[pokedex-import] Registro inválido ignorado (id=${id}, name=${species.name || "<null>"}): ${validation.issues.join(", ")}`
+        `[pokedex-import] Registro inválido ignorado (id=${id}, name=${species.name || "<null>"}): ${validation.issues.join(", ")}`,
       );
       continue;
     }
@@ -125,8 +137,8 @@ async function importPokemonSpecies({ limit = 151 } = {}) {
   if (invalidPayload.length > 0) {
     console.warn(
       `[pokedex-import] ${invalidPayload.length} registro(s) inválido(s) foram ignorados. Amostra: ${JSON.stringify(
-        invalidPayload.slice(0, 10)
-      )}`
+        invalidPayload.slice(0, 10),
+      )}`,
     );
   }
 
@@ -154,7 +166,9 @@ async function importPokemonSpecies({ limit = 151 } = {}) {
 
   if (existingSpeciesError) throw existingSpeciesError;
 
-  const existingSpeciesIds = new Set((existingSpecies || []).map((species) => species.id));
+  const existingSpeciesIds = new Set(
+    (existingSpecies || []).map((species) => species.id),
+  );
   const evolutionPayload = buildEvolutionUpdates(payload, existingSpeciesIds);
 
   if (evolutionPayload.length > 0) {
