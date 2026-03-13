@@ -9,6 +9,11 @@ const iaCommand = require("./commands/ia");
 const pingCommand = require("./commands/ping");
 const helpCommand = require("./commands/help");
 const caraOuCoroaCommand = require("./commands/caraoucoroa");
+const pokeCommand = require("./commands/pokemon/poke");
+const captureCommand = require("./commands/pokemon/capture");
+const profileCommand = require("./commands/pokemon/profile");
+const pokedexCommand = require("./commands/pokemon/pokedex");
+const balanceCommand = require("./commands/pokemon/balance");
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -35,6 +40,11 @@ for (const commandModule of [
   pingCommand,
   helpCommand,
   caraOuCoroaCommand,
+  pokeCommand,
+  captureCommand,
+  profileCommand,
+  pokedexCommand,
+  balanceCommand,
 ]) {
   commandRegistry.set(commandModule.name, commandModule);
 
