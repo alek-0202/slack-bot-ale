@@ -44,6 +44,40 @@ async function fetchPokemonSpeciesPayload(id) {
   };
 }
 
+function buildEvolutionUpdates(speciesPayload, existingSpeciesIds) {
+  const importedIds = new Set(speciesPayload.map((species) => species.id));
+  const knownSpeciesIds = new Set([...existingSpeciesIds, ...importedIds]);
+
+  const evolvesToBySpecies = new Map();
+  for (const species of speciesPayload) {
+    if (!species.evolves_from || !knownSpeciesIds.has(species.evolves_from)) continue;
+
+    const nextSpecies = evolvesToBySpecies.get(species.evolves_from) || [];
+    nextSpecies.push(species.id);
+    evolvesToBySpecies.set(species.evolves_from, nextSpecies);
+  }
+
+  return speciesPayload.map((species) => {
+    const canReferencePrevious =
+      species.evolves_from && knownSpeciesIds.has(species.evolves_from);
+
+    const possibleNextSpecies = (evolvesToBySpecies.get(species.id) || []).sort((a, b) => a - b);
+    const evolvesTo = possibleNextSpecies.length === 1 ? possibleNextSpecies[0] : null;
+
+    const evolutionStage = canReferencePrevious ? 2 : 1;
+    const rarity = rarityByPokemonId(species.id, rarityByStage(evolutionStage));
+
+    return {
+      id: species.id,
+      evolves_from: canReferencePrevious ? species.evolves_from : null,
+      evolves_to: evolvesTo,
+      evolution_stage: evolutionStage,
+      rarity,
+      base_value: evolutionStage === 1 ? 10 : 18,
+    };
+  });
+}
+
 async function importPokemonSpecies({ limit = 151 } = {}) {
   const supabase = getSupabaseClient();
   const payload = [];
@@ -53,11 +87,36 @@ async function importPokemonSpecies({ limit = 151 } = {}) {
     payload.push(species);
   }
 
-  const { error } = await supabase
-    .from("pokemon_species")
-    .upsert(payload, { onConflict: "id" });
+  const basePayload = payload.map((species) => ({
+    id: species.id,
+    name: species.name,
+    generation: species.generation,
+    sprite_url: species.sprite_url,
+    rarity: species.rarity,
+    evolution_stage: species.evolution_stage,
+    base_value: species.base_value,
+  }));
 
-  if (error) throw error;
+  const { error: baseUpsertError } = await supabase
+    .from("pokemon_species")
+    .upsert(basePayload, { onConflict: "id" });
+
+  if (baseUpsertError) throw baseUpsertError;
+
+  const { data: existingSpecies, error: existingSpeciesError } = await supabase
+    .from("pokemon_species")
+    .select("id");
+
+  if (existingSpeciesError) throw existingSpeciesError;
+
+  const existingSpeciesIds = new Set((existingSpecies || []).map((species) => species.id));
+  const evolutionPayload = buildEvolutionUpdates(payload, existingSpeciesIds);
+
+  const { error: evolutionUpsertError } = await supabase
+    .from("pokemon_species")
+    .upsert(evolutionPayload, { onConflict: "id" });
+
+  if (evolutionUpsertError) throw evolutionUpsertError;
 
   return payload.length;
 }
