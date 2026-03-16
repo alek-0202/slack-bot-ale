@@ -1,12 +1,13 @@
 const {
-  POKEDEX_NAV_ACTION_ID,
+  POKEDEX_NAV_PREV_ACTION_ID,
+  POKEDEX_NAV_NEXT_ACTION_ID,
   parseNavValue,
   getPokedexView,
   buildPokedexMessage,
 } = require("../services/pokedexViewService");
 
 function registerPokedexActions(app) {
-  app.action(POKEDEX_NAV_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+  const handlePokedexNavigation = async ({ ack, body, action, client, respond }) => {
     await ack();
 
     try {
@@ -48,7 +49,10 @@ function registerPokedexActions(app) {
         });
       }
     }
-  });
+  };
+
+  app.action(POKEDEX_NAV_PREV_ACTION_ID, handlePokedexNavigation);
+  app.action(POKEDEX_NAV_NEXT_ACTION_ID, handlePokedexNavigation);
 }
 
 module.exports = {
