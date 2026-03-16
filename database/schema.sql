@@ -28,6 +28,23 @@ create table if not exists public.user_pokemons (
   captured_at timestamptz not null default now()
 );
 
+alter table public.user_pokemons add column if not exists attack integer not null default 10;
+alter table public.user_pokemons add column if not exists defense integer not null default 10;
+alter table public.user_pokemons add column if not exists hp integer not null default 10;
+alter table public.user_pokemons add column if not exists speed integer not null default 10;
+alter table public.user_pokemons add column if not exists source text not null default 'capture';
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'user_pokemons_level_cap'
+      and conrelid = 'public.user_pokemons'::regclass
+  ) then
+    alter table public.user_pokemons
+      add constraint user_pokemons_level_cap check (level >= 1 and level <= 50);
+  end if;
+end $$;
+
 create table if not exists public.transactions (
   id bigint generated always as identity primary key,
   slack_user_id text not null references public.users(slack_user_id) on delete cascade,
@@ -35,6 +52,59 @@ create table if not exists public.transactions (
   amount integer not null,
   created_at timestamptz not null default now()
 );
+
+create table if not exists public.daily_market (
+  market_date date not null,
+  slot integer not null check (slot between 1 and 3),
+  species_id integer not null references public.pokemon_species(id),
+  price integer not null check (price >= 0),
+  created_at timestamptz not null default now(),
+  primary key (market_date, slot)
+);
+
+create table if not exists public.market_purchases (
+  id bigint generated always as identity primary key,
+  market_date date not null,
+  slot integer not null,
+  slack_user_id text not null references public.users(slack_user_id) on delete cascade,
+  user_pokemon_id bigint not null references public.user_pokemons(id) on delete restrict,
+  price_paid integer not null check (price_paid >= 0),
+  purchased_at timestamptz not null default now(),
+  unique (market_date, slot, slack_user_id),
+  foreign key (market_date, slot) references public.daily_market(market_date, slot)
+);
+
+create table if not exists public.medals (
+  id bigint generated always as identity primary key,
+  code text not null unique,
+  name text not null,
+  nature_element text not null,
+  description text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.user_medals (
+  id bigint generated always as identity primary key,
+  slack_user_id text not null references public.users(slack_user_id) on delete cascade,
+  medal_id bigint not null references public.medals(id) on delete cascade,
+  status text not null default 'locked' check (status in ('locked', 'unlocked')),
+  progress integer not null default 0,
+  unlocked_at timestamptz,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (slack_user_id, medal_id)
+);
+
+insert into public.medals (code, name, nature_element, description)
+values
+  ('flame_heart', 'Coração de Chama', 'fire', 'Concede afinidade com progresso ofensivo e combates agressivos.'),
+  ('tidal_guard', 'Guarda das Marés', 'water', 'Concede afinidade com consistência e resistência defensiva.'),
+  ('terra_root', 'Raiz da Terra', 'earth', 'Concede afinidade com evolução sustentável de coleção.'),
+  ('sky_echo', 'Eco dos Ventos', 'air', 'Concede afinidade com velocidade e ações estratégicas.'),
+  ('storm_focus', 'Foco da Tempestade', 'storm', 'Concede afinidade com marcos raros e jogadas de alto impacto.')
+on conflict (code) do nothing;
 
 create table if not exists public.trades (
   id bigint generated always as identity primary key,
@@ -61,6 +131,10 @@ create table if not exists public.trade_items (
   unique (trade_id, user_pokemon_id)
 );
 
+create index if not exists idx_daily_market_date on public.daily_market(market_date);
+create index if not exists idx_market_purchases_user_date on public.market_purchases(slack_user_id, market_date);
+create index if not exists idx_user_medals_user on public.user_medals(slack_user_id);
+
 create index if not exists idx_trades_channel_status on public.trades(channel_id, status);
 create index if not exists idx_trades_participants_status on public.trades(initiator_user_id, target_user_id, status);
 create index if not exists idx_trade_items_trade on public.trade_items(trade_id);
@@ -83,6 +157,11 @@ $$;
 drop trigger if exists trg_trades_set_updated_at on public.trades;
 create trigger trg_trades_set_updated_at
 before update on public.trades
+for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_user_medals_set_updated_at on public.user_medals;
+create trigger trg_user_medals_set_updated_at
+before update on public.user_medals
 for each row execute function public.set_updated_at();
 
 create or replace function public.create_trade(
@@ -218,5 +297,230 @@ begin
   returning * into v_trade;
 
   return v_trade;
+end;
+$$;
+
+
+create or replace function public.upgrade_user_pokemon(
+  p_slack_user_id text,
+  p_pokemon_id bigint
+)
+returns table (
+  ok boolean,
+  reason text,
+  previous_level integer,
+  new_level integer,
+  cost integer,
+  remaining_gold integer
+)
+language plpgsql
+as $$
+declare
+  v_user_gold integer;
+  v_level integer;
+  v_attack integer;
+  v_defense integer;
+  v_hp integer;
+  v_speed integer;
+  v_multiplier numeric;
+  v_cost integer;
+  v_new_level integer;
+begin
+  select up.level, up.attack, up.defense, up.hp, up.speed
+    into v_level, v_attack, v_defense, v_hp, v_speed
+  from public.user_pokemons up
+  where up.id = p_pokemon_id
+    and up.slack_user_id = p_slack_user_id
+  for update;
+
+  if not found then
+    return query select false, 'pokemon_not_owned', null::integer, null::integer, null::integer, null::integer;
+    return;
+  end if;
+
+  if v_level >= 50 then
+    return query select false, 'max_level', v_level, v_level, 0, null::integer;
+    return;
+  end if;
+
+  select u.gold into v_user_gold
+  from public.users u
+  where u.slack_user_id = p_slack_user_id
+  for update;
+
+  if not found then
+    return query select false, 'user_not_started', null::integer, null::integer, null::integer, null::integer;
+    return;
+  end if;
+
+  if v_level >= 10 then
+    v_multiplier := 1.5;
+  else
+    v_multiplier := 1 + least(v_level * 0.05, 0.5);
+  end if;
+
+  v_cost := ceil(100 * power(v_multiplier, greatest(v_level - 1, 0)));
+
+  if v_user_gold < v_cost then
+    return query select false, 'insufficient_gold', v_level, v_level, v_cost, v_user_gold;
+    return;
+  end if;
+
+  v_new_level := v_level + 1;
+
+  update public.user_pokemons
+  set level = v_new_level,
+      attack = ceil(v_attack * 1.02),
+      defense = ceil(v_defense * 1.02),
+      hp = ceil(v_hp * 1.02),
+      speed = ceil(v_speed * 1.02)
+  where id = p_pokemon_id
+    and slack_user_id = p_slack_user_id;
+
+  update public.users
+  set gold = gold - v_cost
+  where slack_user_id = p_slack_user_id
+  returning gold into remaining_gold;
+
+  insert into public.transactions (slack_user_id, type, amount)
+  values (p_slack_user_id, 'pokemon_upgrade', -v_cost);
+
+  return query select true, null::text, v_level, v_new_level, v_cost, remaining_gold;
+end;
+$$;
+
+create or replace function public.market_buy_slot(
+  p_slack_user_id text,
+  p_market_date date,
+  p_slot integer
+)
+returns table (
+  ok boolean,
+  reason text,
+  species_id integer,
+  price integer,
+  remaining_gold integer,
+  user_pokemon_id bigint
+)
+language plpgsql
+as $$
+declare
+  v_user_gold integer;
+  v_species_id integer;
+  v_rarity text;
+  v_price integer;
+  v_rarity_bonus integer;
+  v_stat_floor integer;
+  v_stat_ceil integer;
+begin
+  select u.gold into v_user_gold
+  from public.users u
+  where u.slack_user_id = p_slack_user_id
+  for update;
+
+  if not found then
+    return query select false, 'user_not_started', null::integer, null::integer, null::integer, null::bigint;
+    return;
+  end if;
+
+  if exists (
+    select 1
+    from public.market_purchases mp
+    where mp.market_date = p_market_date
+      and mp.slot = p_slot
+      and mp.slack_user_id = p_slack_user_id
+  ) then
+    return query select false, 'already_bought_slot', null::integer, null::integer, v_user_gold, null::bigint;
+    return;
+  end if;
+
+  select dm.species_id, dm.price, ps.rarity
+    into v_species_id, v_price, v_rarity
+  from public.daily_market dm
+  join public.pokemon_species ps on ps.id = dm.species_id
+  where dm.market_date = p_market_date
+    and dm.slot = p_slot;
+
+  if not found then
+    return query select false, 'invalid_slot', null::integer, null::integer, v_user_gold, null::bigint;
+    return;
+  end if;
+
+  if v_user_gold < v_price then
+    return query select false, 'insufficient_gold', v_species_id, v_price, v_user_gold, null::bigint;
+    return;
+  end if;
+
+  v_rarity_bonus := case v_rarity
+    when 'uncommon' then 1
+    when 'rare' then 2
+    when 'epic' then 3
+    when 'legendary' then 4
+    else 0
+  end;
+
+  v_stat_floor := 8 + v_rarity_bonus;
+  v_stat_ceil := 15 + v_rarity_bonus;
+
+  insert into public.user_pokemons (
+    slack_user_id,
+    species_id,
+    level,
+    shiny,
+    attack,
+    defense,
+    hp,
+    speed,
+    source
+  )
+  values (
+    p_slack_user_id,
+    v_species_id,
+    1,
+    false,
+    floor(random() * (v_stat_ceil - v_stat_floor + 1) + v_stat_floor)::integer,
+    floor(random() * (v_stat_ceil - v_stat_floor + 1) + v_stat_floor)::integer,
+    floor(random() * ((v_stat_ceil + 4) - (v_stat_floor + 2) + 1) + (v_stat_floor + 2))::integer,
+    floor(random() * (v_stat_ceil - v_stat_floor + 1) + v_stat_floor)::integer,
+    'market'
+  )
+  returning id into user_pokemon_id;
+
+  update public.users
+  set gold = gold - v_price
+  where slack_user_id = p_slack_user_id
+  returning gold into remaining_gold;
+
+  insert into public.transactions (slack_user_id, type, amount)
+  values (p_slack_user_id, 'market_purchase', -v_price);
+
+  begin
+    insert into public.market_purchases (
+      market_date,
+      slot,
+      slack_user_id,
+      user_pokemon_id,
+      price_paid
+    )
+    values (
+      p_market_date,
+      p_slot,
+      p_slack_user_id,
+      user_pokemon_id,
+      v_price
+    );
+  exception
+    when unique_violation then
+      raise exception 'already_bought_slot';
+  end;
+
+  return query select true, null::text, v_species_id, v_price, remaining_gold, user_pokemon_id;
+exception
+  when others then
+    if sqlerrm like '%already_bought_slot%' then
+      return query select false, 'already_bought_slot', null::integer, null::integer, v_user_gold, null::bigint;
+      return;
+    end if;
+    raise;
 end;
 $$;

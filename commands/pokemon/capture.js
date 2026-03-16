@@ -26,11 +26,34 @@ module.exports = {
       }
 
       const shinyTag = result.shiny ? "✨ SHINY!" : "";
-      await say(
+      const text =
         `🎉 <@${event.user}> capturou *${result.species.name}* ${shinyTag}\n` +
-          `⭐ Raridade: *${result.species.rarity}* | Lv ${result.captured.level}\n` +
-          `💰 Recompensa: +${result.goldReward} gold`,
-      );
+        `⭐ Raridade: *${result.species.rarity}* | Lv ${result.captured.level}\n` +
+        `💰 Recompensa: +${result.goldReward} gold`;
+
+      const message = {
+        text,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text,
+            },
+            ...(result.species.sprite_url
+              ? {
+                  accessory: {
+                    type: "image",
+                    image_url: result.species.sprite_url,
+                    alt_text: result.species.name,
+                  },
+                }
+              : {}),
+          },
+        ],
+      };
+
+      await say(message);
     } catch (error) {
       console.error("Erro no !capture:", error.message || error);
       await say("Deu ruim na captura 😵‍💫");

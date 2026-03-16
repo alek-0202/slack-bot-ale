@@ -11,7 +11,14 @@ async function getAllSpecies() {
   return data || [];
 }
 
-async function insertUserPokemon({ slackUserId, speciesId, level, shiny }) {
+async function insertUserPokemon({
+  slackUserId,
+  speciesId,
+  level,
+  shiny,
+  stats = {},
+  source = "capture",
+}) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("user_pokemons")
@@ -20,8 +27,13 @@ async function insertUserPokemon({ slackUserId, speciesId, level, shiny }) {
       species_id: speciesId,
       level,
       shiny,
+      attack: stats.attack,
+      defense: stats.defense,
+      hp: stats.hp,
+      speed: stats.speed,
+      source,
     })
-    .select("id, species_id, level, shiny, captured_at")
+    .select("id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at")
     .single();
 
   if (error) throw error;
@@ -59,7 +71,7 @@ async function getUserPokemonPage(slackUserId, index) {
   const { data, count, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, species_id, level, shiny, captured_at, pokemon_species(id, name, sprite_url, rarity)",
+      "id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at, pokemon_species(id, name, sprite_url, rarity)",
       { count: "exact" },
     )
     .eq("slack_user_id", slackUserId)
@@ -76,9 +88,23 @@ async function getUserPokemonPage(slackUserId, index) {
   };
 }
 
+async function getUserPokemonById(slackUserId, pokemonId) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("user_pokemons")
+    .select("id, slack_user_id, species_id, level, shiny, attack, defense, hp, speed, pokemon_species(id, name, rarity)")
+    .eq("id", pokemonId)
+    .eq("slack_user_id", slackUserId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
 module.exports = {
   getAllSpecies,
   insertUserPokemon,
   getProfileStats,
   getUserPokemonPage,
+  getUserPokemonById,
 };
