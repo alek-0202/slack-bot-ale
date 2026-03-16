@@ -1,6 +1,7 @@
 const { getUserPokemonPage } = require("./pokemonService");
 
-const POKEDEX_NAV_ACTION_ID = "pokedex_navigate";
+const POKEDEX_NAV_PREV_ACTION_ID = "pokedex_navigate_prev";
+const POKEDEX_NAV_NEXT_ACTION_ID = "pokedex_navigate_next";
 
 function createNavValue({ ownerSlackUserId, index }) {
   return JSON.stringify({ ownerSlackUserId, index });
@@ -121,7 +122,7 @@ function buildPokedexMessage({ slackUserId, entry, index, total }) {
               text: "Anterior",
               emoji: true,
             },
-            action_id: POKEDEX_NAV_ACTION_ID,
+            action_id: POKEDEX_NAV_PREV_ACTION_ID,
             value: createNavValue({ ownerSlackUserId: slackUserId, index: index - 1 }),
             style: "primary",
           },
@@ -132,7 +133,7 @@ function buildPokedexMessage({ slackUserId, entry, index, total }) {
               text: "Próximo",
               emoji: true,
             },
-            action_id: POKEDEX_NAV_ACTION_ID,
+            action_id: POKEDEX_NAV_NEXT_ACTION_ID,
             value: createNavValue({ ownerSlackUserId: slackUserId, index: index + 1 }),
             style: "primary",
           },
@@ -143,7 +144,8 @@ function buildPokedexMessage({ slackUserId, entry, index, total }) {
 }
 
 module.exports = {
-  POKEDEX_NAV_ACTION_ID,
+  POKEDEX_NAV_PREV_ACTION_ID,
+  POKEDEX_NAV_NEXT_ACTION_ID,
   parseNavValue,
   getPokedexView,
   buildPokedexMessage,
