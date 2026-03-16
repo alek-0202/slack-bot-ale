@@ -19,6 +19,7 @@ const paCommand = require("./commands/pokemon/pa");
 const upgradeCommand = require("./commands/pokemon/upgrade");
 const marketCommand = require("./commands/pokemon/market");
 const tradeCommand = require("./commands/pokemon/trade");
+const sellCommand = require("./commands/pokemon/sell");
 const { registerPokedexActions } = require("./handlers/pokedexActions");
 
 const app = new App({
@@ -58,6 +59,7 @@ for (const commandModule of [
   upgradeCommand,
   marketCommand,
   tradeCommand,
+  sellCommand,
 ]) {
   commandRegistry.set(commandModule.name, commandModule);
 
