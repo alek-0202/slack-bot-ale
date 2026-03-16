@@ -8,12 +8,14 @@ const gifCommand = require("./commands/gif");
 const iaCommand = require("./commands/ia");
 const pingCommand = require("./commands/ping");
 const helpCommand = require("./commands/help");
+const pokemonHelpCommand = require("./commands/pokemonhelp");
 const caraOuCoroaCommand = require("./commands/caraoucoroa");
 const pokeCommand = require("./commands/pokemon/poke");
 const captureCommand = require("./commands/pokemon/capture");
 const profileCommand = require("./commands/pokemon/profile");
 const pokedexCommand = require("./commands/pokemon/pokedex");
 const balanceCommand = require("./commands/pokemon/balance");
+const tradeCommand = require("./commands/pokemon/trade");
 const { registerPokedexActions } = require("./handlers/pokedexActions");
 
 const app = new App({
@@ -42,12 +44,14 @@ for (const commandModule of [
   iaCommand,
   pingCommand,
   helpCommand,
+  pokemonHelpCommand,
   caraOuCoroaCommand,
   pokeCommand,
   captureCommand,
   profileCommand,
   pokedexCommand,
   balanceCommand,
+  tradeCommand,
 ]) {
   commandRegistry.set(commandModule.name, commandModule);
 
