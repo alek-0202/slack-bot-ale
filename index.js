@@ -3,6 +3,7 @@ const { App } = require("@slack/bolt");
 
 const { extractCommand, randomItem } = require("./utils/helpers");
 const { isOnCooldown, clearExpiredCooldowns } = require("./utils/cooldown");
+const { startHealthcheckServer } = require("./utils/healthcheck");
 
 const gifCommand = require("./commands/gif");
 const iaCommand = require("./commands/ia");
@@ -130,11 +131,24 @@ app.event("message", async ({ event, say }) => {
   }
 });
 
+process.on("unhandledRejection", (error) => {
+  console.error("Erro não tratado (unhandledRejection) no bot Slack:", error);
+  process.exit(1);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Exceção não capturada (uncaughtException) no bot Slack:", error);
+  process.exit(1);
+});
+
+startHealthcheckServer("slack-bot");
+
 (async () => {
   try {
     await app.start();
     console.log("⚡ Bot está rodando!");
   } catch (error) {
-    console.error("Erro ao iniciar o bot:", error);
+    console.error("Erro ao iniciar o bot Slack:", error);
+    process.exit(1);
   }
 })();

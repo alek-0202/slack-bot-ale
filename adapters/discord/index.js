@@ -2,6 +2,7 @@ require("dotenv").config();
 const { Client, GatewayIntentBits } = require("discord.js");
 const { handleDiscordCommand } = require("./commandHandler");
 const { handlePokedexNavigation } = require("./handlers/pokedexNavigation");
+const { startHealthcheckServer } = require("../../utils/healthcheck");
 
 const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) {
@@ -11,6 +12,18 @@ if (!token) {
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
 });
+
+process.on("unhandledRejection", (error) => {
+  console.error("Erro não tratado (unhandledRejection) no bot Discord:", error);
+  process.exit(1);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Exceção não capturada (uncaughtException) no bot Discord:", error);
+  process.exit(1);
+});
+
+startHealthcheckServer("discord-bot");
 
 client.once("ready", () => {
   console.log(`🤖 Discord bot online como ${client.user.tag}`);
@@ -33,4 +46,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-client.login(token);
+client.login(token).catch((error) => {
+  console.error("Erro ao autenticar bot Discord:", error);
+  process.exit(1);
+});

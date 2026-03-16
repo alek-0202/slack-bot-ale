@@ -3,13 +3,15 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "echo \"No automated tests configured\"",
     "import:pokedex": "node scripts/import-pokedex.js",
     "migrate": "node scripts/runMigrations.js",
     "migrate:status": "node scripts/runMigrations.js --status",
-    "start:slack": "node index.js",
-    "start:discord": "node adapters/discord/index.js",
-    "discord:register": "node adapters/discord/registerCommands.js"
+    "start:slack": "node scripts/startSlack.js",
+    "start:discord": "node scripts/startDiscord.js",
+    "discord:register": "node adapters/discord/registerCommands.js",
+    "slack:start": "node scripts/startSlack.js",
+    "discord:start": "node scripts/startDiscord.js"
   },
   "keywords": [],
   "author": "",

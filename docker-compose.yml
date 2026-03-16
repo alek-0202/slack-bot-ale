@@ -1,0 +1,38 @@
+services:
+  slack-bot:
+    build:
+      context: .
+    container_name: slack-bot
+    command: npm run slack:start
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HEALTHCHECK_PORT: 3000
+    ports:
+      - "3001:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const port=process.env.HEALTHCHECK_PORT||3000;http.get({host:'127.0.0.1',port,path:'/health',timeout:2000},(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1));"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  discord-bot:
+    build:
+      context: .
+    container_name: discord-bot
+    command: npm run discord:start
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HEALTHCHECK_PORT: 3000
+    ports:
+      - "3002:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const port=process.env.HEALTHCHECK_PORT||3000;http.get({host:'127.0.0.1',port,path:'/health',timeout:2000},(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1));"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
