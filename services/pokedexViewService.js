@@ -2,9 +2,11 @@ const { getUserPokemonPage } = require("./pokemonService");
 
 const POKEDEX_NAV_PREV_ACTION_ID = "pokedex_navigate_prev";
 const POKEDEX_NAV_NEXT_ACTION_ID = "pokedex_navigate_next";
+const PA_NAV_PREV_ACTION_ID = "pa_navigate_prev";
+const PA_NAV_NEXT_ACTION_ID = "pa_navigate_next";
 
-function createNavValue({ ownerSlackUserId, index }) {
-  return JSON.stringify({ ownerSlackUserId, index });
+function createNavValue({ ownerSlackUserId, index, mode = "pokedex" }) {
+  return JSON.stringify({ ownerSlackUserId, index, mode });
 }
 
 function parseNavValue(value) {
@@ -12,11 +14,13 @@ function parseNavValue(value) {
     const parsed = JSON.parse(value || "{}");
     return {
       ownerSlackUserId: parsed.ownerSlackUserId,
+      mode: parsed.mode || "pokedex",
       index: Number.isInteger(parsed.index) ? parsed.index : Number(parsed.index) || 0,
     };
   } catch {
     return {
       ownerSlackUserId: null,
+      mode: "pokedex",
       index: 0,
     };
   }
@@ -59,7 +63,11 @@ async function getPokedexView(slackUserId, rawIndex) {
   };
 }
 
-function buildPokedexMessage({ slackUserId, entry, index, total }) {
+function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex" }) {
+  const isAttributesMode = mode === "pa";
+  const prevActionId = isAttributesMode ? PA_NAV_PREV_ACTION_ID : POKEDEX_NAV_PREV_ACTION_ID;
+  const nextActionId = isAttributesMode ? PA_NAV_NEXT_ACTION_ID : POKEDEX_NAV_NEXT_ACTION_ID;
+
   if (!entry || !total) {
     return {
       text: `📘 <@${slackUserId}>, sua Pokédex está vazia. Use *!capture* para começar!`,
@@ -78,10 +86,17 @@ function buildPokedexMessage({ slackUserId, entry, index, total }) {
   const species = entry.pokemon_species || {};
   const positionText = `${index + 1}/${total}`;
   const shinyTag = entry.shiny ? "\n✨ *Shiny*" : "";
+  const attributesText = isAttributesMode
+    ? `\n\n*📊 Atributos*\n` +
+      `⚔️ ATK: *${entry.attack || 0}* | 🛡️ DEF: *${entry.defense || 0}*\n` +
+      `❤️ HP: *${entry.hp || 0}* | 💨 SPD: *${entry.speed || 0}*`
+    : "";
+
   const detailsText =
     `*${species.name || "Pokémon desconhecido"}* (#${species.id || "?"})\n` +
     `⭐ Raridade: *${species.rarity || "desconhecida"}*\n` +
-    `🎯 Captura #${entry.id}${shinyTag}`;
+    `🏷️ Origem: *${entry.source || "capture"}*\n` +
+    `🎯 Captura #${entry.id}${shinyTag}${attributesText}`;
 
   const section = {
     type: "section",
@@ -122,8 +137,8 @@ function buildPokedexMessage({ slackUserId, entry, index, total }) {
               text: "Anterior",
               emoji: true,
             },
-            action_id: POKEDEX_NAV_PREV_ACTION_ID,
-            value: createNavValue({ ownerSlackUserId: slackUserId, index: index - 1 }),
+            action_id: prevActionId,
+            value: createNavValue({ ownerSlackUserId: slackUserId, index: index - 1, mode }),
             style: "primary",
           },
           {
@@ -133,8 +148,8 @@ function buildPokedexMessage({ slackUserId, entry, index, total }) {
               text: "Próximo",
               emoji: true,
             },
-            action_id: POKEDEX_NAV_NEXT_ACTION_ID,
-            value: createNavValue({ ownerSlackUserId: slackUserId, index: index + 1 }),
+            action_id: nextActionId,
+            value: createNavValue({ ownerSlackUserId: slackUserId, index: index + 1, mode }),
             style: "primary",
           },
         ],
@@ -146,6 +161,8 @@ function buildPokedexMessage({ slackUserId, entry, index, total }) {
 module.exports = {
   POKEDEX_NAV_PREV_ACTION_ID,
   POKEDEX_NAV_NEXT_ACTION_ID,
+  PA_NAV_PREV_ACTION_ID,
+  PA_NAV_NEXT_ACTION_ID,
   parseNavValue,
   getPokedexView,
   buildPokedexMessage,

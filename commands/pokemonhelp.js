@@ -15,9 +15,12 @@ module.exports = {
               "`!profile` → mostra seu perfil Pokémon\n" +
               "`!balance` → mostra seu gold atual\n\n" +
               "⚡ *Captura e Pokédex*\n" +
-              "`!capture` → captura um Pokémon (cooldown: 10 min)\n" +
+              "`!capture` → captura um Pokémon (cooldown: 1h)\n" +
               "`!pokedex` → abre sua Pokédex\n" +
-              "`!pokedex` com botões → navega pelos Pokémons capturados\n\n" +
+              "`!pa` → abre Pokédex com atributos por instância\n" +
+              "`!upgrade <pokemon_id>` → melhora nível do Pokémon até Lv 50\n" +
+              "`!market` → mostra o mercado diário\n" +
+              "`!market buy <slot>` → compra um Pokémon do mercado\n\n" +
               "🤝 *Trade*\n" +
               "`!trade @usuario` → inicia um trade\n" +
               "`!trade add pokemon <id>` → adiciona um Pokémon à oferta\n" +

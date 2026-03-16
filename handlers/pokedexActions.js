@@ -1,6 +1,8 @@
 const {
   POKEDEX_NAV_PREV_ACTION_ID,
   POKEDEX_NAV_NEXT_ACTION_ID,
+  PA_NAV_PREV_ACTION_ID,
+  PA_NAV_NEXT_ACTION_ID,
   parseNavValue,
   getPokedexView,
   buildPokedexMessage,
@@ -11,14 +13,14 @@ function registerPokedexActions(app) {
     await ack();
 
     try {
-      const { ownerSlackUserId, index } = parseNavValue(action.value);
+      const { ownerSlackUserId, index, mode } = parseNavValue(action.value);
       const actorSlackUserId = body.user?.id;
 
       if (!ownerSlackUserId || !actorSlackUserId || actorSlackUserId !== ownerSlackUserId) {
         if (respond) {
           await respond({
             response_type: "ephemeral",
-            text: "Você só pode navegar na Pokédex que você abriu com `!pokedex`.",
+            text: "Você só pode navegar na Pokédex que você abriu com `!pokedex` ou `!pa`.",
           });
         }
 
@@ -31,6 +33,7 @@ function registerPokedexActions(app) {
         entry: view.entry,
         index: view.index,
         total: view.total,
+        mode,
       });
 
       await client.chat.update({
@@ -53,6 +56,8 @@ function registerPokedexActions(app) {
 
   app.action(POKEDEX_NAV_PREV_ACTION_ID, handlePokedexNavigation);
   app.action(POKEDEX_NAV_NEXT_ACTION_ID, handlePokedexNavigation);
+  app.action(PA_NAV_PREV_ACTION_ID, handlePokedexNavigation);
+  app.action(PA_NAV_NEXT_ACTION_ID, handlePokedexNavigation);
 }
 
 module.exports = {
