@@ -1,4 +1,4 @@
-const { getUserPokemonPage } = require("./pokemonService");
+const { getUserPokemons, buildPokedexDisplayEntries } = require("./pokemonService");
 
 const POKEDEX_NAV_PREV_ACTION_ID = "pokedex_navigate_prev";
 const POKEDEX_NAV_NEXT_ACTION_ID = "pokedex_navigate_next";
@@ -36,9 +36,10 @@ function normalizeIndex(index, total) {
 }
 
 async function getPokedexView(slackUserId, rawIndex) {
-  const initialPage = await getUserPokemonPage(slackUserId, normalizeIndex(rawIndex, 1));
+  const pokemons = await getUserPokemons(slackUserId);
+  const entries = buildPokedexDisplayEntries(pokemons);
 
-  if (!initialPage.total) {
+  if (!entries.length) {
     return {
       total: 0,
       index: 0,
@@ -46,20 +47,11 @@ async function getPokedexView(slackUserId, rawIndex) {
     };
   }
 
-  const index = normalizeIndex(rawIndex, initialPage.total);
-  if (index === (initialPage.index || 0) && initialPage.entry) {
-    return {
-      total: initialPage.total,
-      index,
-      entry: initialPage.entry,
-    };
-  }
-
-  const page = await getUserPokemonPage(slackUserId, index);
+  const index = normalizeIndex(rawIndex, entries.length);
   return {
-    total: page.total,
+    total: entries.length,
     index,
-    entry: page.entry,
+    entry: entries[index],
   };
 }
 
@@ -86,6 +78,9 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
   const species = entry.pokemon_species || {};
   const positionText = `${index + 1}/${total}`;
   const shinyTag = entry.shiny ? "\n✨ *Shiny*" : "";
+  const quantitySuffix = entry.quantity > 1 ? ` (x${entry.quantity})` : "";
+  const idsText = entry.quantity > 1 ? entry.pokemonIds.join(", ") : `${entry.id}`;
+
   const attributesText = isAttributesMode
     ? `\n\n*📊 Atributos*\n` +
       `⚔️ ATK: *${entry.attack || 0}* | 🛡️ DEF: *${entry.defense || 0}*\n` +
@@ -93,9 +88,12 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
     : "";
 
   const detailsText =
-    `*${species.name || "Pokémon desconhecido"}* (#${species.id || "?"})\n` +
+    `*${species.name || "Pokémon desconhecido"}${quantitySuffix}* (#${species.id || "?"})\n` +
+    `🆔 ID${entry.quantity > 1 ? "s" : ""}: *${idsText}*\n` +
+    `🎚️ Level: *${entry.level || 1}*\n` +
     `⭐ Raridade: *${species.rarity || "desconhecida"}*\n` +
     `🏷️ Origem: *${entry.source || "capture"}*\n` +
+    `${entry.grouped ? "📦 Grupo: *instâncias equivalentes (Lv 1)*\n" : ""}` +
     `🎯 Captura #${entry.id}${shinyTag}${attributesText}`;
 
   const section = {
@@ -115,7 +113,7 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
   }
 
   return {
-    text: `📘 Pokédex ${positionText}: ${species.name || "Pokémon"} (#${species.id || "?"})`,
+    text: `📘 Pokédex ${positionText}: ${species.name || "Pokémon"}${quantitySuffix}`,
     blocks: [
       section,
       {
