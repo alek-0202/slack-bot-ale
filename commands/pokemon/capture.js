@@ -29,6 +29,7 @@ module.exports = {
       const text =
         `🎉 <@${event.user}> capturou *${result.species.name}* ${shinyTag}\n` +
         `⭐ Raridade: *${result.species.rarity}* | Lv ${result.captured.level}\n` +
+        `🆔 ID da captura: *${result.captured.id}*\n` +
         `💰 Recompensa: +${result.goldReward} gold`;
 
       const message = {

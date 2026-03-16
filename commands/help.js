@@ -21,7 +21,7 @@ module.exports = {
               "`!aceitar` → aceita o desafio pendente\n" +
               "`!recusar` → recusa o desafio pendente\n\n" +
               "*Sistema Pokémon*\n" +
-              "`!pokemonhelp` → mostra comandos de Pokédex, coleção, upgrades e mercado",
+              "`!pokemonhelp` → mostra comandos de Pokédex, coleção, upgrades, venda e mercado",
           },
         },
       ],

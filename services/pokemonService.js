@@ -92,7 +92,9 @@ async function getUserPokemonById(slackUserId, pokemonId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("user_pokemons")
-    .select("id, slack_user_id, species_id, level, shiny, attack, defense, hp, speed, pokemon_species(id, name, rarity)")
+    .select(
+      "id, slack_user_id, species_id, level, shiny, attack, defense, hp, speed, pokemon_species(id, name, rarity, base_value)",
+    )
     .eq("id", pokemonId)
     .eq("slack_user_id", slackUserId)
     .maybeSingle();
@@ -101,10 +103,66 @@ async function getUserPokemonById(slackUserId, pokemonId) {
   return data;
 }
 
+async function getUserPokemons(slackUserId) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("user_pokemons")
+    .select(
+      "id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at, pokemon_species(id, name, sprite_url, rarity)",
+    )
+    .eq("slack_user_id", slackUserId)
+    .order("captured_at", { ascending: false })
+    .order("id", { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+}
+
+function buildPokedexDisplayEntries(pokemons) {
+  const grouped = new Map();
+  const entries = [];
+
+  for (const pokemon of pokemons || []) {
+    const canGroup = Number(pokemon.level || 1) === 1;
+    const groupKey = `${pokemon.species_id}|${pokemon.shiny ? 1 : 0}|${pokemon.attack}|${pokemon.defense}|${pokemon.hp}|${pokemon.speed}`;
+
+    if (!canGroup) {
+      entries.push({
+        ...pokemon,
+        quantity: 1,
+        pokemonIds: [pokemon.id],
+        grouped: false,
+      });
+      continue;
+    }
+
+    const current = grouped.get(groupKey);
+    if (!current) {
+      const groupedEntry = {
+        ...pokemon,
+        quantity: 1,
+        pokemonIds: [pokemon.id],
+        grouped: false,
+      };
+      grouped.set(groupKey, groupedEntry);
+      entries.push(groupedEntry);
+      continue;
+    }
+
+    current.quantity += 1;
+    current.pokemonIds.push(pokemon.id);
+    current.grouped = true;
+  }
+
+  return entries;
+}
+
 module.exports = {
   getAllSpecies,
   insertUserPokemon,
   getProfileStats,
   getUserPokemonPage,
   getUserPokemonById,
+  getUserPokemons,
+  buildPokedexDisplayEntries,
 };
