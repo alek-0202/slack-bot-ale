@@ -20,7 +20,7 @@ module.exports = {
               "`!poke start` → inicia seu perfil na Pokédex\n" +
               "`!capture` → captura um Pokémon (cooldown: 10 min)\n" +
               "`!profile` → mostra seu perfil Pokémon\n" +
-              "`!pokedex` → mostra quantos Pokémon diferentes você descobriu\n" +
+              "`!pokedex` → abre sua Pokédex navegável (1 captura por vez)\n" +
               "`!balance` → mostra seu gold atual\n" +
               "`!ping` → testa se o bot está vivo\n" +
               "`!help` → mostra esta lista",

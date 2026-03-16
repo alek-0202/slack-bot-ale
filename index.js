@@ -14,12 +14,15 @@ const captureCommand = require("./commands/pokemon/capture");
 const profileCommand = require("./commands/pokemon/profile");
 const pokedexCommand = require("./commands/pokemon/pokedex");
 const balanceCommand = require("./commands/pokemon/balance");
+const { registerPokedexActions } = require("./handlers/pokedexActions");
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   appToken: process.env.SLACK_APP_TOKEN,
   socketMode: true,
 });
+
+registerPokedexActions(app);
 
 const mentionReplies = [
   "Fala comigo não, tô de férias 😴",
