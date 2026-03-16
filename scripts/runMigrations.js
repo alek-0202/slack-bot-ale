@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-
+require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
 const { Client } = require("pg");
@@ -29,7 +29,7 @@ async function ensureSchemaMigrationsTable(client) {
 
 async function getAppliedMigrations(client) {
   const result = await client.query(
-    "select filename, executed_at from public.schema_migrations order by filename asc"
+    "select filename, executed_at from public.schema_migrations order by filename asc",
   );
   return result.rows;
 }
@@ -44,7 +44,9 @@ async function printStatus(client) {
 
   console.log("Migrations aplicadas:");
   for (const migration of applied) {
-    console.log(`- ${migration.filename} (${migration.executed_at.toISOString()})`);
+    console.log(
+      `- ${migration.filename} (${migration.executed_at.toISOString()})`,
+    );
   }
 }
 
@@ -73,7 +75,10 @@ async function runMigrations(client) {
     try {
       await client.query("BEGIN");
       await client.query(sql);
-      await client.query("insert into public.schema_migrations (filename) values ($1)", [filename]);
+      await client.query(
+        "insert into public.schema_migrations (filename) values ($1)",
+        [filename],
+      );
       await client.query("COMMIT");
       console.log(`✓ ${filename} aplicada`);
     } catch (error) {
@@ -87,7 +92,9 @@ async function main() {
   const databaseUrl = process.env.DATABASE_URL;
 
   if (!databaseUrl) {
-    console.error("DATABASE_URL não definida. Configure a variável de ambiente e tente novamente.");
+    console.error(
+      "DATABASE_URL não definida. Configure a variável de ambiente e tente novamente.",
+    );
     process.exit(1);
   }
 
