@@ -1,5 +1,5 @@
 const { getUser } = require("../../services/userService");
-const { getProfileStats } = require("../../services/pokemonService");
+const { getPokedexView, buildPokedexMessage } = require("../../services/pokedexViewService");
 
 module.exports = {
   name: "pokedex",
@@ -11,8 +11,15 @@ module.exports = {
         return;
       }
 
-      const stats = await getProfileStats(event.user);
-      await say(`📘 <@${event.user}>, você já descobriu *${stats.uniqueCount}* Pokémon diferentes.`);
+      const view = await getPokedexView(event.user, 0);
+      const message = buildPokedexMessage({
+        slackUserId: event.user,
+        entry: view.entry,
+        index: view.index,
+        total: view.total,
+      });
+
+      await say(message);
     } catch (error) {
       console.error("Erro no !pokedex:", error.message || error);
       await say("Não consegui abrir sua Pokédex agora 😵");

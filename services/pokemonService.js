@@ -51,8 +51,34 @@ async function getProfileStats(slackUserId) {
   };
 }
 
+async function getUserPokemonPage(slackUserId, index) {
+  const supabase = getSupabaseClient();
+  const safeIndex = Number.isInteger(index) ? index : Number(index) || 0;
+  const clampedIndex = Math.max(0, safeIndex);
+
+  const { data, count, error } = await supabase
+    .from("user_pokemons")
+    .select(
+      "id, species_id, level, shiny, captured_at, pokemon_species(id, name, sprite_url, rarity)",
+      { count: "exact" },
+    )
+    .eq("slack_user_id", slackUserId)
+    .order("captured_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(clampedIndex, clampedIndex);
+
+  if (error) throw error;
+
+  return {
+    total: count || 0,
+    index: clampedIndex,
+    entry: data?.[0] || null,
+  };
+}
+
 module.exports = {
   getAllSpecies,
   insertUserPokemon,
   getProfileStats,
+  getUserPokemonPage,
 };
