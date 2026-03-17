@@ -20,6 +20,8 @@ module.exports = {
               "`!capture` → captura um Pokémon (cooldown: 1h)\n" +
               "`!pokedex` → abre sua Pokédex\n" +
               "`!pa` → abre Pokédex com atributos por instância\n" +
+              "`!pokeall` → abre o catálogo global de espécies\n" +
+              "`!pokename <nome>` → busca espécie por nome no catálogo global\n" +
               "`!upgrade <pokemon_id>` → melhora nível do Pokémon até Lv 50\n" +
               "`!sell <pokemon_id>` → vende um Pokémon da sua coleção\n" +
               "`!market` → mostra o mercado diário\n" +
