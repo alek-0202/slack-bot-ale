@@ -21,7 +21,8 @@ module.exports = {
               "`!aceitar` → aceita o desafio pendente\n" +
               "`!recusar` → recusa o desafio pendente\n" +
               "`!daily` → resgata recompensa diária de gold\n" +
-              "`!dhelp` → explica como funciona o !daily\n\n" +
+              "`!dhelp` → explica como funciona o !daily\n" +
+              "`!coffe` → envia um card de convite para o coffe break\n\n" +
               "*Sistema Pokémon*\n" +
               "`!pokemonhelp` → mostra comandos de Pokédex, coleção, upgrades, venda e mercado",
           },
