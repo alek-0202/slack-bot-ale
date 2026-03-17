@@ -13,6 +13,8 @@ const pingCommand = require("./commands/ping");
 const helpCommand = require("./commands/help");
 const pokemonHelpCommand = require("./commands/pokemonhelp");
 const caraOuCoroaCommand = require("./commands/caraoucoroa");
+const dailyCommand = require("./commands/daily");
+const dhelpCommand = require("./commands/dhelp");
 const pokeCommand = require("./commands/pokemon/poke");
 const captureCommand = require("./commands/pokemon/capture");
 const profileCommand = require("./commands/pokemon/profile");
@@ -56,6 +58,8 @@ for (const commandModule of [
   helpCommand,
   pokemonHelpCommand,
   caraOuCoroaCommand,
+  dailyCommand,
+  dhelpCommand,
   pokeCommand,
   captureCommand,
   profileCommand,
