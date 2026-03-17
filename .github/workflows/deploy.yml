@@ -1,7 +1,6 @@
-name: Deploy to VM
+name: Deploy to Production VM
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
@@ -13,18 +12,17 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          port: 22
           script: |
             set -euo pipefail
-            cd ${{ secrets.SSH_PROJECT_PATH }}
+            cd "${{ secrets.VM_APP_PATH }}"
 
             PREVIOUS_COMMIT="$(git rev-parse HEAD || true)"
 
@@ -40,19 +38,5 @@ jobs:
 
             git fetch --all --prune
             git reset --hard origin/main
-            docker compose pull
-            docker compose build
-            docker compose up -d --remove-orphans
+            docker compose up -d --build --remove-orphans
             docker compose ps
-
-      - name: Notify deploy failure webhook (optional)
-        if: failure() && secrets.DEPLOY_ALERT_WEBHOOK_URL != ''
-        env:
-          DEPLOY_ALERT_WEBHOOK_URL: ${{ secrets.DEPLOY_ALERT_WEBHOOK_URL }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_SHA: ${{ github.sha }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-        run: |
-          curl -sS -X POST "$DEPLOY_ALERT_WEBHOOK_URL" \
-            -H 'Content-Type: application/json' \
-            -d "{\"source\":\"github-actions\",\"message\":\"Deploy falhou\",\"repository\":\"$GITHUB_REPOSITORY\",\"sha\":\"$GITHUB_SHA\",\"runId\":\"$GITHUB_RUN_ID\"}" || true
