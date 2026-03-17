@@ -13,7 +13,9 @@ module.exports = {
               "📖 *Perfil e progresso*\n" +
               "`!poke start` → inicia seu perfil Pokémon\n" +
               "`!profile` → mostra seu perfil Pokémon\n" +
-              "`!balance` → mostra seu gold atual\n\n" +
+              "`!balance` → mostra seu gold atual\n" +
+              "`!daily` → resgata recompensa diária (1x por dia)\n" +
+              "`!dhelp` → explica o !daily e mostra as chances\n\n" +
               "⚡ *Captura e Pokédex*\n" +
               "`!capture` → captura um Pokémon (cooldown: 1h)\n" +
               "`!pokedex` → abre sua Pokédex\n" +

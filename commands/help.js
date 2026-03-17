@@ -19,7 +19,9 @@ module.exports = {
               "`!ia help` → mostra os modos da IA\n" +
               "`!caraoucoroa @usuario cara|coroa` → desafia alguém\n" +
               "`!aceitar` → aceita o desafio pendente\n" +
-              "`!recusar` → recusa o desafio pendente\n\n" +
+              "`!recusar` → recusa o desafio pendente\n" +
+              "`!daily` → resgata recompensa diária de gold\n" +
+              "`!dhelp` → explica como funciona o !daily\n\n" +
               "*Sistema Pokémon*\n" +
               "`!pokemonhelp` → mostra comandos de Pokédex, coleção, upgrades, venda e mercado",
           },
