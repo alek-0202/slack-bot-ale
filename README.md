@@ -107,7 +107,7 @@ docker compose down
 
 ---
 
-## 6) Healthcheck e monitoramento
+## 6) Healthcheck e resiliência
 
 Cada processo do bot sobe um endpoint HTTP simples em `/health`.
 
@@ -123,51 +123,81 @@ Uso recomendado:
   - `http://SEU_HOST:3001/health`
   - `http://SEU_HOST:3002/health`
 
-Também há `healthcheck` nativo no `docker-compose.yml` para reinício automático com `restart: unless-stopped`.
+O `docker-compose.yml` usa `restart: always` para os dois serviços, mantendo reinício automático após falhas e reboot da VM.
 
 ---
 
-## 7) GitHub Actions
+## 7) Fluxo de branches (`dev` -> `main`)
+
+Fluxo recomendado:
+
+1. Criar branch de feature a partir de `dev`:
+   - `feature/minha-mudanca`
+2. Abrir PR da feature para `dev`.
+3. Validar CI no PR.
+4. Fazer merge em `dev` (integração).
+5. Quando pronto para release, abrir PR de `dev` para `main`.
+6. Ao merge/push em `main`, o deploy de produção é executado automaticamente.
+
+Resumo:
+
+- `dev` = integração/desenvolvimento
+- `main` = produção
+- apenas `main` faz deploy em produção
+
+---
+
+## 8) GitHub Actions
 
 ### CI (`.github/workflows/ci.yml`)
 
-Executa em push/PR:
+Executa em pushes (main/dev/feature/hotfix) e PRs para `dev`/`main`:
 
 1. `npm ci`
-2. `npm run test` (testes automatizados reais de regras puras)
-3. `docker compose config` (validação do compose)
+2. `npm run test --if-present`
+3. `docker compose config`
 
-### Deploy (`.github/workflows/deploy.yml`)
+### Deploy produção (`.github/workflows/deploy.yml`)
 
-Executa em push na `main` e manual (`workflow_dispatch`) via SSH.
+Executa **somente** em push na `main`.
 
-Secrets necessários no GitHub:
+Comando remoto aplicado na VM:
 
-- `SSH_HOST`
-- `SSH_USER`
-- `SSH_PRIVATE_KEY`
-- `SSH_PORT`
-- `SSH_PROJECT_PATH` (ex.: `/opt/slack-bot-ale`)
-- `DEPLOY_ALERT_WEBHOOK_URL` (opcional, alerta simples se workflow falhar)
+1. entra em `VM_APP_PATH`
+2. salva commit anterior (`PREVIOUS_COMMIT`) para rollback
+3. `git fetch --all --prune`
+4. `git reset --hard origin/main`
+5. `docker compose up -d --build --remove-orphans`
+6. `docker compose ps`
 
-Comando remoto aplicado (com rollback automático em caso de erro):
-
-1. salva `PREVIOUS_COMMIT`
-2. `git fetch --all --prune`
-3. `git reset --hard origin/main`
-4. `docker compose pull`
-5. `docker compose build`
-6. `docker compose up -d --remove-orphans`
-7. em falha, volta para `PREVIOUS_COMMIT` e sobe containers anteriores
+Se ocorrer erro no meio do processo, o script faz rollback para o commit anterior e sobe os containers novamente.
 
 ---
 
-## 8) Fluxo de deploy recomendado na VM
+## 9) Secrets necessários no GitHub
 
-Pré-requisitos na VM Linux gratuita:
+No repositório (Settings → Secrets and variables → Actions), configurar:
+
+- `VM_HOST` (IP ou domínio da VM)
+- `VM_USER` (usuário SSH)
+- `VM_SSH_KEY` (chave privada SSH em formato PEM/OpenSSH)
+- `VM_APP_PATH` (caminho do projeto na VM, ex.: `/opt/slack-bot-ale`)
+
+Observações:
+
+- Garanta que a chave pública correspondente esteja em `~/.ssh/authorized_keys` do usuário da VM.
+- O repositório deve estar clonado em `VM_APP_PATH`.
+- O arquivo `.env` de produção deve existir na VM.
+
+---
+
+## 10) Setup inicial na VM
+
+Pré-requisitos na VM Linux:
 
 - Docker + plugin Docker Compose
-- repositório clonado no `SSH_PROJECT_PATH`
+- Git
+- repositório clonado no `VM_APP_PATH`
 - `.env` configurado no servidor
 
 Primeiro deploy manual:
@@ -180,22 +210,12 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Próximos deploys:
-
-- automático via GitHub Actions (push na `main`), ou
-- manual com:
-
-```bash
-cd /opt/slack-bot-ale
-git pull
-docker compose up -d --build
-```
+Depois disso, o deploy passa a ser automático em push/merge na `main`.
 
 ---
 
-## 9) Observações operacionais
+## 11) Observações operacionais
 
 - Falhas fatais encerram o processo com log estruturado e consistente (`unhandledRejection`/`uncaughtException`), permitindo restart automático pelo Docker.
-- Alertas críticos opcionais podem ser enviados por webhook sem adicionar stack pesada de observabilidade.
 - A lógica de comandos e serviços existente não foi reescrita.
-- O projeto continua pronto para evolução via Codex mantendo a stack atual.
+- A base fica pronta para próximos passos (ex.: ambiente de staging, migrations automáticas por job dedicado e proteção de branch).
