@@ -4,6 +4,8 @@ const { App } = require("@slack/bolt");
 const { extractCommand, randomItem } = require("./utils/helpers");
 const { isOnCooldown, clearExpiredCooldowns } = require("./utils/cooldown");
 const { startHealthcheckServer } = require("./utils/healthcheck");
+const { createLogger } = require("./utils/logger");
+const { sendCriticalAlert } = require("./utils/criticalAlert");
 
 const gifCommand = require("./commands/gif");
 const iaCommand = require("./commands/ia");
@@ -22,6 +24,9 @@ const marketCommand = require("./commands/pokemon/market");
 const tradeCommand = require("./commands/pokemon/trade");
 const sellCommand = require("./commands/pokemon/sell");
 const { registerPokedexActions } = require("./handlers/pokedexActions");
+
+
+const logger = createLogger("slack-bot");
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -73,17 +78,17 @@ for (const commandModule of [
 
 app.event("app_mention", async ({ event, say }) => {
   try {
-    console.log("APP_MENTION:", event.text);
+    logger.debug("Evento app_mention recebido", { text: event.text, user: event.user });
     const answer = randomItem(mentionReplies);
     await say(`<@${event.user}> ${answer}`);
   } catch (error) {
-    console.error("Erro em app_mention:", error);
+    logger.error("Erro em app_mention", { error });
   }
 });
 
 app.event("message", async ({ event, say }) => {
   try {
-    console.log("MESSAGE_EVENT:", {
+    logger.debug("Evento message recebido", {
       text: event.text,
       user: event.user,
       channel: event.channel,
@@ -127,17 +132,27 @@ app.event("message", async ({ event, say }) => {
       say,
     });
   } catch (error) {
-    console.error("Erro em message event:", error);
+    logger.error("Erro em message event", { error });
   }
 });
 
-process.on("unhandledRejection", (error) => {
-  console.error("Erro não tratado (unhandledRejection) no bot Slack:", error);
+process.on("unhandledRejection", async (error) => {
+  logger.error("Erro não tratado (unhandledRejection) no bot Slack", { error });
+  await sendCriticalAlert({
+    source: "slack-bot",
+    message: "Unhandled rejection no processo do Slack bot",
+    error,
+  });
   process.exit(1);
 });
 
-process.on("uncaughtException", (error) => {
-  console.error("Exceção não capturada (uncaughtException) no bot Slack:", error);
+process.on("uncaughtException", async (error) => {
+  logger.error("Exceção não capturada (uncaughtException) no bot Slack", { error });
+  await sendCriticalAlert({
+    source: "slack-bot",
+    message: "Uncaught exception no processo do Slack bot",
+    error,
+  });
   process.exit(1);
 });
 
@@ -146,9 +161,14 @@ startHealthcheckServer("slack-bot");
 (async () => {
   try {
     await app.start();
-    console.log("⚡ Bot está rodando!");
+    logger.info("Slack bot online");
   } catch (error) {
-    console.error("Erro ao iniciar o bot Slack:", error);
+    logger.error("Erro ao iniciar o bot Slack", { error });
+    await sendCriticalAlert({
+      source: "slack-bot",
+      message: "Falha crítica no startup do Slack bot",
+      error,
+    });
     process.exit(1);
   }
 })();

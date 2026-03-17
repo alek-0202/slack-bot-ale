@@ -1,4 +1,7 @@
 require("dotenv").config();
+const { createLogger } = require("../utils/logger");
 
-console.log("[bootstrap] Iniciando serviço discord-bot...");
+const logger = createLogger("bootstrap:discord");
+logger.info("Iniciando serviço discord-bot");
+
 require("../adapters/discord/index");

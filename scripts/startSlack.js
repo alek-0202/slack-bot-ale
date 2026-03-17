@@ -1,4 +1,7 @@
 require("dotenv").config();
+const { createLogger } = require("../utils/logger");
 
-console.log("[bootstrap] Iniciando serviço slack-bot...");
+const logger = createLogger("bootstrap:slack");
+logger.info("Iniciando serviço slack-bot");
+
 require("../index");

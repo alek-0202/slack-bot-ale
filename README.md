@@ -33,6 +33,9 @@ cp .env.example .env
 - `DATABASE_URL` (quando usado por scripts SQL)
 - `GIPHY_API_KEY`, `OLLAMA_HOST`, `OLLAMA_MODEL`
 - `HEALTHCHECK_PORT` (padrão 3000)
+- `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; padrão `info`)
+- `LOG_FORMAT` (`text` ou `json`; padrão `text`)
+- `CRITICAL_ALERT_WEBHOOK_URL` (opcional, para alertar falhas críticas de runtime/startup)
 
 > Nunca commite `.env`.
 
@@ -40,6 +43,7 @@ cp .env.example .env
 
 ## 3) Scripts npm
 
+- `npm run test` → executa suíte mínima de testes automatizados (`node --test`)
 - `npm run slack:start` → inicia Slack
 - `npm run discord:start` → inicia Discord
 - `npm run discord:register` → registra slash commands
@@ -130,7 +134,7 @@ Também há `healthcheck` nativo no `docker-compose.yml` para reinício automát
 Executa em push/PR:
 
 1. `npm ci`
-2. `npm run test`
+2. `npm run test` (testes automatizados reais de regras puras)
 3. `docker compose config` (validação do compose)
 
 ### Deploy (`.github/workflows/deploy.yml`)
@@ -144,14 +148,17 @@ Secrets necessários no GitHub:
 - `SSH_PRIVATE_KEY`
 - `SSH_PORT`
 - `SSH_PROJECT_PATH` (ex.: `/opt/slack-bot-ale`)
+- `DEPLOY_ALERT_WEBHOOK_URL` (opcional, alerta simples se workflow falhar)
 
-Comando remoto aplicado:
+Comando remoto aplicado (com rollback automático em caso de erro):
 
-1. `git fetch --all`
-2. `git reset --hard origin/main`
-3. `docker compose pull || true`
-4. `docker compose build --no-cache`
-5. `docker compose up -d --remove-orphans`
+1. salva `PREVIOUS_COMMIT`
+2. `git fetch --all --prune`
+3. `git reset --hard origin/main`
+4. `docker compose pull`
+5. `docker compose build`
+6. `docker compose up -d --remove-orphans`
+7. em falha, volta para `PREVIOUS_COMMIT` e sobe containers anteriores
 
 ---
 
@@ -188,6 +195,7 @@ docker compose up -d --build
 
 ## 9) Observações operacionais
 
-- Falhas fatais agora encerram o processo com log claro (`unhandledRejection`/`uncaughtException`), permitindo restart automático pelo Docker.
+- Falhas fatais encerram o processo com log estruturado e consistente (`unhandledRejection`/`uncaughtException`), permitindo restart automático pelo Docker.
+- Alertas críticos opcionais podem ser enviados por webhook sem adicionar stack pesada de observabilidade.
 - A lógica de comandos e serviços existente não foi reescrita.
 - O projeto continua pronto para evolução via Codex mantendo a stack atual.

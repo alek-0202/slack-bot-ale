@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"No automated tests configured\"",
+    "test": "node --test",
     "import:pokedex": "node scripts/import-pokedex.js",
     "migrate": "node scripts/runMigrations.js",
     "migrate:status": "node scripts/runMigrations.js --status",
