@@ -23,6 +23,7 @@ module.exports = {
               "`!pokeall` → abre o catálogo global de espécies\n" +
               "`!pokename <nome>` → busca espécie por nome no catálogo global\n" +
               "`!upgrade <pokemon_id>` → melhora nível do Pokémon até Lv 50\n" +
+              "`!evolve <pokemon_id>` → evolui um Pokémon da sua coleção (quando possível)\n" +
               "`!sell <pokemon_id>` → vende um Pokémon da sua coleção\n" +
               "`!market` → mostra o mercado diário\n" +
               "`!market buy <slot>` → compra um Pokémon do mercado\n\n" +

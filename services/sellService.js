@@ -1,17 +1,10 @@
 const { getSupabaseClient } = require("../database/supabase");
 const { getUserPokemonById } = require("./pokemonService");
 const { getUpgradeCost } = require("./upgradeService");
-
-const BASE_SELL_PRICE_BY_RARITY = {
-  common: 100,
-  uncommon: 180,
-  rare: 320,
-  epic: 520,
-  legendary: 900,
-};
+const { getBaseGoldByRarity, getLevelBonus } = require("./economyService");
 
 function getBaseSellPriceByRarity(rarity) {
-  return BASE_SELL_PRICE_BY_RARITY[rarity] || BASE_SELL_PRICE_BY_RARITY.common;
+  return getBaseGoldByRarity(rarity);
 }
 
 function calculatePokemonSellPrice({ rarity, level }) {
@@ -24,7 +17,7 @@ function calculatePokemonSellPrice({ rarity, level }) {
     totalUpgradeCost += getUpgradeCost(currentLevel);
   }
 
-  const levelBonus = extraLevels * 50;
+  const levelBonus = getLevelBonus(safeLevel);
   const upgradeReturn = Math.floor(totalUpgradeCost * 0.2);
 
   return {
@@ -88,7 +81,6 @@ async function sellPokemon({ slackUserId, pokemonId }) {
 }
 
 module.exports = {
-  BASE_SELL_PRICE_BY_RARITY,
   getBaseSellPriceByRarity,
   calculatePokemonSellPrice,
   sellPokemon,

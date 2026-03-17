@@ -11,7 +11,7 @@ create table if not exists public.pokemon_species (
   name text not null unique,
   generation integer,
   sprite_url text,
-  rarity text not null check (rarity in ('common', 'uncommon', 'rare', 'epic', 'legendary')),
+  rarity text not null check (rarity in ('common', 'uncommon', 'rare', 'epic', 'legendary', 'mythical')),
   evolution_stage integer not null default 1,
   evolves_from integer references public.pokemon_species(id) on update cascade on delete set null,
   evolves_to integer references public.pokemon_species(id) on update cascade on delete set null,
@@ -456,6 +456,7 @@ begin
     when 'rare' then 2
     when 'epic' then 3
     when 'legendary' then 4
+    when 'mythical' then 5
     else 0
   end;
 
