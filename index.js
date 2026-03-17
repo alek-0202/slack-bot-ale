@@ -19,6 +19,8 @@ const pokeCommand = require("./commands/pokemon/poke");
 const captureCommand = require("./commands/pokemon/capture");
 const profileCommand = require("./commands/pokemon/profile");
 const pokedexCommand = require("./commands/pokemon/pokedex");
+const pokeallCommand = require("./commands/pokemon/pokeall");
+const pokenameCommand = require("./commands/pokemon/pokename");
 const balanceCommand = require("./commands/pokemon/balance");
 const paCommand = require("./commands/pokemon/pa");
 const upgradeCommand = require("./commands/pokemon/upgrade");
@@ -64,6 +66,8 @@ for (const commandModule of [
   captureCommand,
   profileCommand,
   pokedexCommand,
+  pokeallCommand,
+  pokenameCommand,
   balanceCommand,
   paCommand,
   upgradeCommand,
