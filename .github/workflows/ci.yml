@@ -31,5 +31,14 @@ jobs:
       - name: Run tests (if present)
         run: npm run test --if-present
 
+      - name: Prepare .env for Docker Compose validation
+        run: |
+          if [ -f .env.example ]; then
+            cp .env.example .env
+          else
+            echo "[warn] .env.example not found. Creating empty .env for CI validation."
+            touch .env
+          fi
+
       - name: Validate Docker Compose file
         run: docker compose config
