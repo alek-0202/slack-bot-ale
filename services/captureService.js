@@ -3,6 +3,7 @@ const { getSupabaseClient } = require("../database/supabase");
 const { getUser, createUserIfMissing } = require("./userService");
 const { getAllSpecies, insertUserPokemon } = require("./pokemonService");
 const { generatePokemonStats } = require("./pokemonInstanceService");
+const { getGoldValueByRarityAndLevel } = require("./economyService");
 
 const CAPTURE_COOLDOWN_MS = 60 * 60 * 1000;
 const SHINY_CHANCE = 0.02;
@@ -48,7 +49,10 @@ async function capturePokemon(slackUserId) {
   const selected = pickByRarity(speciesList);
   const shiny = Math.random() < SHINY_CHANCE;
   const level = 1;
-  const goldReward = Math.max(5, selected.base_value || 5);
+  const goldReward = getGoldValueByRarityAndLevel({
+    rarity: selected.rarity,
+    level,
+  });
   const nowIso = new Date().toISOString();
   const stats = generatePokemonStats(selected);
 
