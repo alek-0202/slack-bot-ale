@@ -1,187 +1,201 @@
 const axios = require("axios");
 const { getSupabaseClient } = require("../database/supabase");
+const { getBaseGoldByRarity } = require("./economyService");
+const { classifySpeciesRarity } = require("./rarityService");
 
 const POKE_API_BASE = "https://pokeapi.co/api/v2";
+const DEFAULT_BATCH_SIZE = 12;
 
-function rarityByStage(stage) {
-  if (stage <= 1) return "common";
-  if (stage === 2) return "uncommon";
-  if (stage === 3) return "rare";
-  return "epic";
+const GENERATION_MAP = {
+  "generation-i": 1,
+  "generation-ii": 2,
+  "generation-iii": 3,
+  "generation-iv": 4,
+  "generation-v": 5,
+  "generation-vi": 6,
+  "generation-vii": 7,
+  "generation-viii": 8,
+  "generation-ix": 9,
+};
+
+function parsePokemonIdFromUrl(url) {
+  if (!url) return null;
+  const parsed = Number(String(url).split("/").filter(Boolean).pop());
+  return Number.isInteger(parsed) ? parsed : null;
 }
 
-function rarityByPokemonId(id, baseRarity) {
-  if ([144, 145, 146, 150, 151].includes(id)) return "legendary";
-  if (id >= 243 && id <= 251) return "legendary";
-  return baseRarity;
+function normalizeGeneration(generationName) {
+  if (!generationName) return null;
+  return GENERATION_MAP[generationName] || null;
 }
 
-async function fetchPokemonSpeciesPayload(id) {
-  const [pokemonRes, speciesRes] = await Promise.all([
-    axios.get(`${POKE_API_BASE}/pokemon/${id}`),
-    axios.get(`${POKE_API_BASE}/pokemon-species/${id}`),
-  ]);
+async function fetchSpeciesList(limit = null) {
+  const { data } = await axios.get(`${POKE_API_BASE}/pokemon-species`, {
+    params: {
+      limit: 100000,
+      offset: 0,
+    },
+  });
 
+  const all = (data.results || [])
+    .map((item) => ({
+      id: parsePokemonIdFromUrl(item.url),
+      name: item.name,
+      url: item.url,
+    }))
+    .filter((item) => item.id)
+    .sort((a, b) => a.id - b.id);
+
+  if (!limit) return all;
+  return all.slice(0, Math.max(1, Number(limit) || all.length));
+}
+
+function walkChainNode(node, stage, evolvesFrom, map) {
+  const id = parsePokemonIdFromUrl(node?.species?.url);
+  if (!id) return;
+
+  const evolvesToIds = (node.evolves_to || [])
+    .map((child) => parsePokemonIdFromUrl(child?.species?.url))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+
+  map.set(id, {
+    evolution_stage: stage,
+    evolves_from: evolvesFrom,
+    evolves_to_ids: evolvesToIds,
+  });
+
+  for (const child of node.evolves_to || []) {
+    walkChainNode(child, stage + 1, id, map);
+  }
+}
+
+async function buildEvolutionLookup(speciesDetails) {
+  const chainByUrl = new Map();
+  const lookup = new Map();
+
+  for (const species of speciesDetails) {
+    const chainUrl = species.evolution_chain?.url;
+    if (!chainUrl) continue;
+
+    if (!chainByUrl.has(chainUrl)) {
+      const { data } = await axios.get(chainUrl);
+      const chainMap = new Map();
+      walkChainNode(data.chain, 1, null, chainMap);
+      chainByUrl.set(chainUrl, chainMap);
+    }
+
+    const chainMap = chainByUrl.get(chainUrl);
+    for (const [id, value] of chainMap.entries()) {
+      lookup.set(id, value);
+    }
+  }
+
+  return lookup;
+}
+
+async function fetchSpeciesPayload(entry, species, evolutionLookup) {
+  const pokemonRes = await axios.get(`${POKE_API_BASE}/pokemon/${entry.id}`);
   const pokemon = pokemonRes.data;
-  const species = speciesRes.data;
+  const evolution = evolutionLookup.get(entry.id) || {};
+  const evolutionStage = Math.max(1, Number(evolution.evolution_stage) || 1);
 
-  const evolvesFromId = species.evolves_from_species?.url
-    ? Number(species.evolves_from_species.url.split("/").filter(Boolean).pop())
-    : null;
-
-  const stage = evolvesFromId ? 2 : 1;
-  const rarity = rarityByPokemonId(id, rarityByStage(stage));
-
-  const normalizedName = species.name || pokemon.name || null;
+  const rarity = classifySpeciesRarity({
+    isLegendary: species.is_legendary,
+    isMythical: species.is_mythical,
+    captureRate: species.capture_rate,
+    baseHappiness: species.base_happiness,
+    evolutionStage,
+    isBaby: species.is_baby,
+  });
 
   return {
-    id,
-    name: normalizedName,
-    generation:
-      Number(species.generation?.name?.replace("generation-", "")) || null,
-    sprite_url: pokemon.sprites?.front_default || null,
+    id: entry.id,
+    name: species.name || pokemon.name || entry.name,
+    generation: normalizeGeneration(species.generation?.name),
+    sprite_url:
+      pokemon.sprites?.other?.["official-artwork"]?.front_default ||
+      pokemon.sprites?.front_default ||
+      null,
     rarity,
-    evolution_stage: stage,
-    evolves_from: evolvesFromId,
-    base_value: stage === 1 ? 10 : 18,
+    evolution_stage: evolutionStage,
+    evolves_from: evolution.evolves_from || null,
+    evolves_to: (evolution.evolves_to_ids || [])[0] || null,
+    base_value: getBaseGoldByRarity(rarity),
   };
 }
 
 function validateSpeciesPayload(species) {
   const issues = [];
 
-  if (!Number.isInteger(species.id) || species.id <= 0) {
-    issues.push("id ausente ou inválido");
-  }
-
-  if (
-    !species.name ||
-    typeof species.name !== "string" ||
-    !species.name.trim()
-  ) {
+  if (!Number.isInteger(species.id) || species.id <= 0) issues.push("id ausente ou inválido");
+  if (!species.name || typeof species.name !== "string" || !species.name.trim()) {
     issues.push("name ausente");
   }
 
-  return {
-    isValid: issues.length === 0,
-    issues,
-  };
+  return { isValid: issues.length === 0, issues };
 }
 
-function buildEvolutionUpdates(speciesPayload, existingSpeciesIds) {
-  const importedIds = new Set(speciesPayload.map((species) => species.id));
-  const knownSpeciesIds = new Set([...existingSpeciesIds, ...importedIds]);
-
-  const evolvesToBySpecies = new Map();
-  for (const species of speciesPayload) {
-    if (!species.evolves_from || !knownSpeciesIds.has(species.evolves_from))
-      continue;
-
-    const nextSpecies = evolvesToBySpecies.get(species.evolves_from) || [];
-    nextSpecies.push(species.id);
-    evolvesToBySpecies.set(species.evolves_from, nextSpecies);
+async function mapInBatches(items, mapper, batchSize = DEFAULT_BATCH_SIZE) {
+  const out = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const rows = await Promise.all(batch.map(mapper));
+    out.push(...rows);
   }
-
-  return speciesPayload.map((species) => {
-    const canReferencePrevious =
-      species.evolves_from && knownSpeciesIds.has(species.evolves_from);
-
-    const possibleNextSpecies = (evolvesToBySpecies.get(species.id) || []).sort(
-      (a, b) => a - b,
-    );
-    const evolvesTo =
-      possibleNextSpecies.length === 1 ? possibleNextSpecies[0] : null;
-
-    const evolutionStage = canReferencePrevious ? 2 : 1;
-    const rarity = rarityByPokemonId(species.id, rarityByStage(evolutionStage));
-
-    return {
-      id: species.id,
-      name: species.name,
-      generation: species.generation,
-      sprite_url: species.sprite_url,
-      evolves_from: canReferencePrevious ? species.evolves_from : null,
-      evolves_to: evolvesTo,
-      evolution_stage: evolutionStage,
-      rarity,
-      base_value: evolutionStage === 1 ? 10 : 18,
-    };
-  });
+  return out;
 }
 
-async function importPokemonSpecies({ limit = 151 } = {}) {
+async function importPokemonSpecies({ limit = null, batchSize = DEFAULT_BATCH_SIZE } = {}) {
   const supabase = getSupabaseClient();
-  const payload = [];
-  const invalidPayload = [];
+  const entries = await fetchSpeciesList(limit);
 
-  for (let id = 1; id <= limit; id += 1) {
-    const species = await fetchPokemonSpeciesPayload(id);
+  if (!entries.length) return 0;
+
+  const speciesDetails = await mapInBatches(
+    entries,
+    async (entry) => ({
+      id: entry.id,
+      data: (await axios.get(`${POKE_API_BASE}/pokemon-species/${entry.id}`)).data,
+    }),
+    batchSize,
+  );
+
+  const speciesById = new Map(speciesDetails.map((item) => [item.id, item.data]));
+  const evolutionLookup = await buildEvolutionLookup(speciesDetails.map((item) => item.data));
+
+  const payload = await mapInBatches(
+    entries,
+    (entry) => fetchSpeciesPayload(entry, speciesById.get(entry.id), evolutionLookup),
+    batchSize,
+  );
+
+  const validPayload = [];
+  for (const species of payload) {
     const validation = validateSpeciesPayload(species);
-
     if (!validation.isValid) {
-      invalidPayload.push({
-        id,
-        name: species.name,
-        issues: validation.issues,
-      });
-
       console.warn(
-        `[pokedex-import] Registro inválido ignorado (id=${id}, name=${species.name || "<null>"}): ${validation.issues.join(", ")}`,
+        `[pokedex-import] Registro inválido ignorado (id=${species.id}): ${validation.issues.join(", ")}`,
       );
       continue;
     }
 
-    payload.push(species);
+    validPayload.push(species);
   }
 
-  if (invalidPayload.length > 0) {
-    console.warn(
-      `[pokedex-import] ${invalidPayload.length} registro(s) inválido(s) foram ignorados. Amostra: ${JSON.stringify(
-        invalidPayload.slice(0, 10),
-      )}`,
-    );
-  }
-
-  const basePayload = payload.map((species) => ({
-    id: species.id,
-    name: species.name,
-    generation: species.generation,
-    sprite_url: species.sprite_url,
-    rarity: species.rarity,
-    evolution_stage: species.evolution_stage,
-    base_value: species.base_value,
-  }));
-
-  if (basePayload.length > 0) {
-    const { error: baseUpsertError } = await supabase
+  if (validPayload.length > 0) {
+    const { error } = await supabase
       .from("pokemon_species")
-      .upsert(basePayload, { onConflict: "id" });
+      .upsert(validPayload, { onConflict: "id" });
 
-    if (baseUpsertError) throw baseUpsertError;
+    if (error) throw error;
   }
 
-  const { data: existingSpecies, error: existingSpeciesError } = await supabase
-    .from("pokemon_species")
-    .select("id");
-
-  if (existingSpeciesError) throw existingSpeciesError;
-
-  const existingSpeciesIds = new Set(
-    (existingSpecies || []).map((species) => species.id),
-  );
-  const evolutionPayload = buildEvolutionUpdates(payload, existingSpeciesIds);
-
-  if (evolutionPayload.length > 0) {
-    const { error: evolutionUpsertError } = await supabase
-      .from("pokemon_species")
-      .upsert(evolutionPayload, { onConflict: "id" });
-
-    if (evolutionUpsertError) throw evolutionUpsertError;
-  }
-
-  return payload.length;
+  return validPayload.length;
 }
 
 module.exports = {
   importPokemonSpecies,
+  normalizeGeneration,
+  parsePokemonIdFromUrl,
 };

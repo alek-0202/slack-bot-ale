@@ -8,9 +8,12 @@ test("getMarketDateKey gera chave ISO yyyy-mm-dd", () => {
   assert.equal(key, "2026-03-16");
 });
 
-test("getPriceByRarity respeita tiers e fallback", () => {
-  assert.equal(getPriceByRarity("common"), 250);
-  assert.equal(getPriceByRarity("uncommon"), 500);
-  assert.equal(getPriceByRarity("rare"), 1000);
-  assert.equal(getPriceByRarity("invalid"), 250);
+test("getPriceByRarity usa economia base por raridade", () => {
+  assert.equal(getPriceByRarity("common"), 50);
+  assert.equal(getPriceByRarity("uncommon"), 100);
+  assert.equal(getPriceByRarity("rare"), 200);
+  assert.equal(getPriceByRarity("epic"), 400);
+  assert.equal(getPriceByRarity("legendary"), 800);
+  assert.equal(getPriceByRarity("mythical"), 1600);
+  assert.equal(getPriceByRarity("invalid"), 50);
 });

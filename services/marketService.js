@@ -1,17 +1,14 @@
 const { getSupabaseClient } = require("../database/supabase");
+const { getBaseGoldByRarity } = require("./economyService");
 
 const DAILY_MARKET_SIZE = 3;
-const BASE_PRICE = 250;
-const RARITY_TIERS = ["common", "uncommon", "rare", "epic", "legendary"];
 
 function getMarketDateKey(date = new Date()) {
   return date.toISOString().slice(0, 10);
 }
 
 function getPriceByRarity(rarity) {
-  const tier = RARITY_TIERS.indexOf(rarity);
-  const safeTier = tier < 0 ? 0 : tier;
-  return BASE_PRICE * 2 ** safeTier;
+  return getBaseGoldByRarity(rarity);
 }
 
 async function ensureDailyMarket(marketDate = getMarketDateKey()) {

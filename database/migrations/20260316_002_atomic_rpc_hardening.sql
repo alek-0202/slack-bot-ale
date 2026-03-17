@@ -155,6 +155,7 @@ begin
     when 'rare' then 2
     when 'epic' then 3
     when 'legendary' then 4
+    when 'mythical' then 5
     else 0
   end;
 

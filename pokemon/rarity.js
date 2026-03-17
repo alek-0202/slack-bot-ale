@@ -4,6 +4,7 @@ const RARITY_WEIGHTS = {
   rare: 10,
   epic: 4,
   legendary: 1,
+  mythical: 0.5,
 };
 
 function pickByRarity(speciesList = []) {
