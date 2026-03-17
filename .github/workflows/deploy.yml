@@ -6,6 +6,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -19,11 +23,36 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           script: |
-            set -e
+            set -euo pipefail
             cd ${{ secrets.SSH_PROJECT_PATH }}
-            git fetch --all
+
+            PREVIOUS_COMMIT="$(git rev-parse HEAD || true)"
+
+            rollback() {
+              if [ -n "${PREVIOUS_COMMIT}" ]; then
+                echo "[deploy] Falha detectada. Iniciando rollback para ${PREVIOUS_COMMIT}"
+                git reset --hard "${PREVIOUS_COMMIT}"
+                docker compose up -d --remove-orphans
+              fi
+            }
+
+            trap rollback ERR
+
+            git fetch --all --prune
             git reset --hard origin/main
-            docker compose pull || true
-            docker compose build --no-cache
+            docker compose pull
+            docker compose build
             docker compose up -d --remove-orphans
             docker compose ps
+
+      - name: Notify deploy failure webhook (optional)
+        if: failure() && secrets.DEPLOY_ALERT_WEBHOOK_URL != ''
+        env:
+          DEPLOY_ALERT_WEBHOOK_URL: ${{ secrets.DEPLOY_ALERT_WEBHOOK_URL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          curl -sS -X POST "$DEPLOY_ALERT_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "{\"source\":\"github-actions\",\"message\":\"Deploy falhou\",\"repository\":\"$GITHUB_REPOSITORY\",\"sha\":\"$GITHUB_SHA\",\"runId\":\"$GITHUB_RUN_ID\"}" || true

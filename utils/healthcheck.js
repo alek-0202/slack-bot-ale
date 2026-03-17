@@ -1,9 +1,13 @@
 const http = require("http");
+const { createLogger } = require("./logger");
+const { sendCriticalAlert } = require("./criticalAlert");
 
 function startHealthcheckServer(serviceName) {
+  const logger = createLogger(`healthcheck:${serviceName}`);
   const port = Number(process.env.HEALTHCHECK_PORT || 0);
 
   if (!port) {
+    logger.info("Healthcheck desabilitado (HEALTHCHECK_PORT não definido)");
     return;
   }
 
@@ -26,11 +30,16 @@ function startHealthcheckServer(serviceName) {
   });
 
   server.listen(port, "0.0.0.0", () => {
-    console.log(`[healthcheck] ${serviceName} escutando em 0.0.0.0:${port}`);
+    logger.info("Healthcheck server online", { bind: "0.0.0.0", port });
   });
 
-  server.on("error", (error) => {
-    console.error(`[healthcheck] Falha ao iniciar servidor de healthcheck para ${serviceName}:`, error);
+  server.on("error", async (error) => {
+    logger.error("Falha ao iniciar servidor de healthcheck", { error });
+    await sendCriticalAlert({
+      source: serviceName,
+      message: "Falha crítica ao iniciar healthcheck",
+      error,
+    });
     process.exit(1);
   });
 }
