@@ -4,7 +4,7 @@ services:
       context: .
     container_name: slack-bot
     command: npm run slack:start
-    restart: unless-stopped
+    restart: always
     env_file:
       - .env
     environment:
@@ -23,7 +23,7 @@ services:
       context: .
     container_name: discord-bot
     command: npm run discord:start
-    restart: unless-stopped
+    restart: always
     env_file:
       - .env
     environment:
