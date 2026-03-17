@@ -15,6 +15,7 @@ const pokemonHelpCommand = require("./commands/pokemonhelp");
 const caraOuCoroaCommand = require("./commands/caraoucoroa");
 const dailyCommand = require("./commands/daily");
 const dhelpCommand = require("./commands/dhelp");
+const coffeCommand = require("./commands/coffe");
 const pokeCommand = require("./commands/pokemon/poke");
 const captureCommand = require("./commands/pokemon/capture");
 const profileCommand = require("./commands/pokemon/profile");
@@ -29,6 +30,7 @@ const tradeCommand = require("./commands/pokemon/trade");
 const sellCommand = require("./commands/pokemon/sell");
 const evolveCommand = require("./commands/pokemon/evolve");
 const { registerPokedexActions } = require("./handlers/pokedexActions");
+const { registerCoffeActions } = require("./handlers/coffeActions");
 
 
 const logger = createLogger("slack-bot");
@@ -40,6 +42,7 @@ const app = new App({
 });
 
 registerPokedexActions(app);
+registerCoffeActions(app);
 
 const mentionReplies = [
   "Fala comigo não, tô de férias 😴",
@@ -63,6 +66,7 @@ for (const commandModule of [
   caraOuCoroaCommand,
   dailyCommand,
   dhelpCommand,
+  coffeCommand,
   pokeCommand,
   captureCommand,
   profileCommand,
