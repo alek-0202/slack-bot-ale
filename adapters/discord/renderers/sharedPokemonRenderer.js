@@ -37,7 +37,30 @@ function renderDiscordCaptureResult({ result }) {
   return { embeds: [embed] };
 }
 
+
+function renderDiscordUpgradeResult({ result, maxLevel, getNextUpgradeCost }) {
+  if (!result.ok) {
+    const map = {
+      user_not_started: 'Você ainda não começou. Use `/profile`.',
+      pokemon_not_owned: 'Você só pode melhorar Pokémons que pertencem a você.',
+      max_level: `Esse Pokémon já está no nível máximo (${maxLevel}).`,
+    };
+
+    if (result.reason === 'insufficient_gold') {
+      return `Gold insuficiente. Custo: ${result.cost}. Seu gold: ${result.currentGold}.`;
+    }
+
+    return map[result.reason] || 'Não consegui melhorar esse Pokémon 😵';
+  }
+
+  const speciesName = result.pokemon.pokemon_species?.name || 'Pokémon';
+  const nextUpgradeCost = result.newLevel >= maxLevel ? 'MAX' : `${getNextUpgradeCost(result.newLevel)} gold`;
+
+  return `🛠️ **${speciesName}** (#${result.pokemon.id}) subiu ${result.previousLevel} → ${result.newLevel}. Próximo custo: ${nextUpgradeCost}.`;
+}
+
 module.exports = {
   renderDiscordProfileSummary,
   renderDiscordCaptureResult,
+  renderDiscordUpgradeResult,
 };
