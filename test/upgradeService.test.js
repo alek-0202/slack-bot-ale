@@ -2,21 +2,38 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
-  BASE_UPGRADE_COST,
-  getUpgradeMultiplier,
+  UPGRADE_COST_BANDS,
+  getUpgradeCostBand,
   getUpgradeCost,
+  calculateTotalUpgradeCost,
 } = require("../services/upgradeService");
 
-test("getUpgradeMultiplier respeita faixas de progressão", () => {
-  assert.equal(getUpgradeMultiplier(0), 1.05);
-  assert.equal(getUpgradeMultiplier(1), 1.05);
-  assert.equal(getUpgradeMultiplier(5), 1.25);
-  assert.equal(getUpgradeMultiplier(10), 1.5);
-  assert.equal(getUpgradeMultiplier(20), 1.5);
+test("faixas do upgrade expõem uma curva moderada e estável", () => {
+  assert.equal(UPGRADE_COST_BANDS[0].baseCost, 200n);
+  assert.equal(UPGRADE_COST_BANDS.at(-1).baseCost, 5000n);
+  assert.equal(getUpgradeCostBand(1).minLevel, 1);
+  assert.equal(getUpgradeCostBand(35).baseCost, 5000n);
 });
 
-test("getUpgradeCost cresce conforme nível", () => {
-  assert.equal(getUpgradeCost(1), BASE_UPGRADE_COST);
-  assert.ok(getUpgradeCost(2) > getUpgradeCost(1));
-  assert.ok(getUpgradeCost(8) > getUpgradeCost(3));
+test("getUpgradeCost cresce sem reduzir e estabiliza em 5000 a partir do nível 35", () => {
+  assert.equal(getUpgradeCost(1), 200n);
+  assert.equal(getUpgradeCost(5), 800n);
+  assert.equal(getUpgradeCost(10), 1850n);
+  assert.equal(getUpgradeCost(20), 4300n);
+  assert.equal(getUpgradeCost(34), 4980n);
+  assert.equal(getUpgradeCost(35), 5000n);
+  assert.equal(getUpgradeCost(50), 5000n);
+});
+
+test("calculateTotalUpgradeCost soma níveis intermediários para !up", () => {
+  assert.equal(calculateTotalUpgradeCost(1, 2), 200n);
+  assert.equal(calculateTotalUpgradeCost(1, 5), 1700n);
+  assert.equal(calculateTotalUpgradeCost(10, 12), 3950n);
+  assert.equal(calculateTotalUpgradeCost(34, 36), 9980n);
+});
+
+test("calculateTotalUpgradeCost não vaza alvo inválido acima do limite e mantém soma consistente", () => {
+  assert.equal(calculateTotalUpgradeCost(49, 51), 5000n);
+  assert.equal(calculateTotalUpgradeCost(50, 100), 0n);
+  assert.equal(calculateTotalUpgradeCost(25, 25), 0n);
 });

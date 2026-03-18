@@ -11,10 +11,10 @@ const {
   formatTradeStateMessage,
 } = require("../../services/tradeService");
 
-function parsePositiveInt(value) {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) return null;
-  return parsed;
+function parsePositiveIntegerLike(value) {
+  const normalized = String(value || "").trim();
+  if (!/^\d+$/.test(normalized)) return null;
+  return normalized;
 }
 
 function usage() {
@@ -143,8 +143,14 @@ module.exports = {
         const value = parts[2];
 
         if (itemType === "pokemon") {
-          const pokemonId = parsePositiveInt(value);
-          if (pokemonId === null) {
+          const parsedPokemonId = parsePositiveIntegerLike(value);
+          if (parsedPokemonId === null) {
+            await say("Informe um ID válido. Ex.: `!trade add pokemon 123`.");
+            return;
+          }
+
+          const pokemonId = Number(parsedPokemonId);
+          if (!Number.isSafeInteger(pokemonId) || pokemonId <= 0) {
             await say("Informe um ID válido. Ex.: `!trade add pokemon 123`.");
             return;
           }
@@ -203,7 +209,7 @@ module.exports = {
             return;
           }
 
-          const amount = parsePositiveInt(value);
+          const amount = parsePositiveIntegerLike(value);
           if (amount === null) {
             await say("Informe um valor inteiro válido. Ex.: `!trade add gold 50`.");
             return;

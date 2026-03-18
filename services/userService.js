@@ -1,4 +1,13 @@
 const { getSupabaseClient } = require("../database/supabase");
+const { formatGold } = require("../utils/gold");
+
+function normalizeUser(user) {
+  if (!user) return user;
+  return {
+    ...user,
+    gold: formatGold(user.gold || 0),
+  };
+}
 
 async function getUser(slackUserId) {
   const supabase = getSupabaseClient();
@@ -9,7 +18,7 @@ async function getUser(slackUserId) {
     .maybeSingle();
 
   if (error) throw error;
-  return data;
+  return normalizeUser(data);
 }
 
 async function createUserIfMissing(slackUserId) {
@@ -22,7 +31,7 @@ async function createUserIfMissing(slackUserId) {
     .single();
 
   if (error) throw error;
-  return data;
+  return normalizeUser(data);
 }
 
 async function updateLastCapture(slackUserId, isoDate) {

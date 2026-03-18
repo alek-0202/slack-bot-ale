@@ -1,20 +1,21 @@
 const { getSupabaseClient } = require("../database/supabase");
 const { getRarityTier } = require("./economyService");
 const { createLogger } = require("../utils/logger");
+const { formatGold } = require("../utils/gold");
 
 const logger = createLogger("evolution-service");
 
-const EVOLUTION_BASE_COST = 4000;
-const EVOLUTION_RARITY_STEP_COST = 1000;
+const EVOLUTION_BASE_COST = 4000n;
+const EVOLUTION_RARITY_STEP_COST = 1000n;
 
 function getBaseEvolutionCostByRarity(rarity) {
-  return EVOLUTION_BASE_COST + getRarityTier(rarity) * EVOLUTION_RARITY_STEP_COST;
+  return EVOLUTION_BASE_COST + BigInt(getRarityTier(rarity)) * EVOLUTION_RARITY_STEP_COST;
 }
 
 function getEvolutionCost({ rarity, evolutionStage }) {
   const stage = Math.max(1, Number(evolutionStage) || 1);
   const base = getBaseEvolutionCostByRarity(rarity);
-  return base * 2 ** Math.max(stage - 1, 0);
+  return base * 2n ** BigInt(Math.max(stage - 1, 0));
 }
 
 async function evolvePokemon({ slackUserId, pokemonId }) {
@@ -33,18 +34,20 @@ async function evolvePokemon({ slackUserId, pokemonId }) {
     return {
       ok: false,
       reason: result.reason,
-      cost: result.cost || 0,
-      currentGold: result.remaining_gold || 0,
+      cost: formatGold(result.cost || 0),
+      currentGold: formatGold(result.remaining_gold || 0),
     };
   }
 
   logger.info("Evolução recalculada com base na espécie", {
-    slackUserId,
+    actorUserId: slackUserId,
     pokemonId,
-    previousSpeciesId: result.previous_species_id,
-    newSpeciesId: result.new_species_id,
-    previousSpeciesName: result.previous_species_name,
-    newSpeciesName: result.new_species_name,
+    currentSpeciesId: result.previous_species_id,
+    nextSpeciesId: result.new_species_id,
+    currentSpeciesName: result.previous_species_name,
+    nextSpeciesName: result.new_species_name,
+    cost: formatGold(result.cost),
+    goldAfter: formatGold(result.remaining_gold),
   });
 
   return {
@@ -54,8 +57,8 @@ async function evolvePokemon({ slackUserId, pokemonId }) {
     newSpeciesName: result.new_species_name,
     previousSpeciesId: result.previous_species_id,
     newSpeciesId: result.new_species_id,
-    cost: result.cost,
-    remainingGold: result.remaining_gold,
+    cost: formatGold(result.cost),
+    remainingGold: formatGold(result.remaining_gold),
   };
 }
 

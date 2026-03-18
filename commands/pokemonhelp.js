@@ -1,5 +1,9 @@
 const { listSharedCommandsByCategory } = require("../application/shared/commandCatalog");
 
+function linesFrom(names, commands) {
+  return names.map((name) => `${commands[name].slackUsage} → ${commands[name].summary.toLowerCase()}`);
+}
+
 module.exports = {
   name: "pokemonhelp",
   async execute({ say }) {
@@ -12,23 +16,21 @@ module.exports = {
       "",
       "📖 *Perfil e progresso*",
       "`!poke start` → inicia seu perfil Pokémon",
-      `${sharedPokemonCommands.profile.slackUsage} → ${sharedPokemonCommands.profile.summary.toLowerCase()}`,
       "`!balance` → mostra seu gold atual",
       "`!daily` → resgata recompensa diária (1x por dia)",
       "`!dhelp` → explica o !daily e mostra as chances",
+      ...linesFrom(["profile"], sharedPokemonCommands),
       "",
-      "⚡ *Captura e Pokédex*",
-      `${sharedPokemonCommands.capture.slackUsage} → ${sharedPokemonCommands.capture.summary.toLowerCase()}`,
-      `${sharedPokemonCommands.pokedex.slackUsage} → ${sharedPokemonCommands.pokedex.summary.toLowerCase()}`,
-      `${sharedPokemonCommands.pa.slackUsage} → ${sharedPokemonCommands.pa.summary.toLowerCase()}`,
+      "⚡ *Captura, coleção e consulta*",
+      ...linesFrom(["capture", "pokedex", "pa"], sharedPokemonCommands),
       "`!pokeall` → abre o catálogo global de espécies",
-      `${sharedPokemonCommands.pokename.slackUsage} → ${sharedPokemonCommands.pokename.summary.toLowerCase()}`,
-      `${sharedPokemonCommands.poketag.slackUsage} → ${sharedPokemonCommands.poketag.summary.toLowerCase()}`,
-      `${sharedPokemonCommands.elements.slackUsage} → ${sharedPokemonCommands.elements.summary.toLowerCase()}`,
-      `${sharedPokemonCommands.upgrade.slackUsage} → ${sharedPokemonCommands.upgrade.summary.toLowerCase()}`,
-      "`!evolve <pokemon_id>` → evolui um Pokémon da sua coleção (quando possível)",
-      "`!sell <pokemon_id>` → vende um Pokémon da sua coleção",
-      `${sharedPokemonCommands.market.slackUsage} → ${sharedPokemonCommands.market.summary.toLowerCase()}`,
+      ...linesFrom(["pokename", "poketag", "pokeid", "pokeplayer", "elements"], sharedPokemonCommands),
+      "",
+      "⬆️ *Progressão*",
+      ...linesFrom(["upgrade", "up", "evolve"], sharedPokemonCommands),
+      "`!sell <pokemon_id>` → abre confirmação para vender um Pokémon da sua coleção",
+      "`!resetpokeid <pokemon_id>` → reseta upgrades e devolve o gold investido",
+      ...linesFrom(["market"], sharedPokemonCommands),
       "",
       "🤝 *Trade*",
       "`!trade @usuario` → inicia um trade",

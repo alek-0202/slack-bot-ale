@@ -7,17 +7,17 @@ const {
 } = require("../services/sellService");
 
 test("getBaseSellPriceByRarity retorna fallback para raridade inválida", () => {
-  assert.equal(getBaseSellPriceByRarity("epic"), 10000);
-  assert.equal(getBaseSellPriceByRarity("invalid"), 300);
+  assert.equal(getBaseSellPriceByRarity("epic"), 10000n);
+  assert.equal(getBaseSellPriceByRarity("invalid"), 300n);
 });
 
-test("calculatePokemonSellPrice considera bônus por nível e retorno de upgrade", () => {
-  const level1 = calculatePokemonSellPrice({ rarity: "common", level: 1 });
-  const level4 = calculatePokemonSellPrice({ rarity: "common", level: 4 });
+test("calculatePokemonSellPrice considera nível e investimento acumulado em upgrade", () => {
+  const level1 = calculatePokemonSellPrice({ rarity: "common", level: 1, upgradeSpentGold: 0 });
+  const upgraded = calculatePokemonSellPrice({ rarity: "common", level: 4, upgradeSpentGold: 1050 });
 
-  assert.equal(level1.finalPrice, 300);
-  assert.equal(level4.levelBonus, 30);
-  assert.ok(level4.totalUpgradeCost > 0);
-  assert.ok(level4.upgradeReturn > 0);
-  assert.ok(level4.finalPrice > level1.finalPrice);
+  assert.equal(level1.finalPrice, "300");
+  assert.equal(upgraded.levelBonus, "30");
+  assert.equal(upgraded.totalUpgradeCost, "1050");
+  assert.equal(upgraded.upgradeReturn, "210");
+  assert.equal(upgraded.finalPrice, "540");
 });

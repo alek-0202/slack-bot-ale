@@ -65,9 +65,37 @@ const sharedCommandCatalog = {
   upgrade: {
     name: 'upgrade',
     category: 'pokemon',
-    summary: 'Melhora um Pokémon',
+    summary: 'Melhora um Pokémon em +1 nível',
     slackUsage: '`!upgrade <pokemon_id>`',
     discordDescription: 'Melhora um Pokémon',
+  },
+  up: {
+    name: 'up',
+    category: 'pokemon',
+    summary: 'Sobe um Pokémon diretamente até um nível alvo com confirmação',
+    slackUsage: '`!up <pokemon_id> <nível>`',
+    discordDescription: 'Atalho de upgrade em lote',
+  },
+  evolve: {
+    name: 'evolve',
+    category: 'pokemon',
+    summary: 'Mostra preview e confirma a evolução de um Pokémon',
+    slackUsage: '`!evolve <pokemon_id>`',
+    discordDescription: 'Evolui um Pokémon',
+  },
+  pokeid: {
+    name: 'pokeid',
+    category: 'pokemon',
+    summary: 'Consulta um Pokémon real da coleção pelo ID do registro',
+    slackUsage: '`!pokeid <id>`',
+    discordDescription: 'Consulta um Pokémon de coleção por ID',
+  },
+  pokeplayer: {
+    name: 'pokeplayer',
+    category: 'pokemon',
+    summary: 'Verifica se um jogador possui uma espécie na coleção',
+    slackUsage: '`!pokeplayer @player <nomepokemon>`',
+    discordDescription: 'Consulta Pokémons de outro jogador',
   },
   market: {
     name: 'market',

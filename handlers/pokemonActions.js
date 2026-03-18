@@ -1,0 +1,265 @@
+const { createLogger } = require("../utils/logger");
+const {
+  EVOLVE_CONFIRM_ACTION_ID,
+  EVOLVE_CANCEL_ACTION_ID,
+  UP_CONFIRM_ACTION_ID,
+  UP_CANCEL_ACTION_ID,
+  SELL_CONFIRM_ACTION_ID,
+  SELL_CANCEL_ACTION_ID,
+  parsePokemonActionValue,
+  buildUnauthorizedActionMessage,
+  evolvePokemon,
+  upgradePokemonToLevel,
+  sellPokemon,
+} = require("../services/slackPokemonActionService");
+
+const logger = createLogger("handler:pokemon-actions");
+
+function buildUpdatedMessage(text) {
+  return {
+    text,
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text,
+        },
+      },
+    ],
+  };
+}
+
+function registerPokemonActions(app) {
+  app.action(EVOLVE_CONFIRM_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parsePokemonActionValue(action?.value);
+
+    logger.info("Clique de confirmação de evolução recebido", {
+      actorUserId,
+      ownerSlackUserId: payload?.slackUserId,
+      pokemonId: payload?.pokemonId,
+    });
+
+    if (!payload?.slackUserId || !payload?.pokemonId) {
+      await respond({ response_type: "ephemeral", text: "Não consegui validar essa confirmação de evolução 😵" });
+      return;
+    }
+
+    if (actorUserId !== payload.slackUserId) {
+      await respond(buildUnauthorizedActionMessage(payload.slackUserId));
+      return;
+    }
+
+    try {
+      const result = await evolvePokemon({ slackUserId: actorUserId, pokemonId: payload.pokemonId });
+      if (!result.ok) {
+        const map = {
+          user_not_started: "Você ainda não começou. Use `!poke start`.",
+          pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
+          no_evolution_available: "Esse Pokémon não possui evolução disponível no momento.",
+          insufficient_gold: `Gold insuficiente para evoluir. Custo: *${result.cost}* | Seu gold: *${result.currentGold}*.`,
+          species_stats_missing: "Os dados da próxima evolução ainda estão incompletos. Tente novamente depois.",
+        };
+        await respond({ response_type: "ephemeral", text: map[result.reason] || "Não consegui evoluir esse Pokémon agora 😵" });
+        return;
+      }
+
+      const updated = buildUpdatedMessage(
+        `✨ *Pokémon evoluído!*\n\n🆔 ID: *${result.pokemonId}*\n${result.previousSpeciesName} → ${result.newSpeciesName}\n💸 Custo: *${result.cost}* gold\n💰 Gold restante: *${result.remainingGold}*`,
+      );
+
+      await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+
+      logger.info("Evolução confirmada com sucesso", {
+        actorUserId,
+        pokemonId: payload.pokemonId,
+        currentSpecies: result.previousSpeciesName,
+        nextSpecies: result.newSpeciesName,
+        success: true,
+      });
+    } catch (error) {
+      logger.error("Falha ao confirmar evolução", {
+        actorUserId,
+        pokemonId: payload.pokemonId,
+        currentSpecies: payload?.currentSpeciesName || null,
+        nextSpecies: payload?.nextSpeciesName || null,
+        success: false,
+        error,
+      });
+      await respond({ response_type: "ephemeral", text: "Não consegui evoluir agora 😵‍💫" });
+    }
+  });
+
+  app.action(EVOLVE_CANCEL_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parsePokemonActionValue(action?.value);
+
+    if (actorUserId !== payload?.slackUserId) {
+      await respond(buildUnauthorizedActionMessage(payload?.slackUserId));
+      return;
+    }
+
+    const updated = buildUpdatedMessage(`🛑 Evolução cancelada por <@${actorUserId}> para o Pokémon ID *${payload.pokemonId}*.`);
+    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+  });
+
+  app.action(UP_CONFIRM_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parsePokemonActionValue(action?.value);
+
+    logger.info("Clique de confirmação de !up recebido", {
+      actorUserId,
+      ownerSlackUserId: payload?.slackUserId,
+      pokemonId: payload?.pokemonId,
+      targetLevel: payload?.targetLevel,
+    });
+
+    if (!payload?.slackUserId || !payload?.pokemonId || !payload?.targetLevel) {
+      await respond({ response_type: "ephemeral", text: "Não consegui validar essa confirmação de upgrade 😵" });
+      return;
+    }
+
+    if (actorUserId !== payload.slackUserId) {
+      await respond(buildUnauthorizedActionMessage(payload.slackUserId));
+      return;
+    }
+
+    try {
+      const result = await upgradePokemonToLevel({
+        slackUserId: actorUserId,
+        pokemonId: payload.pokemonId,
+        targetLevel: payload.targetLevel,
+      });
+
+      if (!result.ok) {
+        const map = {
+          user_not_started: "Você ainda não começou. Use `!poke start`.",
+          pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
+          invalid_target_level: "O nível alvo informado é inválido.",
+          target_must_be_higher: "O nível alvo precisa ser maior que o nível atual.",
+          target_above_max_level: `O nível alvo ultrapassa o limite máximo do sistema.`,
+          insufficient_gold: `Gold insuficiente para subir até o nível alvo. Custo total: *${result.cost}* | Seu gold: *${result.currentGold}*.`,
+          max_level_reached: "Esse Pokémon já chegou no nível máximo.",
+        };
+        await respond({ response_type: "ephemeral", text: map[result.reason] || "Não consegui aplicar esse upgrade em lote agora 😵" });
+        return;
+      }
+
+      const pokemonName = result.pokemon?.pokemon_species?.name || "Pokémon";
+      const updated = buildUpdatedMessage(
+        `🚀 *Upgrade concluído!*\n\n*${pokemonName}* (#${payload.pokemonId})\nNível: *${result.previousLevel}* → *${result.newLevel}*\nNíveis ganhos: *${result.levelsGained}*\n💸 Custo total: *${result.totalCost}* gold\n💰 Gold restante: *${result.remainingGold}*`,
+      );
+      await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+
+      logger.info("Upgrade em lote confirmado com sucesso", {
+        actorUserId,
+        pokemonId: payload.pokemonId,
+        currentLevel: result.previousLevel,
+        targetLevel: result.newLevel,
+        totalCost: result.totalCost,
+        remainingGold: result.remainingGold,
+        success: true,
+      });
+    } catch (error) {
+      logger.error("Falha ao confirmar !up", {
+        actorUserId,
+        pokemonId: payload?.pokemonId,
+        currentLevel: payload?.currentLevel || null,
+        targetLevel: payload?.targetLevel,
+        totalCost: payload?.totalCost || null,
+        success: false,
+        error,
+      });
+      await respond({ response_type: "ephemeral", text: "Não consegui aplicar esse upgrade agora 😵" });
+    }
+  });
+
+  app.action(UP_CANCEL_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parsePokemonActionValue(action?.value);
+
+    if (actorUserId !== payload?.slackUserId) {
+      await respond(buildUnauthorizedActionMessage(payload?.slackUserId));
+      return;
+    }
+
+    const updated = buildUpdatedMessage(
+      `🛑 Upgrade cancelado por <@${actorUserId}> para o Pokémon ID *${payload.pokemonId}* até o nível *${payload.targetLevel}*.`,
+    );
+    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+  });
+
+  app.action(SELL_CONFIRM_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parsePokemonActionValue(action?.value);
+
+    logger.info("Clique de confirmação de venda recebido", {
+      actorUserId,
+      ownerSlackUserId: payload?.slackUserId,
+      pokemonId: payload?.pokemonId,
+    });
+
+    if (!payload?.slackUserId || !payload?.pokemonId) {
+      await respond({ response_type: "ephemeral", text: "Não consegui validar essa confirmação de venda 😵" });
+      return;
+    }
+
+    if (actorUserId !== payload.slackUserId) {
+      await respond(buildUnauthorizedActionMessage(payload.slackUserId));
+      return;
+    }
+
+    try {
+      const result = await sellPokemon({ slackUserId: actorUserId, pokemonId: payload.pokemonId });
+      if (!result.ok) {
+        const map = {
+          pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
+          pokemon_locked_in_trade: "Esse Pokémon está preso em um trade pendente e não pode ser vendido agora.",
+        };
+        await respond({ response_type: "ephemeral", text: map[result.reason] || "Não consegui vender esse Pokémon agora 😵" });
+        return;
+      }
+
+      const pokemonName = result.pokemon?.pokemon_species?.name || "Pokémon";
+      const updated = buildUpdatedMessage(
+        `💸 *Pokémon vendido!*
+
+*${pokemonName}* (#${payload.pokemonId})
+Nível: *${result.pokemon.level}*
+💰 Valor recebido: *${result.goldReceived}* gold
+💳 Gold atual: *${result.currentGold}*`,
+      );
+      await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+
+      logger.info("Venda confirmada com sucesso", { actorUserId, pokemonId: payload.pokemonId, sellValue: result.goldReceived });
+    } catch (error) {
+      logger.error("Falha ao confirmar venda", { actorUserId, pokemonId: payload?.pokemonId, error });
+      await respond({ response_type: "ephemeral", text: "Não consegui vender esse Pokémon agora 😵‍💫" });
+    }
+  });
+
+  app.action(SELL_CANCEL_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parsePokemonActionValue(action?.value);
+
+    if (actorUserId !== payload?.slackUserId) {
+      await respond(buildUnauthorizedActionMessage(payload?.slackUserId));
+      return;
+    }
+
+    const updated = buildUpdatedMessage(`🛑 Venda cancelada por <@${actorUserId}> para o Pokémon ID *${payload.pokemonId}*.`);
+    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+  });
+
+}
+
+module.exports = {
+  registerPokemonActions,
+};

@@ -5,6 +5,7 @@ const { getAllSpecies, insertUserPokemon } = require("./pokemonService");
 const { calculatePokemonStats } = require("./pokemonStatsService");
 const { getGoldValueByRarityAndLevel } = require("./economyService");
 const { createLogger } = require("../utils/logger");
+const { addGold, assertNonNegativeGold, formatGold, toDatabaseGold, toGoldBigInt } = require("../utils/gold");
 
 const CAPTURE_COOLDOWN_MS = 60 * 60 * 1000;
 const SHINY_CHANCE = 0.02;
@@ -61,7 +62,7 @@ async function capturePokemon(slackUserId, context = {}) {
     logger.info("Contexto do usuário carregado para captura", {
       slackUserId,
       channelId: safeContext.channelId,
-      currentGold: user.gold || 0,
+      currentGold: formatGold(user.gold || 0),
       lastCaptureAt: user.last_capture_at || null,
     });
 
@@ -101,15 +102,9 @@ async function capturePokemon(slackUserId, context = {}) {
     const selected = pickByRarity(speciesList);
     const shiny = Math.random() < SHINY_CHANCE;
     const level = 1;
-    const goldReward = getGoldValueByRarityAndLevel({
-      rarity: selected.rarity,
-      level,
-    });
+    const goldReward = toGoldBigInt(getGoldValueByRarityAndLevel({ rarity: selected.rarity, level }));
     const nowIso = new Date().toISOString();
-    const stats = calculatePokemonStats({
-      species: selected,
-      level,
-    });
+    const stats = calculatePokemonStats({ species: selected, level });
 
     logger.info("Pokémon alvo da captura definido", {
       slackUserId,
@@ -120,7 +115,7 @@ async function capturePokemon(slackUserId, context = {}) {
       level,
       shiny,
       stats,
-      goldReward,
+      goldReward: formatGold(goldReward),
     });
 
     const captured = await insertUserPokemon({
@@ -139,12 +134,13 @@ async function capturePokemon(slackUserId, context = {}) {
       speciesId: captured.species_id,
     });
 
-    const nextGold = (user.gold || 0) + goldReward;
+    const previousGold = toGoldBigInt(user.gold);
+    const nextGold = assertNonNegativeGold(addGold(previousGold, goldReward));
     const { error: updateUserError } = await supabase
       .from("users")
       .update({
         last_capture_at: nowIso,
-        gold: nextGold,
+        gold: toDatabaseGold(nextGold),
       })
       .eq("slack_user_id", slackUserId);
     if (updateUserError) throw updateUserError;
@@ -152,21 +148,23 @@ async function capturePokemon(slackUserId, context = {}) {
     logger.info("Usuário atualizado após captura", {
       slackUserId,
       channelId: safeContext.channelId,
-      nextGold,
+      goldBefore: formatGold(previousGold),
+      goldDelta: formatGold(goldReward),
+      goldAfter: formatGold(nextGold),
       lastCaptureAt: nowIso,
     });
 
     const { error: trxError } = await supabase.from("transactions").insert({
       slack_user_id: slackUserId,
       type: "capture_reward",
-      amount: goldReward,
+      amount: toDatabaseGold(goldReward),
     });
     if (trxError) throw trxError;
 
     logger.info("Transação de recompensa registrada", {
       slackUserId,
       channelId: safeContext.channelId,
-      amount: goldReward,
+      amount: formatGold(goldReward),
       type: "capture_reward",
     });
 
@@ -176,7 +174,7 @@ async function capturePokemon(slackUserId, context = {}) {
       captureId: captured.id,
       speciesId: selected.id,
       speciesName: selected.name,
-      goldReward,
+      goldReward: formatGold(goldReward),
     });
 
     return {
@@ -184,7 +182,7 @@ async function capturePokemon(slackUserId, context = {}) {
       captured,
       species: selected,
       shiny,
-      goldReward,
+      goldReward: formatGold(goldReward),
     };
   } catch (error) {
     logger.error("Falha no fluxo de captura", {

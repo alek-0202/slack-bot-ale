@@ -26,13 +26,24 @@ function serializeError(error) {
   };
 }
 
+function normalizeLogValue(value) {
+  if (typeof value === 'bigint') return value.toString();
+  if (Array.isArray(value)) return value.map(normalizeLogValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, normalizeLogValue(entry)]));
+  }
+  return value;
+}
+
 function write(level, message, meta = {}) {
   if (!shouldLog(level)) return;
 
   const normalizedLevel = normalizeLevel(level);
+  const normalizedMeta = normalizeLogValue(meta);
+
   const payload = {
     timestamp: new Date().toISOString(),
-    ...meta,
+    ...normalizedMeta,
     level: normalizedLevel,
     message,
   };
@@ -48,7 +59,7 @@ function write(level, message, meta = {}) {
   }
 
   const text = `[${payload.timestamp}] [${normalizedLevel.toUpperCase()}] ${message}`;
-  const details = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : "";
+  const details = Object.keys(normalizedMeta).length ? ` ${JSON.stringify(normalizedMeta)}` : "";
 
   if (normalizedLevel === "error") {
     console.error(`${text}${details}`);
