@@ -17,6 +17,10 @@ create table if not exists public.pokemon_species (
   evolves_to integer references public.pokemon_species(id) on update cascade on delete set null,
   base_value integer not null default 10,
   element_types text[] not null default '{}'::text[],
+  base_attack integer not null default 10,
+  base_defense integer not null default 10,
+  base_hp integer not null default 12,
+  base_speed integer not null default 10,
   created_at timestamptz not null default now()
 );
 
@@ -343,23 +347,30 @@ as $$
 declare
   v_user_gold integer;
   v_level integer;
-  v_attack integer;
-  v_defense integer;
-  v_hp integer;
-  v_speed integer;
+  v_species_id integer;
+  v_base_attack integer;
+  v_base_defense integer;
+  v_base_hp integer;
+  v_base_speed integer;
   v_multiplier numeric;
   v_cost integer;
   v_new_level integer;
 begin
-  select up.level, up.attack, up.defense, up.hp, up.speed
-    into v_level, v_attack, v_defense, v_hp, v_speed
+  select up.level, up.species_id, ps.base_attack, ps.base_defense, ps.base_hp, ps.base_speed
+    into v_level, v_species_id, v_base_attack, v_base_defense, v_base_hp, v_base_speed
   from public.user_pokemons up
+  join public.pokemon_species ps on ps.id = up.species_id
   where up.id = p_pokemon_id
     and up.slack_user_id = p_slack_user_id
-  for update;
+  for update of up, ps;
 
   if not found then
     return query select false, 'pokemon_not_owned', null::integer, null::integer, null::integer, null::integer;
+    return;
+  end if;
+
+  if v_base_attack is null or v_base_defense is null or v_base_hp is null or v_base_speed is null then
+    return query select false, 'species_stats_missing', v_level, v_level, 0, null::integer;
     return;
   end if;
 
@@ -395,10 +406,10 @@ begin
 
   update public.user_pokemons
   set level = v_new_level,
-      attack = ceil(v_attack * 1.02),
-      defense = ceil(v_defense * 1.02),
-      hp = ceil(v_hp * 1.02),
-      speed = ceil(v_speed * 1.02)
+      attack = greatest(1, ceil(v_base_attack * power(1.02, greatest(v_new_level - 1, 0)))::integer),
+      defense = greatest(1, ceil(v_base_defense * power(1.02, greatest(v_new_level - 1, 0)))::integer),
+      hp = greatest(1, ceil(v_base_hp * power(1.02, greatest(v_new_level - 1, 0)))::integer),
+      speed = greatest(1, ceil(v_base_speed * power(1.02, greatest(v_new_level - 1, 0)))::integer)
   where id = p_pokemon_id
     and slack_user_id = p_slack_user_id;
 
@@ -432,11 +443,11 @@ as $$
 declare
   v_user_gold integer;
   v_species_id integer;
-  v_rarity text;
   v_price integer;
-  v_rarity_bonus integer;
-  v_stat_floor integer;
-  v_stat_ceil integer;
+  v_base_attack integer;
+  v_base_defense integer;
+  v_base_hp integer;
+  v_base_speed integer;
 begin
   select u.gold into v_user_gold
   from public.users u
@@ -459,8 +470,8 @@ begin
     return;
   end if;
 
-  select dm.species_id, dm.price, ps.rarity
-    into v_species_id, v_price, v_rarity
+  select dm.species_id, dm.price, ps.base_attack, ps.base_defense, ps.base_hp, ps.base_speed
+    into v_species_id, v_price, v_base_attack, v_base_defense, v_base_hp, v_base_speed
   from public.daily_market dm
   join public.pokemon_species ps on ps.id = dm.species_id
   where dm.market_date = p_market_date
@@ -471,22 +482,15 @@ begin
     return;
   end if;
 
+  if v_base_attack is null or v_base_defense is null or v_base_hp is null or v_base_speed is null then
+    return query select false, 'species_stats_missing', v_species_id, v_price, v_user_gold, null::bigint;
+    return;
+  end if;
+
   if v_user_gold < v_price then
     return query select false, 'insufficient_gold', v_species_id, v_price, v_user_gold, null::bigint;
     return;
   end if;
-
-  v_rarity_bonus := case v_rarity
-    when 'uncommon' then 1
-    when 'rare' then 2
-    when 'epic' then 3
-    when 'legendary' then 4
-    when 'mythical' then 5
-    else 0
-  end;
-
-  v_stat_floor := 8 + v_rarity_bonus;
-  v_stat_ceil := 15 + v_rarity_bonus;
 
   insert into public.user_pokemons (
     slack_user_id,
@@ -504,10 +508,10 @@ begin
     v_species_id,
     1,
     false,
-    floor(random() * (v_stat_ceil - v_stat_floor + 1) + v_stat_floor)::integer,
-    floor(random() * (v_stat_ceil - v_stat_floor + 1) + v_stat_floor)::integer,
-    floor(random() * ((v_stat_ceil + 4) - (v_stat_floor + 2) + 1) + (v_stat_floor + 2))::integer,
-    floor(random() * (v_stat_ceil - v_stat_floor + 1) + v_stat_floor)::integer,
+    greatest(1, v_base_attack),
+    greatest(1, v_base_defense),
+    greatest(1, v_base_hp),
+    greatest(1, v_base_speed),
     'market'
   )
   returning id into user_pokemon_id;

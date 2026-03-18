@@ -4,6 +4,7 @@ const { getBaseGoldByRarity } = require("./economyService");
 const { classifySpeciesRarity } = require("./rarityService");
 const { normalizePokemonTypes } = require("./pokemonTypeService");
 const { createLogger } = require("../utils/logger");
+const { MIN_EVOLUTION_GROWTH } = require("./pokemonStatsService");
 
 const POKE_API_BASE = "https://pokeapi.co/api/v2";
 const DEFAULT_BATCH_SIZE = 12;
@@ -21,6 +22,15 @@ const GENERATION_MAP = {
   "generation-ix": 9,
 };
 
+const RARITY_BASE_STATS = {
+  common: { attack: 10, defense: 10, hp: 14, speed: 9 },
+  uncommon: { attack: 12, defense: 12, hp: 17, speed: 11 },
+  rare: { attack: 15, defense: 14, hp: 21, speed: 14 },
+  epic: { attack: 19, defense: 18, hp: 26, speed: 17 },
+  legendary: { attack: 24, defense: 22, hp: 32, speed: 21 },
+  mythical: { attack: 30, defense: 28, hp: 39, speed: 26 },
+};
+
 function parsePokemonIdFromUrl(url) {
   if (!url) return null;
   const parsed = Number(String(url).split("/").filter(Boolean).pop());
@@ -30,6 +40,18 @@ function parsePokemonIdFromUrl(url) {
 function normalizeGeneration(generationName) {
   if (!generationName) return null;
   return GENERATION_MAP[generationName] || null;
+}
+
+function deriveBaseStats({ rarity, evolutionStage }) {
+  const raritySeed = RARITY_BASE_STATS[rarity] || RARITY_BASE_STATS.common;
+  const stageMultiplier = Math.pow(MIN_EVOLUTION_GROWTH, Math.max((Number(evolutionStage) || 1) - 1, 0));
+
+  return {
+    base_attack: Math.ceil(raritySeed.attack * stageMultiplier),
+    base_defense: Math.ceil(raritySeed.defense * stageMultiplier),
+    base_hp: Math.ceil(raritySeed.hp * stageMultiplier),
+    base_speed: Math.ceil(raritySeed.speed * stageMultiplier),
+  };
 }
 
 async function fetchSpeciesList(limit = null) {
@@ -130,6 +152,7 @@ async function fetchSpeciesPayload(entry, species, evolutionLookup) {
         .sort((a, b) => (a.slot || 0) - (b.slot || 0))
         .map((typeEntry) => typeEntry.type?.name),
     ),
+    ...deriveBaseStats({ rarity, evolutionStage }),
   };
 }
 
@@ -212,4 +235,5 @@ module.exports = {
   importPokemonSpecies,
   normalizeGeneration,
   parsePokemonIdFromUrl,
+  deriveBaseStats,
 };

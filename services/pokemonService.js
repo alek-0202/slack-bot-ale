@@ -4,7 +4,7 @@ async function getAllSpecies() {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("pokemon_species")
-    .select("id, name, sprite_url, rarity, base_value, evolution_stage, element_types")
+    .select("id, name, sprite_url, rarity, base_value, evolution_stage, element_types, base_attack, base_defense, base_hp, base_speed")
     .order("id", { ascending: true });
 
   if (error) throw error;
@@ -33,7 +33,7 @@ async function insertUserPokemon({
       speed: stats.speed,
       source,
     })
-    .select("id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at")
+    .select("id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, base_attack, base_defense, base_hp, base_speed)")
     .single();
 
   if (error) throw error;
@@ -71,7 +71,7 @@ async function getUserPokemonPage(slackUserId, index) {
   const { data, count, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at, pokemon_species(id, name, sprite_url, rarity)",
+      "id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at, pokemon_species(id, name, sprite_url, rarity, element_types, base_attack, base_defense, base_hp, base_speed)",
       
       { count: "exact" },
     )
@@ -94,7 +94,7 @@ async function getUserPokemonById(slackUserId, pokemonId) {
   const { data, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, slack_user_id, species_id, level, shiny, attack, defense, hp, speed, pokemon_species(id, name, rarity, base_value, sprite_url, element_types)",
+      "id, slack_user_id, species_id, level, shiny, attack, defense, hp, speed, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, base_attack, base_defense, base_hp, base_speed)",
     )
     .eq("id", pokemonId)
     .eq("slack_user_id", slackUserId)
@@ -109,7 +109,7 @@ async function getUserPokemons(slackUserId) {
   const { data, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at, pokemon_species(id, name, sprite_url, rarity, element_types)",
+      "id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at, pokemon_species(id, name, sprite_url, rarity, element_types, base_attack, base_defense, base_hp, base_speed)",
     )
     .eq("slack_user_id", slackUserId)
     .order("captured_at", { ascending: false })
