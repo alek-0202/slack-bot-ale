@@ -1,4 +1,5 @@
 const { EmbedBuilder } = require('discord.js');
+const { buildPokemonTypesLabel } = require('../../../services/pokemonTypeService');
 
 function renderDiscordProfileSummary({ username, profile }) {
   return {
@@ -27,7 +28,7 @@ function renderDiscordCaptureResult({ result }) {
   const species = result.species || {};
   const embed = new EmbedBuilder()
     .setTitle(`Você capturou ${species.name || 'Pokémon'}! ${result.shiny ? '✨' : ''}`)
-    .setDescription(`Raridade: **${species.rarity}**\nNível: **${result.captured.level}**\nRecompensa: **+${result.goldReward} gold**`)
+    .setDescription(`Raridade: **${species.rarity}**\n${buildPokemonTypesLabel(species.element_types) ? `${buildPokemonTypesLabel(species.element_types)}\n` : ''}Nível: **${result.captured.level}**\nRecompensa: **+${result.goldReward} gold**`)
     .setColor(0x2ecc71);
 
   if (species.sprite_url) {

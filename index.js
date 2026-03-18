@@ -39,6 +39,7 @@ const bhelpCommand = require("./commands/bhelp");
 const { registerPokedexActions } = require("./handlers/pokedexActions");
 const { registerCoffeActions } = require("./handlers/coffeActions");
 const { registerBattleActions } = require("./handlers/battleActions");
+const { registerMarketActions } = require("./handlers/marketActions");
 
 
 const logger = createLogger("slack-bot");
@@ -52,6 +53,7 @@ const app = new App({
 registerPokedexActions(app);
 registerCoffeActions(app);
 registerBattleActions(app);
+registerMarketActions(app);
 
 const mentionReplies = [
   "Fala comigo não, tô de férias 😴",

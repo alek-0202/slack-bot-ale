@@ -1,6 +1,7 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
 const { getPokedexView } = require("../../../services/pokedexViewService");
 const { toPlatformUserId } = require("../../../core/platformIdentity");
+const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService");
 
 function buildPokedexDiscordPayload({ userId, view, mode }) {
   if (!view.entry || !view.total) {
@@ -25,7 +26,7 @@ function buildPokedexDiscordPayload({ userId, view, mode }) {
   const embed = new EmbedBuilder()
     .setTitle(`${species.name || "Pokémon"} (#${species.id || "?"})`)
     .setDescription(
-      `${shinyTag}Raridade: **${species.rarity || "desconhecida"}**\nOrigem: **${view.entry.source || "capture"}**\nCaptura ID: **${view.entry.id}**\nNível: **${view.entry.level || 1}**${attrs}`,
+      `${shinyTag}Raridade: **${species.rarity || "desconhecida"}**\n${buildPokemonTypesLabel(species.element_types) ? `${buildPokemonTypesLabel(species.element_types)}\n` : ""}Origem: **${view.entry.source || "capture"}**\nCaptura ID: **${view.entry.id}**\nNível: **${view.entry.level || 1}**${attrs}`,
     )
     .setFooter({ text: `Posição ${view.index + 1}/${view.total}` })
     .setColor(mode === "pa" ? 0x57f287 : 0x5865f2);

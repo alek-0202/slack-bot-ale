@@ -1,4 +1,5 @@
 const { getUserPokemons, buildPokedexDisplayEntries } = require("./pokemonService");
+const { buildPokemonTypesLabel } = require("./pokemonTypeService");
 
 const POKEDEX_NAV_PREV_ACTION_ID = "pokedex_navigate_prev";
 const POKEDEX_NAV_NEXT_ACTION_ID = "pokedex_navigate_next";
@@ -92,6 +93,7 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
     `🆔 ID${entry.quantity > 1 ? "s" : ""}: *${idsText}*\n` +
     `🎚️ Level: *${entry.level || 1}*\n` +
     `⭐ Raridade: *${species.rarity || "desconhecida"}*\n` +
+    `${buildPokemonTypesLabel(species.element_types) ? `🧪 ${buildPokemonTypesLabel(species.element_types)}\n` : ""}` +
     `🏷️ Origem: *${entry.source || "capture"}*\n` +
     `${entry.grouped ? "📦 Grupo: *instâncias equivalentes (Lv 1)*\n" : ""}` +
     `🎯 Captura #${entry.id}${shinyTag}${attributesText}`;

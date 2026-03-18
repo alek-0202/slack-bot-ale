@@ -23,6 +23,7 @@ function buildPlayerViewModel(userId, playerState) {
   return {
     userId,
     selectedPokemonName: playerState.selectedPokemon?.name || null,
+    selectedPokemonTypes: playerState.selectedPokemon?.elementTypes || [],
     level: playerState.selectedPokemon?.level || null,
     hpCurrent: playerState.battleHp?.current ?? null,
     hpMax: playerState.battleHp?.max ?? null,

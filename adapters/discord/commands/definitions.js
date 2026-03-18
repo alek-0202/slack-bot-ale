@@ -23,7 +23,8 @@ const commands = [
         .setName("buy")
         .setDescription("Compra um slot do mercado")
         .addIntegerOption((option) => option.setName("slot").setDescription("Número do slot").setRequired(true)),
-    ),
+    )
+    .addSubcommand((sub) => sub.setName("change").setDescription("Solicita a troca manual da loja diária")),
   new SlashCommandBuilder()
     .setName("trade")
     .setDescription(getSharedCommand("trade").discordDescription)
