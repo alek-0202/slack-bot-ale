@@ -2,6 +2,8 @@ require("dotenv").config();
 const { Client, GatewayIntentBits } = require("discord.js");
 const { handleDiscordCommand } = require("./commandHandler");
 const { handlePokedexNavigation } = require("./handlers/pokedexNavigation");
+const { handleSpeciesCatalogNavigation } = require("./handlers/speciesCatalogNavigation");
+const { handlePokemonActionInteraction } = require("./handlers/pokemonActions");
 const { toPlatformUserId, toPlatformChannelId } = require("../../core/platformIdentity");
 const { startHealthcheckServer } = require("../../utils/healthcheck");
 const { createLogger } = require("../../utils/logger");
@@ -50,6 +52,12 @@ client.on("interactionCreate", async (interaction) => {
   try {
     const handledButton = await handlePokedexNavigation(interaction);
     if (handledButton) return;
+
+    const handledSpeciesButton = await handleSpeciesCatalogNavigation(interaction);
+    if (handledSpeciesButton) return;
+
+    const handledPokemonAction = await handlePokemonActionInteraction(interaction);
+    if (handledPokemonAction) return;
 
     if (interaction.isButton() && interaction.customId.startsWith(`${MARKET_CHANGE_DISCORD_BUTTON_ID}|`)) {
       const [, channelIdFromButton] = interaction.customId.split("|");
