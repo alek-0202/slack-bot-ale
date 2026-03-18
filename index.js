@@ -34,6 +34,7 @@ const evolveCommand = require("./commands/pokemon/evolve");
 const upCommand = require("./commands/pokemon/up");
 const pokeidCommand = require("./commands/pokemon/pokeid");
 const pokeplayerCommand = require("./commands/pokemon/pokeplayer");
+const resetpokeidCommand = require("./commands/pokemon/resetpokeid");
 const sbCommand = require("./commands/sb");
 const bCommand = require("./commands/b");
 const bpickCommand = require("./commands/bpick");
@@ -103,6 +104,7 @@ for (const commandModule of [
   upCommand,
   pokeidCommand,
   pokeplayerCommand,
+  resetpokeidCommand,
   sbCommand,
   bCommand,
   bpickCommand,

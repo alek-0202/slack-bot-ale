@@ -4,6 +4,7 @@ const { getUser } = require("./userService");
 const { getSpeciesById } = require("./pokemonLookupService");
 const { getEvolutionCost, evolvePokemon } = require("./evolutionService");
 const { MAX_LEVEL, getUpgradeCost, calculateTotalUpgradeCost, upgradePokemon } = require("./upgradeService");
+const { buildSellPreview, sellPokemon } = require("./sellService");
 const { formatGold, isGoldGte, toGoldBigInt } = require("../utils/gold");
 
 const logger = createLogger("slack-pokemon-actions");
@@ -12,6 +13,8 @@ const EVOLVE_CONFIRM_ACTION_ID = "pokemon_evolve_confirm";
 const EVOLVE_CANCEL_ACTION_ID = "pokemon_evolve_cancel";
 const UP_CONFIRM_ACTION_ID = "pokemon_up_confirm";
 const UP_CANCEL_ACTION_ID = "pokemon_up_cancel";
+const SELL_CONFIRM_ACTION_ID = "pokemon_sell_confirm";
+const SELL_CANCEL_ACTION_ID = "pokemon_sell_cancel";
 
 function safeJsonParse(value) {
   if (!value) return null;
@@ -317,6 +320,57 @@ function buildUpgradeBatchPreviewMessage({ slackUserId, preview }) {
   };
 }
 
+
+async function buildSellPreviewCard({ slackUserId, pokemonId }) {
+  return buildSellPreview({ slackUserId, pokemonId });
+}
+
+function buildSellPreviewMessage({ slackUserId, preview }) {
+  const pokemonName = preview.pokemon?.pokemon_species?.name || "Pokémon";
+  const price = preview.priceBreakdown?.finalPrice || "0";
+
+  return {
+    text: `Confirmação de venda para ${pokemonName}`,
+    blocks: [
+      { type: "header", text: { type: "plain_text", text: "Confirmar venda", emoji: true } },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            `*Pokémon:* ${pokemonName} (#${preview.pokemon.id})\n` +
+            `*Nível:* ${preview.pokemon.level}\n` +
+            `*Valor da venda:* ${price} gold\n` +
+            `*Retorno dos upgrades:* ${preview.priceBreakdown?.upgradeReturn || "0"} gold`,
+        },
+        accessory: buildAccessoryImage(preview.pokemon?.pokemon_species),
+      },
+      {
+        type: "context",
+        elements: [{ type: "mrkdwn", text: `Somente <@${slackUserId}> pode confirmar esta venda.` }],
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            action_id: SELL_CONFIRM_ACTION_ID,
+            text: { type: "plain_text", text: "Confirmar venda", emoji: true },
+            style: "danger",
+            value: buildActionValue({ type: "sell", slackUserId, pokemonId: preview.pokemon.id }),
+          },
+          {
+            type: "button",
+            action_id: SELL_CANCEL_ACTION_ID,
+            text: { type: "plain_text", text: "Cancelar", emoji: true },
+            value: buildActionValue({ type: "sell_cancel", slackUserId, pokemonId: preview.pokemon.id }),
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function buildUnauthorizedActionMessage(ownerSlackUserId) {
   return {
     response_type: "ephemeral",
@@ -329,14 +383,19 @@ module.exports = {
   EVOLVE_CANCEL_ACTION_ID,
   UP_CONFIRM_ACTION_ID,
   UP_CANCEL_ACTION_ID,
+  SELL_CONFIRM_ACTION_ID,
+  SELL_CANCEL_ACTION_ID,
   parsePokemonActionValue,
   buildEvolvePreview,
   buildEvolvePreviewMessage,
   buildEvolveUnavailableMessage,
   buildUpgradeBatchPreview,
   buildUpgradeBatchPreviewMessage,
+  buildSellPreviewCard,
+  buildSellPreviewMessage,
   buildUnauthorizedActionMessage,
   calculateTotalUpgradeCost,
   upgradePokemonToLevel,
+  sellPokemon,
   evolvePokemon,
 };
