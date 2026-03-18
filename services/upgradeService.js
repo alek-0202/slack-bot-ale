@@ -144,7 +144,7 @@ async function upgradePokemonBatch({ slackUserId, pokemonId, targetLevel }) {
       pokemonId,
       currentLevel: result.previous_level ?? pokemon.level,
       targetLevel: result.new_level ?? targetLevel,
-      totalCost: formatGold(result.cost || 0),
+      totalCost: formatGold(result.total_cost || 0),
       goldBefore: formatGold(result.remaining_gold || 0),
       goldAfter: formatGold(result.remaining_gold || 0),
       reason: result.reason,
@@ -153,7 +153,7 @@ async function upgradePokemonBatch({ slackUserId, pokemonId, targetLevel }) {
     return {
       ok: false,
       reason: result.reason,
-      cost: formatGold(result.cost || 0),
+      cost: formatGold(result.total_cost || 0),
       currentGold: formatGold(result.remaining_gold || 0),
       previousLevel: result.previous_level ?? (Number(pokemon.level) || 1),
       targetLevel: result.new_level ?? Number(targetLevel),
@@ -162,7 +162,7 @@ async function upgradePokemonBatch({ slackUserId, pokemonId, targetLevel }) {
   }
 
   const upgradedPokemon = await getUserPokemonById(slackUserId, pokemonId);
-  const totalCost = toGoldBigInt(result.cost);
+  const totalCost = toGoldBigInt(result.total_cost);
   const goldAfter = toGoldBigInt(result.remaining_gold);
   const goldBefore = goldAfter + totalCost;
 
@@ -183,7 +183,7 @@ async function upgradePokemonBatch({ slackUserId, pokemonId, targetLevel }) {
     pokemon: upgradedPokemon || pokemon,
     previousLevel: result.previous_level,
     newLevel: result.new_level,
-    totalCost: formatGold(result.cost),
+    totalCost: formatGold(result.total_cost),
     remainingGold: formatGold(result.remaining_gold),
   };
 }

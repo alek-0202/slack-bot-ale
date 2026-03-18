@@ -132,7 +132,7 @@ returns table (
   reason text,
   previous_level integer,
   new_level integer,
-  cost bigint,
+  total_cost bigint,
   remaining_gold bigint
 )
 language plpgsql
@@ -140,23 +140,34 @@ as $$
 declare
   v_user_gold bigint;
   v_level integer;
+  v_species_id integer;
   v_target_level integer := coalesce(p_target_level, 0);
   v_base_attack integer;
   v_base_defense integer;
   v_base_hp integer;
   v_base_speed integer;
-  v_total_cost bigint;
+  v_total_cost bigint := 0;
+  i integer;
 begin
-  select up.level, ps.base_attack, ps.base_defense, ps.base_hp, ps.base_speed
-    into v_level, v_base_attack, v_base_defense, v_base_hp, v_base_speed
+  select up.level, up.species_id
+    into v_level, v_species_id
   from public.user_pokemons up
-  join public.pokemon_species ps on ps.id = up.species_id
   where up.id = p_pokemon_id
     and up.slack_user_id = p_slack_user_id
-  for update of up, ps;
+  for update;
 
   if not found then
     return query select false, 'pokemon_not_owned', null::integer, null::integer, null::bigint, null::bigint;
+    return;
+  end if;
+
+  select ps.base_attack, ps.base_defense, ps.base_hp, ps.base_speed
+    into v_base_attack, v_base_defense, v_base_hp, v_base_speed
+  from public.pokemon_species ps
+  where ps.id = v_species_id;
+
+  if not found then
+    return query select false, 'species_stats_missing', v_level, v_level, 0::bigint, null::bigint;
     return;
   end if;
 
@@ -195,7 +206,9 @@ begin
     return;
   end if;
 
-  v_total_cost := public.calculate_upgrade_total_cost(v_level, v_target_level);
+  for i in v_level..(v_target_level - 1) loop
+    v_total_cost := v_total_cost + public.calculate_upgrade_cost(i);
+  end loop;
 
   if v_user_gold < v_total_cost then
     return query select false, 'insufficient_gold', v_level, v_target_level, v_total_cost, v_user_gold;
