@@ -39,7 +39,7 @@ async function getAllSpeciesCatalog() {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("pokemon_species")
-    .select("id, name, generation, sprite_url, rarity, evolution_stage, evolves_from, evolves_to, base_value, element_types")
+    .select("id, name, generation, sprite_url, rarity, evolution_stage, evolves_from, evolves_to, base_value, element_types, base_attack, base_defense, base_hp, base_speed")
     .order("id", { ascending: true });
 
   if (error) throw error;
@@ -105,6 +105,7 @@ function buildSpeciesMessage({ slackUserId, entry, index, total, speciesIds = nu
     `🔁 Evolui de: *${fromText}* | Para: *${toText}*\n` +
     `${buildPokemonTypesLabel(entry.element_types) ? `🧪 ${buildPokemonTypesLabel(entry.element_types)}\n` : ""}` +
     `💰 Valor base: *${entry.base_value || 0}* gold\n` +
+    `📊 Base: ⚔️ *${entry.base_attack || 0}* | 🛡️ *${entry.base_defense || 0}* | ❤️ *${entry.base_hp || 0}* | 💨 *${entry.base_speed || 0}*\n` +
     `🗺️ Geração: *${entry.generation || "-"}*\n` +
     `📚 Fonte: *catálogo global*`;
 

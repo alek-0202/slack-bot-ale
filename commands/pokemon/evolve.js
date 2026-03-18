@@ -19,6 +19,7 @@ module.exports = {
           pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
           no_evolution_available: "Esse Pokémon não possui evolução disponível no momento.",
           insufficient_gold: `Gold insuficiente para evoluir. Custo: *${result.cost}* | Seu gold: *${result.currentGold}*.`,
+          species_stats_missing: "Os stats base da espécie atual ou da evolução ainda não foram configurados.",
         };
 
         await say(map[result.reason] || "Não consegui evoluir esse Pokémon agora 😵");

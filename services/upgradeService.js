@@ -1,5 +1,8 @@
 const { getSupabaseClient } = require("../database/supabase");
 const { getUserPokemonById } = require("./pokemonService");
+const { createLogger } = require("../utils/logger");
+
+const logger = createLogger("upgrade-service");
 
 const MAX_LEVEL = 50;
 const BASE_UPGRADE_COST = 100;
@@ -44,9 +47,27 @@ async function upgradePokemon({ slackUserId, pokemonId }) {
     };
   }
 
+  const upgradedPokemon = await getUserPokemonById(slackUserId, pokemonId);
+
+  logger.info("Upgrade recalculado com base na espécie", {
+    slackUserId,
+    pokemonId,
+    speciesId: upgradedPokemon?.species_id || pokemon?.species_id || null,
+    previousLevel: result.previous_level,
+    newLevel: result.new_level,
+    stats: upgradedPokemon
+      ? {
+          attack: upgradedPokemon.attack,
+          defense: upgradedPokemon.defense,
+          hp: upgradedPokemon.hp,
+          speed: upgradedPokemon.speed,
+        }
+      : null,
+  });
+
   return {
     ok: true,
-    pokemon,
+    pokemon: upgradedPokemon || pokemon,
     previousLevel: result.previous_level,
     newLevel: result.new_level,
     cost: result.cost,
