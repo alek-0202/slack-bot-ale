@@ -31,3 +31,9 @@ test("calculateTotalUpgradeCost soma níveis intermediários para !up", () => {
   assert.equal(calculateTotalUpgradeCost(10, 12), 3950n);
   assert.equal(calculateTotalUpgradeCost(34, 36), 9980n);
 });
+
+test("calculateTotalUpgradeCost não vaza alvo inválido acima do limite e mantém soma consistente", () => {
+  assert.equal(calculateTotalUpgradeCost(49, 51), 5000n);
+  assert.equal(calculateTotalUpgradeCost(50, 100), 0n);
+  assert.equal(calculateTotalUpgradeCost(25, 25), 0n);
+});

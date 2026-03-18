@@ -75,10 +75,19 @@ function registerPokemonActions(app) {
       logger.info("Evolução confirmada com sucesso", {
         actorUserId,
         pokemonId: payload.pokemonId,
-        newSpeciesName: result.newSpeciesName,
+        currentSpecies: result.previousSpeciesName,
+        nextSpecies: result.newSpeciesName,
+        success: true,
       });
     } catch (error) {
-      logger.error("Falha ao confirmar evolução", { actorUserId, pokemonId: payload.pokemonId, error });
+      logger.error("Falha ao confirmar evolução", {
+        actorUserId,
+        pokemonId: payload.pokemonId,
+        currentSpecies: payload?.currentSpeciesName || null,
+        nextSpecies: payload?.nextSpeciesName || null,
+        success: false,
+        error,
+      });
       await respond({ response_type: "ephemeral", text: "Não consegui evoluir agora 😵‍💫" });
     }
   });
@@ -149,10 +158,22 @@ function registerPokemonActions(app) {
       logger.info("Upgrade em lote confirmado com sucesso", {
         actorUserId,
         pokemonId: payload.pokemonId,
-        targetLevel: payload.targetLevel,
+        currentLevel: result.previousLevel,
+        targetLevel: result.newLevel,
+        totalCost: result.totalCost,
+        remainingGold: result.remainingGold,
+        success: true,
       });
     } catch (error) {
-      logger.error("Falha ao confirmar !up", { actorUserId, pokemonId: payload?.pokemonId, targetLevel: payload?.targetLevel, error });
+      logger.error("Falha ao confirmar !up", {
+        actorUserId,
+        pokemonId: payload?.pokemonId,
+        currentLevel: payload?.currentLevel || null,
+        targetLevel: payload?.targetLevel,
+        totalCost: payload?.totalCost || null,
+        success: false,
+        error,
+      });
       await respond({ response_type: "ephemeral", text: "Não consegui aplicar esse upgrade agora 😵" });
     }
   });
