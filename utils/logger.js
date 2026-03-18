@@ -29,16 +29,17 @@ function serializeError(error) {
 function write(level, message, meta = {}) {
   if (!shouldLog(level)) return;
 
+  const normalizedLevel = normalizeLevel(level);
   const payload = {
     timestamp: new Date().toISOString(),
-    level: normalizeLevel(level),
-    message,
     ...meta,
+    level: normalizedLevel,
+    message,
   };
 
   if (LOG_FORMAT === "json") {
     const line = JSON.stringify(payload);
-    if (payload.level === "error") {
+    if (normalizedLevel === "error") {
       console.error(line);
       return;
     }
@@ -46,10 +47,10 @@ function write(level, message, meta = {}) {
     return;
   }
 
-  const text = `[${payload.timestamp}] [${payload.level.toUpperCase()}] ${message}`;
+  const text = `[${payload.timestamp}] [${normalizedLevel.toUpperCase()}] ${message}`;
   const details = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : "";
 
-  if (payload.level === "error") {
+  if (normalizedLevel === "error") {
     console.error(`${text}${details}`);
     return;
   }

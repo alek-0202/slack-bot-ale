@@ -33,7 +33,7 @@ async function insertUserPokemon({
       speed: stats.speed,
       source,
     })
-    .select("id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, base_attack, base_defense, base_hp, base_speed)")
+    .select("id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at")
     .single();
 
   if (error) throw error;
