@@ -1,21 +1,22 @@
 const { SlashCommandBuilder } = require("discord.js");
+const { getSharedCommand } = require("../../../application/shared/commandCatalog");
 
 const commands = [
-  new SlashCommandBuilder().setName("help").setDescription("Mostra os comandos gerais"),
-  new SlashCommandBuilder().setName("pokemonhelp").setDescription("Mostra os comandos do sistema Pokémon"),
-  new SlashCommandBuilder().setName("profile").setDescription("Mostra seu perfil Pokémon"),
-  new SlashCommandBuilder().setName("capture").setDescription("Captura um Pokémon"),
-  new SlashCommandBuilder().setName("pokedex").setDescription("Abre sua Pokédex"),
-  new SlashCommandBuilder().setName("pa").setDescription("Mostra atributos dos seus Pokémons"),
+  new SlashCommandBuilder().setName("help").setDescription(getSharedCommand("help").discordDescription),
+  new SlashCommandBuilder().setName("pokemonhelp").setDescription(getSharedCommand("pokemonhelp").discordDescription),
+  new SlashCommandBuilder().setName("profile").setDescription(getSharedCommand("profile").discordDescription),
+  new SlashCommandBuilder().setName("capture").setDescription(getSharedCommand("capture").discordDescription),
+  new SlashCommandBuilder().setName("pokedex").setDescription(getSharedCommand("pokedex").discordDescription),
+  new SlashCommandBuilder().setName("pa").setDescription(getSharedCommand("pa").discordDescription),
   new SlashCommandBuilder()
     .setName("upgrade")
-    .setDescription("Melhora um Pokémon")
+    .setDescription(getSharedCommand("upgrade").discordDescription)
     .addIntegerOption((option) =>
       option.setName("pokemon_id").setDescription("ID da captura para upgrade").setRequired(true),
     ),
   new SlashCommandBuilder()
     .setName("market")
-    .setDescription("Mostra o mercado diário ou compra um slot")
+    .setDescription(getSharedCommand("market").discordDescription)
     .addSubcommand((sub) => sub.setName("view").setDescription("Visualiza a vitrine"))
     .addSubcommand((sub) =>
       sub
@@ -25,7 +26,7 @@ const commands = [
     ),
   new SlashCommandBuilder()
     .setName("trade")
-    .setDescription("Inicia ou gerencia trades")
+    .setDescription(getSharedCommand("trade").discordDescription)
     .addSubcommand((sub) =>
       sub
         .setName("start")
