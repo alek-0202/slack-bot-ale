@@ -94,7 +94,7 @@ async function getUserPokemonById(slackUserId, pokemonId) {
   const { data, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, slack_user_id, species_id, level, shiny, attack, defense, hp, speed, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, base_attack, base_defense, base_hp, base_speed)",
+      "id, slack_user_id, species_id, level, shiny, attack, defense, hp, speed, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, evolves_to, evolution_stage, base_attack, base_defense, base_hp, base_speed)",
     )
     .eq("id", pokemonId)
     .eq("slack_user_id", slackUserId)

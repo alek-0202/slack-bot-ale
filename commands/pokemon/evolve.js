@@ -1,5 +1,12 @@
 const { parsePositiveInt } = require("../../utils/number");
-const { evolvePokemon } = require("../../services/evolutionService");
+const { createLogger } = require("../../utils/logger");
+const {
+  buildEvolvePreview,
+  buildEvolvePreviewMessage,
+  buildEvolveUnavailableMessage,
+} = require("../../services/slackPokemonActionService");
+
+const logger = createLogger("command:evolve");
 
 module.exports = {
   name: "evolve",
@@ -11,31 +18,36 @@ module.exports = {
         return;
       }
 
-      const result = await evolvePokemon({ slackUserId: event.user, pokemonId });
+      const preview = await buildEvolvePreview({ slackUserId: event.user, pokemonId });
 
-      if (!result.ok) {
+      logger.info("Resultado do preview de !evolve", {
+        slackUserId: event.user,
+        pokemonId,
+        ok: preview.ok,
+        reason: preview.reason || null,
+        cost: preview.cost || null,
+      });
+
+      if (!preview.ok) {
         const map = {
           user_not_started: "Você ainda não começou. Use `!poke start`.",
           pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
-          no_evolution_available: "Esse Pokémon não possui evolução disponível no momento.",
-          insufficient_gold: `Gold insuficiente para evoluir. Custo: *${result.cost}* | Seu gold: *${result.currentGold}*.`,
-          species_stats_missing: "Os stats base da espécie atual ou da evolução ainda não foram configurados.",
+          species_stats_missing: "Os dados da próxima evolução estão incompletos no momento.",
         };
 
-        await say(map[result.reason] || "Não consegui evoluir esse Pokémon agora 😵");
+        if (preview.reason === "no_evolution_available") {
+          await say(buildEvolveUnavailableMessage({ slackUserId: event.user, preview }));
+          return;
+        }
+
+        await say(map[preview.reason] || "Não consegui preparar essa evolução agora 😵");
         return;
       }
 
-      await say(
-        `✨ *Pokémon evoluído!*\n\n` +
-          `🆔 ID: *${result.pokemonId}*\n` +
-          `${result.previousSpeciesName} → ${result.newSpeciesName}\n` +
-          `💸 Custo: *${result.cost}* gold\n` +
-          `💰 Gold restante: *${result.remainingGold}*`,
-      );
+      await say(buildEvolvePreviewMessage({ slackUserId: event.user, preview }));
     } catch (error) {
-      console.error("Erro no !evolve:", error.message || error);
-      await say("Não consegui evoluir agora 😵‍💫");
+      logger.error("Erro no !evolve", { slackUserId: event.user, args, error });
+      await say("Não consegui preparar a evolução agora 😵‍💫");
     }
   },
 };
