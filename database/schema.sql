@@ -1,6 +1,6 @@
 create table if not exists public.users (
   slack_user_id text primary key,
-  gold integer not null default 100,
+  gold bigint not null default 100,
   created_at timestamptz not null default now(),
   last_capture_at timestamptz,
   last_claim_at timestamptz
@@ -38,6 +38,7 @@ alter table public.user_pokemons add column if not exists defense integer not nu
 alter table public.user_pokemons add column if not exists hp integer not null default 10;
 alter table public.user_pokemons add column if not exists speed integer not null default 10;
 alter table public.user_pokemons add column if not exists source text not null default 'capture';
+
 do $$
 begin
   if not exists (
@@ -54,7 +55,7 @@ create table if not exists public.transactions (
   id bigint generated always as identity primary key,
   slack_user_id text not null,
   type text not null,
-  amount integer not null,
+  amount bigint not null,
   created_at timestamptz not null default now()
 );
 
@@ -62,11 +63,10 @@ create table if not exists public.daily_market (
   market_date date not null,
   slot integer not null check (slot between 1 and 3),
   species_id integer not null references public.pokemon_species(id),
-  price integer not null check (price >= 0),
+  price bigint not null check (price >= 0),
   created_at timestamptz not null default now(),
   primary key (market_date, slot)
 );
-
 
 create table if not exists public.market_change_requests (
   id bigint generated always as identity primary key,
@@ -95,7 +95,7 @@ create table if not exists public.market_purchases (
   slot integer not null,
   slack_user_id text not null,
   user_pokemon_id bigint not null references public.user_pokemons(id) on delete restrict,
-  price_paid integer not null check (price_paid >= 0),
+  price_paid bigint not null check (price_paid >= 0),
   purchased_at timestamptz not null default now(),
   unique (market_date, slot, slack_user_id),
   foreign key (market_date, slot) references public.daily_market(market_date, slot)
@@ -139,8 +139,8 @@ create table if not exists public.trades (
   initiator_user_id text not null,
   target_user_id text not null,
   status text not null default 'pending' check (status in ('pending', 'accepted', 'declined', 'cancelled')),
-  initiator_gold_offer integer not null default 0 check (initiator_gold_offer >= 0),
-  target_gold_offer integer not null default 0 check (target_gold_offer >= 0),
+  initiator_gold_offer bigint not null default 0 check (initiator_gold_offer >= 0),
+  target_gold_offer bigint not null default 0 check (target_gold_offer >= 0),
   accepted_at timestamptz,
   declined_at timestamptz,
   cancelled_at timestamptz,
@@ -173,6 +173,18 @@ create index if not exists idx_user_pokemons_user on public.user_pokemons(slack_
 create index if not exists idx_user_pokemons_species on public.user_pokemons(species_id);
 create index if not exists idx_transactions_user on public.transactions(slack_user_id);
 
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'users_gold_non_negative'
+      and conrelid = 'public.users'::regclass
+  ) then
+    alter table public.users
+      add constraint users_gold_non_negative check (gold >= 0);
+  end if;
+end $$;
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -192,6 +204,36 @@ drop trigger if exists trg_user_medals_set_updated_at on public.user_medals;
 create trigger trg_user_medals_set_updated_at
 before update on public.user_medals
 for each row execute function public.set_updated_at();
+
+create or replace function public.calculate_upgrade_cost(p_current_level integer)
+returns bigint
+language plpgsql
+immutable
+as $$
+declare
+  v_level integer := greatest(coalesce(p_current_level, 1), 1);
+  v_cost bigint := 100;
+  v_previous_cost bigint;
+  i integer;
+begin
+  if v_level = 1 then
+    return v_cost;
+  end if;
+
+  for i in 1..(v_level - 1) loop
+    v_previous_cost := v_cost;
+    v_cost := v_previous_cost + greatest((v_previous_cost * 15) / 100, 1);
+
+    if i >= 20 then
+      v_cost := v_cost + 300;
+    elsif i >= 10 then
+      v_cost := v_cost + 200;
+    end if;
+  end loop;
+
+  return v_cost;
+end;
+$$;
 
 create or replace function public.create_trade(
   p_channel_id text,
@@ -238,8 +280,8 @@ language plpgsql
 as $$
 declare
   v_trade public.trades;
-  v_initiator_gold integer;
-  v_target_gold integer;
+  v_initiator_gold bigint;
+  v_target_gold bigint;
 begin
   select *
     into v_trade
@@ -259,6 +301,16 @@ begin
     raise exception 'Apenas o usuário alvo pode aceitar este trade';
   end if;
 
+  if exists (
+    select 1
+    from public.trade_items ti
+    join public.user_pokemons up on up.id = ti.user_pokemon_id
+    where ti.trade_id = v_trade.id
+      and ti.owner_user_id <> up.slack_user_id
+  ) then
+    raise exception 'Alguns Pokémon da oferta não pertencem mais aos donos originais';
+  end if;
+
   select gold into v_initiator_gold
   from public.users
   where slack_user_id = v_trade.initiator_user_id
@@ -270,29 +322,18 @@ begin
   for update;
 
   if v_initiator_gold < v_trade.initiator_gold_offer then
-    raise exception 'Saldo insuficiente para o iniciador';
+    raise exception 'Saldo insuficiente do iniciador';
   end if;
 
   if v_target_gold < v_trade.target_gold_offer then
-    raise exception 'Saldo insuficiente para o alvo';
-  end if;
-
-  perform 1
-  from public.trade_items ti
-  join public.user_pokemons up on up.id = ti.user_pokemon_id
-  where ti.trade_id = v_trade.id
-    and up.slack_user_id <> ti.owner_user_id
-  for update of up;
-
-  if found then
-    raise exception 'Um ou mais Pokémons não pertencem mais ao dono original da oferta';
+    raise exception 'Saldo insuficiente do alvo';
   end if;
 
   update public.user_pokemons up
   set slack_user_id = case
-      when ti.owner_user_id = v_trade.initiator_user_id then v_trade.target_user_id
-      else v_trade.initiator_user_id
-    end
+    when ti.owner_user_id = v_trade.initiator_user_id then v_trade.target_user_id
+    else v_trade.initiator_user_id
+  end
   from public.trade_items ti
   where ti.trade_id = v_trade.id
     and ti.user_pokemon_id = up.id;
@@ -305,30 +346,21 @@ begin
   set gold = gold - v_trade.target_gold_offer + v_trade.initiator_gold_offer
   where slack_user_id = v_trade.target_user_id;
 
-  if v_trade.initiator_gold_offer > 0 then
-    insert into public.transactions (slack_user_id, type, amount)
-    values
-      (v_trade.initiator_user_id, 'trade_gold_sent', -v_trade.initiator_gold_offer),
-      (v_trade.target_user_id, 'trade_gold_received', v_trade.initiator_gold_offer);
-  end if;
-
-  if v_trade.target_gold_offer > 0 then
-    insert into public.transactions (slack_user_id, type, amount)
-    values
-      (v_trade.target_user_id, 'trade_gold_sent', -v_trade.target_gold_offer),
-      (v_trade.initiator_user_id, 'trade_gold_received', v_trade.target_gold_offer);
-  end if;
+  insert into public.transactions (slack_user_id, type, amount)
+  values
+    (v_trade.initiator_user_id, 'trade_gold_delta', -v_trade.initiator_gold_offer + v_trade.target_gold_offer),
+    (v_trade.target_user_id, 'trade_gold_delta', -v_trade.target_gold_offer + v_trade.initiator_gold_offer);
 
   update public.trades
   set status = 'accepted',
-      accepted_at = now()
+      accepted_at = now(),
+      updated_at = now()
   where id = v_trade.id
   returning * into v_trade;
 
   return v_trade;
 end;
 $$;
-
 
 create or replace function public.upgrade_user_pokemon(
   p_slack_user_id text,
@@ -339,25 +371,23 @@ returns table (
   reason text,
   previous_level integer,
   new_level integer,
-  cost integer,
-  remaining_gold integer
+  cost bigint,
+  remaining_gold bigint
 )
 language plpgsql
 as $$
 declare
-  v_user_gold integer;
+  v_user_gold bigint;
   v_level integer;
-  v_species_id integer;
   v_base_attack integer;
   v_base_defense integer;
   v_base_hp integer;
   v_base_speed integer;
-  v_multiplier numeric;
-  v_cost integer;
+  v_cost bigint;
   v_new_level integer;
 begin
-  select up.level, up.species_id, ps.base_attack, ps.base_defense, ps.base_hp, ps.base_speed
-    into v_level, v_species_id, v_base_attack, v_base_defense, v_base_hp, v_base_speed
+  select up.level, ps.base_attack, ps.base_defense, ps.base_hp, ps.base_speed
+    into v_level, v_base_attack, v_base_defense, v_base_hp, v_base_speed
   from public.user_pokemons up
   join public.pokemon_species ps on ps.id = up.species_id
   where up.id = p_pokemon_id
@@ -365,17 +395,17 @@ begin
   for update of up, ps;
 
   if not found then
-    return query select false, 'pokemon_not_owned', null::integer, null::integer, null::integer, null::integer;
+    return query select false, 'pokemon_not_owned', null::integer, null::integer, null::bigint, null::bigint;
     return;
   end if;
 
   if v_base_attack is null or v_base_defense is null or v_base_hp is null or v_base_speed is null then
-    return query select false, 'species_stats_missing', v_level, v_level, 0, null::integer;
+    return query select false, 'species_stats_missing', v_level, v_level, 0::bigint, null::bigint;
     return;
   end if;
 
   if v_level >= 50 then
-    return query select false, 'max_level', v_level, v_level, 0, null::integer;
+    return query select false, 'max_level', v_level, v_level, 0::bigint, null::bigint;
     return;
   end if;
 
@@ -385,17 +415,11 @@ begin
   for update;
 
   if not found then
-    return query select false, 'user_not_started', null::integer, null::integer, null::integer, null::integer;
+    return query select false, 'user_not_started', null::integer, null::integer, null::bigint, null::bigint;
     return;
   end if;
 
-  if v_level >= 10 then
-    v_multiplier := 1.5;
-  else
-    v_multiplier := 1 + least(v_level * 0.05, 0.5);
-  end if;
-
-  v_cost := ceil(100 * power(v_multiplier, greatest(v_level - 1, 0)));
+  v_cost := public.calculate_upgrade_cost(v_level);
 
   if v_user_gold < v_cost then
     return query select false, 'insufficient_gold', v_level, v_level, v_cost, v_user_gold;
@@ -416,12 +440,142 @@ begin
   update public.users
   set gold = gold - v_cost
   where slack_user_id = p_slack_user_id
+    and gold >= v_cost
   returning gold into remaining_gold;
+
+  if remaining_gold is null then
+    raise exception 'Gold insuficiente no momento do débito';
+  end if;
 
   insert into public.transactions (slack_user_id, type, amount)
   values (p_slack_user_id, 'pokemon_upgrade', -v_cost);
 
   return query select true, null::text, v_level, v_new_level, v_cost, remaining_gold;
+end;
+$$;
+
+create or replace function public.evolve_user_pokemon(
+  p_slack_user_id text,
+  p_pokemon_id bigint
+)
+returns table (
+  ok boolean,
+  reason text,
+  previous_species_id integer,
+  new_species_id integer,
+  previous_species_name text,
+  new_species_name text,
+  cost bigint,
+  remaining_gold bigint
+)
+language plpgsql
+as $$
+declare
+  v_user_gold bigint;
+  v_level integer;
+  v_current_species_id integer;
+  v_next_species_id integer;
+  v_current_species_name text;
+  v_next_species_name text;
+  v_rarity text;
+  v_current_evolution_stage integer;
+  v_next_base_attack integer;
+  v_next_base_defense integer;
+  v_next_base_hp integer;
+  v_next_base_speed integer;
+  v_cost bigint;
+begin
+  select up.level,
+         current_species.id,
+         current_species.name,
+         current_species.rarity,
+         current_species.evolution_stage,
+         current_species.evolves_to,
+         next_species.name,
+         next_species.base_attack,
+         next_species.base_defense,
+         next_species.base_hp,
+         next_species.base_speed
+    into v_level,
+         v_current_species_id,
+         v_current_species_name,
+         v_rarity,
+         v_current_evolution_stage,
+         v_next_species_id,
+         v_next_species_name,
+         v_next_base_attack,
+         v_next_base_defense,
+         v_next_base_hp,
+         v_next_base_speed
+  from public.user_pokemons up
+  join public.pokemon_species current_species on current_species.id = up.species_id
+  left join public.pokemon_species next_species on next_species.id = current_species.evolves_to
+  where up.id = p_pokemon_id
+    and up.slack_user_id = p_slack_user_id
+  for update of up, current_species, next_species;
+
+  if not found then
+    return query select false, 'pokemon_not_owned', null::integer, null::integer, null::text, null::text, null::bigint, null::bigint;
+    return;
+  end if;
+
+  if v_next_species_id is null then
+    return query select false, 'no_evolution_available', v_current_species_id, null::integer, v_current_species_name, null::text, 0::bigint, null::bigint;
+    return;
+  end if;
+
+  if v_next_base_attack is null or v_next_base_defense is null or v_next_base_hp is null or v_next_base_speed is null then
+    return query select false, 'species_stats_missing', v_current_species_id, v_next_species_id, v_current_species_name, v_next_species_name, 0::bigint, null::bigint;
+    return;
+  end if;
+
+  select u.gold into v_user_gold
+  from public.users u
+  where u.slack_user_id = p_slack_user_id
+  for update;
+
+  if not found then
+    return query select false, 'user_not_started', null::integer, null::integer, null::text, null::text, null::bigint, null::bigint;
+    return;
+  end if;
+
+  v_cost := (4000 + (case v_rarity
+    when 'uncommon' then 1000
+    when 'rare' then 2000
+    when 'epic' then 3000
+    when 'legendary' then 4000
+    when 'mythical' then 5000
+    else 0
+  end))::bigint * (2::bigint ^ greatest(coalesce(v_current_evolution_stage, 1) - 1, 0));
+
+  if v_user_gold < v_cost then
+    return query select false, 'insufficient_gold', v_current_species_id, v_next_species_id, v_current_species_name, v_next_species_name, v_cost, v_user_gold;
+    return;
+  end if;
+
+  update public.user_pokemons
+  set species_id = v_next_species_id,
+      attack = greatest(1, ceil(v_next_base_attack * power(1.02, greatest(v_level - 1, 0)))::integer),
+      defense = greatest(1, ceil(v_next_base_defense * power(1.02, greatest(v_level - 1, 0)))::integer),
+      hp = greatest(1, ceil(v_next_base_hp * power(1.02, greatest(v_level - 1, 0)))::integer),
+      speed = greatest(1, ceil(v_next_base_speed * power(1.02, greatest(v_level - 1, 0)))::integer)
+  where id = p_pokemon_id
+    and slack_user_id = p_slack_user_id;
+
+  update public.users
+  set gold = gold - v_cost
+  where slack_user_id = p_slack_user_id
+    and gold >= v_cost
+  returning gold into remaining_gold;
+
+  if remaining_gold is null then
+    raise exception 'Gold insuficiente no momento do débito';
+  end if;
+
+  insert into public.transactions (slack_user_id, type, amount)
+  values (p_slack_user_id, 'pokemon_evolution', -v_cost);
+
+  return query select true, null::text, v_current_species_id, v_next_species_id, v_current_species_name, v_next_species_name, v_cost, remaining_gold;
 end;
 $$;
 
@@ -434,16 +588,17 @@ returns table (
   ok boolean,
   reason text,
   species_id integer,
-  price integer,
-  remaining_gold integer,
+  price bigint,
+  remaining_gold bigint,
   user_pokemon_id bigint
 )
 language plpgsql
 as $$
 declare
-  v_user_gold integer;
+  v_user_gold bigint;
   v_species_id integer;
-  v_price integer;
+  v_rarity text;
+  v_price bigint;
   v_base_attack integer;
   v_base_defense integer;
   v_base_hp integer;
@@ -455,7 +610,7 @@ begin
   for update;
 
   if not found then
-    return query select false, 'user_not_started', null::integer, null::integer, null::integer, null::bigint;
+    return query select false, 'user_not_started', null::integer, null::bigint, null::bigint, null::bigint;
     return;
   end if;
 
@@ -466,19 +621,19 @@ begin
       and mp.slot = p_slot
       and mp.slack_user_id = p_slack_user_id
   ) then
-    return query select false, 'already_bought_slot', null::integer, null::integer, v_user_gold, null::bigint;
+    return query select false, 'already_bought_slot', null::integer, null::bigint, v_user_gold, null::bigint;
     return;
   end if;
 
-  select dm.species_id, dm.price, ps.base_attack, ps.base_defense, ps.base_hp, ps.base_speed
-    into v_species_id, v_price, v_base_attack, v_base_defense, v_base_hp, v_base_speed
+  select dm.species_id, dm.price, ps.rarity, ps.base_attack, ps.base_defense, ps.base_hp, ps.base_speed
+    into v_species_id, v_price, v_rarity, v_base_attack, v_base_defense, v_base_hp, v_base_speed
   from public.daily_market dm
   join public.pokemon_species ps on ps.id = dm.species_id
   where dm.market_date = p_market_date
     and dm.slot = p_slot;
 
   if not found then
-    return query select false, 'invalid_slot', null::integer, null::integer, v_user_gold, null::bigint;
+    return query select false, 'invalid_slot', null::integer, null::bigint, v_user_gold, null::bigint;
     return;
   end if;
 
@@ -519,7 +674,12 @@ begin
   update public.users
   set gold = gold - v_price
   where slack_user_id = p_slack_user_id
+    and gold >= v_price
   returning gold into remaining_gold;
+
+  if remaining_gold is null then
+    raise exception 'Gold insuficiente no momento do débito';
+  end if;
 
   insert into public.transactions (slack_user_id, type, amount)
   values (p_slack_user_id, 'market_purchase', -v_price);
@@ -548,7 +708,7 @@ begin
 exception
   when others then
     if sqlerrm like '%already_bought_slot%' then
-      return query select false, 'already_bought_slot', null::integer, null::integer, v_user_gold, null::bigint;
+      return query select false, 'already_bought_slot', null::integer, null::bigint, v_user_gold, null::bigint;
       return;
     end if;
     raise;

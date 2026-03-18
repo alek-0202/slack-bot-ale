@@ -28,6 +28,12 @@ begin
       add constraint users_gold_non_negative check (gold >= 0);
   end if;
 end $$;
+-- Drop functions before recreating them with new return types
+drop function if exists public.upgrade_user_pokemon(text, bigint);
+drop function if exists public.evolve_user_pokemon(text, bigint);
+drop function if exists public.market_buy_slot(text, date, integer);
+drop function if exists public.accept_trade(bigint, text);
+drop function if exists public.calculate_upgrade_cost(integer);
 
 create or replace function public.calculate_upgrade_cost(p_current_level integer)
 returns bigint
