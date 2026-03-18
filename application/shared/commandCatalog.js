@@ -34,6 +34,27 @@ const sharedCommandCatalog = {
     slackUsage: '`!pokedex`',
     discordDescription: 'Abre sua Pokédex',
   },
+  pokename: {
+    name: 'pokename',
+    category: 'pokemon',
+    summary: 'Busca espécie no catálogo global pelo nome exato',
+    slackUsage: '`!pokename <nome>`',
+    discordDescription: 'Busca espécie no catálogo global pelo nome',
+  },
+  poketag: {
+    name: 'poketag',
+    category: 'pokemon',
+    summary: 'Busca espécie no catálogo global pela tag exibida ao lado do nome',
+    slackUsage: '`!poketag <tag>`',
+    discordDescription: 'Busca espécie no catálogo global pela tag',
+  },
+  elements: {
+    name: 'elements',
+    category: 'pokemon',
+    summary: 'Lista os elementos disponíveis e suas fraquezas',
+    slackUsage: '`!elements`',
+    discordDescription: 'Lista os elementos disponíveis e suas fraquezas',
+  },
   pa: {
     name: 'pa',
     category: 'pokemon',

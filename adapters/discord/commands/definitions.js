@@ -7,6 +7,15 @@ const commands = [
   new SlashCommandBuilder().setName("profile").setDescription(getSharedCommand("profile").discordDescription),
   new SlashCommandBuilder().setName("capture").setDescription(getSharedCommand("capture").discordDescription),
   new SlashCommandBuilder().setName("pokedex").setDescription(getSharedCommand("pokedex").discordDescription),
+  new SlashCommandBuilder()
+    .setName("pokename")
+    .setDescription(getSharedCommand("pokename").discordDescription)
+    .addStringOption((option) => option.setName("nome").setDescription("Nome exato do Pokémon").setRequired(true)),
+  new SlashCommandBuilder()
+    .setName("poketag")
+    .setDescription(getSharedCommand("poketag").discordDescription)
+    .addStringOption((option) => option.setName("tag").setDescription("Tag exibida ao lado do nome, ex.: #25").setRequired(true)),
+  new SlashCommandBuilder().setName("elements").setDescription(getSharedCommand("elements").discordDescription),
   new SlashCommandBuilder().setName("pa").setDescription(getSharedCommand("pa").discordDescription),
   new SlashCommandBuilder()
     .setName("upgrade")

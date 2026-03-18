@@ -4,14 +4,6 @@ const { buildPokemonTypesLabel } = require("./pokemonTypeService");
 const SPECIES_NAV_PREV_ACTION_ID = "species_navigate_prev";
 const SPECIES_NAV_NEXT_ACTION_ID = "species_navigate_next";
 
-function normalizeText(value = "") {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
 function createSpeciesNavValue({ ownerSlackUserId, index, speciesIds = null }) {
   return JSON.stringify({ ownerSlackUserId, index, speciesIds });
 }
@@ -84,69 +76,6 @@ async function getSpeciesView(rawIndex, speciesIds = null) {
   };
 }
 
-function buildEvolutionChain(targetSpeciesId, allSpecies) {
-  const byId = new Map((allSpecies || []).map((species) => [species.id, species]));
-  let current = byId.get(targetSpeciesId);
-
-  if (!current) return [];
-
-  const visited = new Set();
-  while (current?.evolves_from && !visited.has(current.evolves_from)) {
-    visited.add(current.id);
-    const previous = byId.get(current.evolves_from);
-    if (!previous) break;
-    current = previous;
-  }
-
-  const chain = [];
-  const chainVisited = new Set();
-  while (current && !chainVisited.has(current.id)) {
-    chain.push(current);
-    chainVisited.add(current.id);
-    if (!current.evolves_to) break;
-    current = byId.get(current.evolves_to);
-  }
-
-  return chain;
-}
-
-async function findSpeciesByName(rawName) {
-  const searchTerm = normalizeText(rawName || "");
-  if (!searchTerm) return null;
-
-  const speciesList = await getAllSpeciesCatalog();
-
-  const ranked = speciesList
-    .map((species) => {
-      const normalizedName = normalizeText(species.name || "");
-
-      let score = 0;
-      if (normalizedName === searchTerm) score = 3;
-      else if (normalizedName.startsWith(searchTerm)) score = 2;
-      else if (normalizedName.includes(searchTerm)) score = 1;
-
-      return {
-        species,
-        score,
-      };
-    })
-    .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score || a.species.id - b.species.id);
-
-  if (!ranked.length) return null;
-
-  const selected = ranked[0].species;
-  const chain = buildEvolutionChain(selected.id, speciesList);
-  const speciesIds = chain.length > 1 ? chain.map((species) => species.id) : [selected.id];
-  const index = speciesIds.indexOf(selected.id);
-
-  return {
-    species: selected,
-    speciesIds,
-    index: index >= 0 ? index : 0,
-    chainSize: chain.length,
-  };
-}
 
 function buildSpeciesMessage({ slackUserId, entry, index, total, speciesIds = null }) {
   if (!entry || !total) {
@@ -253,7 +182,7 @@ module.exports = {
   SPECIES_NAV_PREV_ACTION_ID,
   SPECIES_NAV_NEXT_ACTION_ID,
   parseSpeciesNavValue,
+  getAllSpeciesCatalog,
   getSpeciesView,
-  findSpeciesByName,
   buildSpeciesMessage,
 };
