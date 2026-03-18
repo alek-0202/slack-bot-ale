@@ -36,8 +36,9 @@ function calculateUpgradeCost(currentLevel) {
 }
 
 function calculateTotalUpgradeCost(currentLevel, targetLevel) {
-  const safeCurrentLevel = Math.max(1, Number(currentLevel) || 1);
-  const safeTargetLevel = Math.max(safeCurrentLevel, Number(targetLevel) || safeCurrentLevel);
+  const safeCurrentLevel = Math.min(MAX_LEVEL, Math.max(1, Number(currentLevel) || 1));
+  const normalizedTargetLevel = Math.max(safeCurrentLevel, Number(targetLevel) || safeCurrentLevel);
+  const safeTargetLevel = Math.min(MAX_LEVEL, normalizedTargetLevel);
   let totalCost = 0n;
 
   for (let level = safeCurrentLevel; level < safeTargetLevel; level += 1) {
@@ -116,6 +117,77 @@ async function upgradePokemon({ slackUserId, pokemonId }) {
   };
 }
 
+async function upgradePokemonBatch({ slackUserId, pokemonId, targetLevel }) {
+  const supabase = getSupabaseClient();
+  const pokemon = await getUserPokemonById(slackUserId, pokemonId);
+
+  if (!pokemon) {
+    return { ok: false, reason: "pokemon_not_owned" };
+  }
+
+  const { data, error } = await supabase.rpc("upgrade_user_pokemon_batch", {
+    p_slack_user_id: slackUserId,
+    p_pokemon_id: pokemonId,
+    p_target_level: targetLevel,
+  });
+
+  if (error) throw error;
+
+  const result = data?.[0];
+  if (!result) {
+    return { ok: false, reason: "unknown" };
+  }
+
+  if (!result.ok) {
+    logger.warn("Upgrade em lote recusado", {
+      slackUserId,
+      pokemonId,
+      currentLevel: result.previous_level ?? pokemon.level,
+      targetLevel: result.new_level ?? targetLevel,
+      totalCost: formatGold(result.cost || 0),
+      goldBefore: formatGold(result.remaining_gold || 0),
+      goldAfter: formatGold(result.remaining_gold || 0),
+      reason: result.reason,
+    });
+
+    return {
+      ok: false,
+      reason: result.reason,
+      cost: formatGold(result.cost || 0),
+      currentGold: formatGold(result.remaining_gold || 0),
+      previousLevel: result.previous_level ?? (Number(pokemon.level) || 1),
+      targetLevel: result.new_level ?? Number(targetLevel),
+      pokemon,
+    };
+  }
+
+  const upgradedPokemon = await getUserPokemonById(slackUserId, pokemonId);
+  const totalCost = toGoldBigInt(result.cost);
+  const goldAfter = toGoldBigInt(result.remaining_gold);
+  const goldBefore = goldAfter + totalCost;
+
+  logger.info("Upgrade em lote aplicado com sucesso", {
+    slackUserId,
+    pokemonId,
+    speciesId: upgradedPokemon?.species_id || pokemon?.species_id || null,
+    currentLevel: result.previous_level,
+    targetLevel: result.new_level,
+    totalCost,
+    goldBefore,
+    goldAfter,
+    upgradeSpentGold: upgradedPokemon?.upgrade_spent_gold || null,
+  });
+
+  return {
+    ok: true,
+    pokemon: upgradedPokemon || pokemon,
+    previousLevel: result.previous_level,
+    newLevel: result.new_level,
+    totalCost: formatGold(result.cost),
+    remainingGold: formatGold(result.remaining_gold),
+  };
+}
+
 module.exports = {
   MAX_LEVEL,
   UPGRADE_COST_BANDS,
@@ -124,4 +196,5 @@ module.exports = {
   calculateTotalUpgradeCost,
   getUpgradeCost: calculateUpgradeCost,
   upgradePokemon,
+  upgradePokemonBatch,
 };

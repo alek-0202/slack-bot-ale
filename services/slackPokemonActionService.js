@@ -3,9 +3,9 @@ const { getUserPokemonById } = require("./pokemonService");
 const { getUser } = require("./userService");
 const { getSpeciesById } = require("./pokemonLookupService");
 const { getEvolutionCost, evolvePokemon } = require("./evolutionService");
-const { MAX_LEVEL, getUpgradeCost, calculateTotalUpgradeCost, upgradePokemon } = require("./upgradeService");
+const { MAX_LEVEL, calculateTotalUpgradeCost, upgradePokemonBatch } = require("./upgradeService");
 const { buildSellPreview, sellPokemon } = require("./sellService");
-const { formatGold, isGoldGte, toGoldBigInt } = require("../utils/gold");
+const { formatGold, isGoldGte } = require("../utils/gold");
 
 const logger = createLogger("slack-pokemon-actions");
 
@@ -130,7 +130,8 @@ async function buildUpgradeBatchPreview({ slackUserId, pokemonId, targetLevel })
     pokemonId,
     currentLevel,
     targetLevel: desiredLevel,
-    totalCost,
+    totalCost: formatGold(totalCost),
+    currentGold: formatGold(user.gold),
   });
 
   return {
@@ -162,45 +163,50 @@ async function upgradePokemonToLevel({ slackUserId, pokemonId, targetLevel }) {
     };
   }
 
-  let lastResult = null;
-  for (let level = preview.currentLevel; level < preview.targetLevel; level += 1) {
-    lastResult = await upgradePokemon({ slackUserId, pokemonId });
-    if (!lastResult.ok) {
-      logger.warn("Upgrade em lote interrompido", {
-        slackUserId,
-        pokemonId,
-        attemptedTargetLevel: preview.targetLevel,
-        failedAtLevel: level,
-        reason: lastResult.reason,
-      });
-      return {
-        ok: false,
-        reason: lastResult.reason,
-        cost: lastResult.cost || preview.totalCost,
-        currentGold: lastResult.currentGold,
-        pokemon: lastResult.pokemon || preview.pokemon,
-        currentLevel: lastResult.previousLevel || level,
-        targetLevel: preview.targetLevel,
-      };
-    }
+  const result = await upgradePokemonBatch({
+    slackUserId,
+    pokemonId,
+    targetLevel: preview.targetLevel,
+  });
+
+  if (!result.ok) {
+    logger.warn("Upgrade em lote rejeitado na confirmação", {
+      slackUserId,
+      pokemonId,
+      currentLevel: result.previousLevel ?? preview.currentLevel,
+      targetLevel: result.targetLevel ?? preview.targetLevel,
+      totalCost: result.cost || preview.totalCost,
+      reason: result.reason,
+    });
+
+    return {
+      ok: false,
+      reason: result.reason,
+      cost: result.cost || preview.totalCost,
+      currentGold: result.currentGold,
+      pokemon: result.pokemon || preview.pokemon,
+      currentLevel: result.previousLevel ?? preview.currentLevel,
+      targetLevel: result.targetLevel ?? preview.targetLevel,
+    };
   }
 
   logger.info("Upgrade em lote concluído", {
     slackUserId,
     pokemonId,
-    fromLevel: preview.currentLevel,
-    targetLevel: preview.targetLevel,
-    totalCost: preview.totalCost,
+    currentLevel: result.previousLevel,
+    targetLevel: result.newLevel,
+    totalCost: result.totalCost,
+    remainingGold: result.remainingGold,
   });
 
   return {
     ok: true,
-    pokemon: lastResult?.pokemon || preview.pokemon,
-    previousLevel: preview.currentLevel,
-    newLevel: preview.targetLevel,
-    totalCost: preview.totalCost,
-    remainingGold: lastResult?.remainingGold ? formatGold(lastResult.remainingGold) : undefined,
-    levelsGained: preview.levelsToGain,
+    pokemon: result.pokemon || preview.pokemon,
+    previousLevel: result.previousLevel,
+    newLevel: result.newLevel,
+    totalCost: result.totalCost,
+    remainingGold: result.remainingGold,
+    levelsGained: result.newLevel - result.previousLevel,
   };
 }
 
@@ -239,7 +245,14 @@ function buildEvolvePreviewMessage({ slackUserId, preview }) {
             action_id: EVOLVE_CONFIRM_ACTION_ID,
             text: { type: "plain_text", text: "Confirmar evolução", emoji: true },
             style: "primary",
-            value: buildActionValue({ type: "evolve", slackUserId, pokemonId: preview.pokemon.id }),
+            value: buildActionValue({
+              type: "evolve",
+              slackUserId,
+              pokemonId: preview.pokemon.id,
+              currentSpeciesName: currentName,
+              nextSpeciesName: nextName,
+              cost: preview.cost,
+            }),
           },
           {
             type: "button",
@@ -306,7 +319,14 @@ function buildUpgradeBatchPreviewMessage({ slackUserId, preview }) {
             action_id: UP_CONFIRM_ACTION_ID,
             text: { type: "plain_text", text: "Confirmar upgrade", emoji: true },
             style: "primary",
-            value: buildActionValue({ type: "up", slackUserId, pokemonId: preview.pokemon.id, targetLevel: preview.targetLevel }),
+            value: buildActionValue({
+              type: "up",
+              slackUserId,
+              pokemonId: preview.pokemon.id,
+              currentLevel: preview.currentLevel,
+              targetLevel: preview.targetLevel,
+              totalCost: preview.totalCost,
+            }),
           },
           {
             type: "button",
