@@ -1,3 +1,5 @@
+const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService");
+
 function renderSlackProfileSummary({ slackUserId, profile }) {
   return (
     `📋 Perfil de <@${slackUserId}>\n` +
@@ -35,7 +37,7 @@ function renderSlackCaptureResult({ slackUserId, result }) {
   const shinyTag = result.shiny ? '✨ SHINY!' : '';
   const text =
     `🎉 <@${slackUserId}> capturou *${result.species.name}* ${shinyTag}\n` +
-    `⭐ Raridade: *${result.species.rarity}* | Lv ${result.captured.level}\n` +
+    `⭐ Raridade: *${result.species.rarity}* | Lv ${result.captured.level}${buildPokemonTypesLabel(result.species.element_types) ? `\n🧪 ${buildPokemonTypesLabel(result.species.element_types)}` : ""}\n` +
     `🆔 ID da captura: *${result.captured.id}*\n` +
     `💰 Recompensa: +${result.goldReward} gold`;
 

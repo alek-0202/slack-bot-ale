@@ -2,9 +2,12 @@ const axios = require("axios");
 const { getSupabaseClient } = require("../database/supabase");
 const { getBaseGoldByRarity } = require("./economyService");
 const { classifySpeciesRarity } = require("./rarityService");
+const { normalizePokemonTypes } = require("./pokemonTypeService");
+const { createLogger } = require("../utils/logger");
 
 const POKE_API_BASE = "https://pokeapi.co/api/v2";
 const DEFAULT_BATCH_SIZE = 12;
+const logger = createLogger("pokedex-import");
 
 const GENERATION_MAP = {
   "generation-i": 1,
@@ -122,6 +125,11 @@ async function fetchSpeciesPayload(entry, species, evolutionLookup) {
     evolves_from: evolution.evolves_from || null,
     evolves_to: (evolution.evolves_to_ids || [])[0] || null,
     base_value: getBaseGoldByRarity(rarity),
+    element_types: normalizePokemonTypes(
+      (pokemon.types || [])
+        .sort((a, b) => (a.slot || 0) - (b.slot || 0))
+        .map((typeEntry) => typeEntry.type?.name),
+    ),
   };
 }
 
@@ -184,12 +192,18 @@ async function importPokemonSpecies({ limit = null, batchSize = DEFAULT_BATCH_SI
   }
 
   if (validPayload.length > 0) {
+    logger.info("Persistindo espécies importadas", { count: validPayload.length });
     const { error } = await supabase
       .from("pokemon_species")
       .upsert(validPayload, { onConflict: "id" });
 
     if (error) throw error;
   }
+
+  logger.info("Importação da pokédex concluída", {
+    importedCount: validPayload.length,
+    hasTypesCount: validPayload.filter((species) => species.element_types?.length).length,
+  });
 
   return validPayload.length;
 }

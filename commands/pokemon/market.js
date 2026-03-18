@@ -1,5 +1,8 @@
 const { parsePositiveInt } = require("../../utils/number");
 const { ensureDailyMarket, buyMarketSlot, getMarketDateKey } = require("../../services/marketService");
+const { buildPokemonTypesLabel } = require("../../services/pokemonTypeService");
+const { requestDailyMarketChange } = require("../../application/useCases/market/changeDailyMarket");
+const { buildMarketChangeSlackMessage } = require("../../services/marketChangeViewService");
 
 function buildMarketMessage(market, marketDate) {
   if (!market.length) {
@@ -9,7 +12,7 @@ function buildMarketMessage(market, marketDate) {
   const rows = market
     .map((item) => {
       const species = item.pokemon_species || {};
-      return `*${item.slot}.* ${species.name || "Pokémon"} | ${species.rarity || "common"} | 💰 ${item.price}`;
+      return `*${item.slot}.* ${species.name || "Pokémon"} | ${species.rarity || "common"}${buildPokemonTypesLabel(species.element_types) ? ` | ${buildPokemonTypesLabel(species.element_types)}` : ""} | 💰 ${item.price}`;
     })
     .join("\n");
 
@@ -62,8 +65,18 @@ module.exports = {
         return;
       }
 
+      if (parts[0].toLowerCase() === "change") {
+        const result = await requestDailyMarketChange({
+          userId: event.user,
+          channelId: event.channel,
+          platform: "slack",
+        });
+        await say(buildMarketChangeSlackMessage({ result }));
+        return;
+      }
+
       if (parts[0].toLowerCase() !== "buy") {
-        await say("Use `!market` para ver a vitrine ou `!market buy <slot>` para comprar.");
+        await say("Use `!market`, `!market buy <slot>` ou `!market change`.");
         return;
       }
 
@@ -94,7 +107,7 @@ module.exports = {
       await say(
         `✅ Compra concluída!\n` +
           `🧾 Slot: *${result.slot}* (${result.marketDate})\n` +
-          `🎁 Pokémon: *${result.species.name}* (${result.species.rarity})\n` +
+          `🎁 Pokémon: *${result.species.name}* (${result.species.rarity})${buildPokemonTypesLabel(result.species.element_types) ? `\n🧪 ${buildPokemonTypesLabel(result.species.element_types)}` : ""}\n` +
           `💸 Preço: *${result.price}* gold\n` +
           `💰 Gold restante: *${result.remainingGold}*\n` +
           `🆔 Novo Pokémon ID: *${result.captured.id}*`,

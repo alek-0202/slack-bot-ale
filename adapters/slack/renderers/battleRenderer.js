@@ -1,4 +1,5 @@
 const { buildBattleViewModel } = require("../../../application/battle/renderers/battlePresenter");
+const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService");
 
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
 const BATTLE_DECLINE_ACTION_ID = "battle_decline_invite";
@@ -98,6 +99,7 @@ function renderPokemonBlock(player) {
   return (
     `*<@${player.userId}>*\n` +
     `*${player.selectedPokemonName}* (Nv. ${player.level})\n` +
+    `${buildPokemonTypesLabel(player.selectedPokemonTypes) ? `🧪 ${buildPokemonTypesLabel(player.selectedPokemonTypes)}\n` : ""}` +
     `❤️ ${player.hpCurrent}/${player.hpMax}\n` +
     `⚔️ ATK ${player.attack} | 🛡️ DEF ${player.defense}\n` +
     `🧪 Poções: ${player.potionsRemaining}`
@@ -105,7 +107,8 @@ function renderPokemonBlock(player) {
 }
 
 function renderPokemonLine(player) {
-  return `• <@${player.userId}> — ${player.selectedPokemonName} Nv.${player.level} | HP ${player.hpCurrent}/${player.hpMax}`;
+  const typesLabel = buildPokemonTypesLabel(player.selectedPokemonTypes);
+  return `• <@${player.userId}> — ${player.selectedPokemonName} Nv.${player.level}${typesLabel ? ` | ${typesLabel}` : ""} | HP ${player.hpCurrent}/${player.hpMax}`;
 }
 
 function renderBattleFinished({ winnerId, loserId }) {

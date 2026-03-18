@@ -16,12 +16,13 @@ create table if not exists public.pokemon_species (
   evolves_from integer references public.pokemon_species(id) on update cascade on delete set null,
   evolves_to integer references public.pokemon_species(id) on update cascade on delete set null,
   base_value integer not null default 10,
+  element_types text[] not null default '{}'::text[],
   created_at timestamptz not null default now()
 );
 
 create table if not exists public.user_pokemons (
   id bigint generated always as identity primary key,
-  slack_user_id text not null references public.users(slack_user_id) on delete cascade,
+  slack_user_id text not null,
   species_id integer not null references public.pokemon_species(id),
   level integer not null default 1,
   shiny boolean not null default false,
@@ -47,7 +48,7 @@ end $$;
 
 create table if not exists public.transactions (
   id bigint generated always as identity primary key,
-  slack_user_id text not null references public.users(slack_user_id) on delete cascade,
+  slack_user_id text not null,
   type text not null,
   amount integer not null,
   created_at timestamptz not null default now()
@@ -62,11 +63,33 @@ create table if not exists public.daily_market (
   primary key (market_date, slot)
 );
 
+
+create table if not exists public.market_change_requests (
+  id bigint generated always as identity primary key,
+  market_date date not null,
+  channel_id text not null,
+  platform text not null,
+  initiated_by text not null,
+  required_confirmations integer not null default 3 check (required_confirmations >= 1),
+  confirmation_count integer not null default 0 check (confirmation_count >= 0),
+  status text not null default 'pending' check (status in ('pending', 'completed', 'cancelled')),
+  completed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.market_change_confirmations (
+  id bigint generated always as identity primary key,
+  request_id bigint not null references public.market_change_requests(id) on delete cascade,
+  user_id text not null,
+  created_at timestamptz not null default now(),
+  unique (request_id, user_id)
+);
+
 create table if not exists public.market_purchases (
   id bigint generated always as identity primary key,
   market_date date not null,
   slot integer not null,
-  slack_user_id text not null references public.users(slack_user_id) on delete cascade,
+  slack_user_id text not null,
   user_pokemon_id bigint not null references public.user_pokemons(id) on delete restrict,
   price_paid integer not null check (price_paid >= 0),
   purchased_at timestamptz not null default now(),
@@ -86,7 +109,7 @@ create table if not exists public.medals (
 
 create table if not exists public.user_medals (
   id bigint generated always as identity primary key,
-  slack_user_id text not null references public.users(slack_user_id) on delete cascade,
+  slack_user_id text not null,
   medal_id bigint not null references public.medals(id) on delete cascade,
   status text not null default 'locked' check (status in ('locked', 'unlocked')),
   progress integer not null default 0,
@@ -109,8 +132,8 @@ on conflict (code) do nothing;
 create table if not exists public.trades (
   id bigint generated always as identity primary key,
   channel_id text not null,
-  initiator_user_id text not null references public.users(slack_user_id) on delete cascade,
-  target_user_id text not null references public.users(slack_user_id) on delete cascade,
+  initiator_user_id text not null,
+  target_user_id text not null,
   status text not null default 'pending' check (status in ('pending', 'accepted', 'declined', 'cancelled')),
   initiator_gold_offer integer not null default 0 check (initiator_gold_offer >= 0),
   target_gold_offer integer not null default 0 check (target_gold_offer >= 0),
@@ -125,13 +148,15 @@ create table if not exists public.trades (
 create table if not exists public.trade_items (
   id bigint generated always as identity primary key,
   trade_id bigint not null references public.trades(id) on delete cascade,
-  owner_user_id text not null references public.users(slack_user_id) on delete cascade,
+  owner_user_id text not null,
   user_pokemon_id bigint not null references public.user_pokemons(id) on delete restrict,
   created_at timestamptz not null default now(),
   unique (trade_id, user_pokemon_id)
 );
 
 create index if not exists idx_daily_market_date on public.daily_market(market_date);
+create unique index if not exists idx_market_change_requests_daily_channel_unique_pending on public.market_change_requests (market_date, channel_id) where status in ('pending', 'completed');
+create index if not exists idx_market_change_confirmations_request on public.market_change_confirmations(request_id);
 create index if not exists idx_market_purchases_user_date on public.market_purchases(slack_user_id, market_date);
 create index if not exists idx_user_medals_user on public.user_medals(slack_user_id);
 
