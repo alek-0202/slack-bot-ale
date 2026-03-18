@@ -40,12 +40,12 @@ async function evolvePokemon({ slackUserId, pokemonId }) {
   }
 
   logger.info("Evolução recalculada com base na espécie", {
-    slackUserId,
+    actorUserId: slackUserId,
     pokemonId,
-    previousSpeciesId: result.previous_species_id,
-    newSpeciesId: result.new_species_id,
-    previousSpeciesName: result.previous_species_name,
-    newSpeciesName: result.new_species_name,
+    currentSpeciesId: result.previous_species_id,
+    nextSpeciesId: result.new_species_id,
+    currentSpeciesName: result.previous_species_name,
+    nextSpeciesName: result.new_species_name,
     cost: formatGold(result.cost),
     goldAfter: formatGold(result.remaining_gold),
   });
