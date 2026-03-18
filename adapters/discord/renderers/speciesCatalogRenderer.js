@@ -26,6 +26,7 @@ function renderDiscordSpeciesCatalogEntry({ entry, index, total }) {
         `🔁 Evolui de: **${fromText}** | Para: **${toText}**`,
         buildPokemonTypesLabel(entry.element_types) ? `🧪 ${buildPokemonTypesLabel(entry.element_types)}` : null,
         `💰 Valor base: **${entry.base_value || 0}** gold`,
+        `📊 Base: ⚔️ **${entry.base_attack || 0}** | 🛡️ **${entry.base_defense || 0}** | ❤️ **${entry.base_hp || 0}** | 💨 **${entry.base_speed || 0}**`,
         `🗺️ Geração: **${entry.generation || '-'}**`,
         `📍 Posição: **${positionText}**`,
       ].filter(Boolean).join('\n'),
