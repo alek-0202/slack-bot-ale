@@ -1,6 +1,7 @@
 const { getSupabaseClient } = require("../database/supabase");
 const { getBaseGoldByRarity } = require("./economyService");
 const { createLogger } = require("../utils/logger");
+const { formatGold } = require("../utils/gold");
 
 const DAILY_MARKET_SIZE = 3;
 const MANUAL_MARKET_CHANGE_REQUIRED_CONFIRMATIONS = 3;
@@ -11,8 +12,8 @@ function getMarketDateKey(date = new Date()) {
 }
 
 function getPriceByRarity(rarity) {
-  const price = getBaseGoldByRarity(rarity);
-  logger.info("Preço base do market calculado", { rarity, price });
+  const price = BigInt(getBaseGoldByRarity(rarity));
+  logger.info("Preço base do market calculado", { rarity, price: formatGold(price) });
   return price;
 }
 
@@ -24,7 +25,7 @@ async function fetchDailyMarket(supabase, marketDate) {
     .order("slot", { ascending: true });
 
   if (error) throw error;
-  return data || [];
+  return (data || []).map((item) => ({ ...item, price: formatGold(item.price || 0) }));
 }
 
 async function buildDailyMarketRows({ supabase, marketDate }) {
@@ -58,7 +59,7 @@ async function buildDailyMarketRows({ supabase, marketDate }) {
     market_date: marketDate,
     slot: i + 1,
     species_id: species.id,
-    price: getPriceByRarity(species.rarity),
+    price: getPriceByRarity(species.rarity).toString(),
   }));
 }
 
@@ -223,8 +224,8 @@ async function buyMarketSlot({ slackUserId, slot, marketDate = getMarketDateKey(
     return {
       ok: false,
       reason: result.reason,
-      price: result.price || 0,
-      currentGold: result.remaining_gold || 0,
+      price: formatGold(result.price || 0),
+      currentGold: formatGold(result.remaining_gold || 0),
     };
   }
 
@@ -240,8 +241,8 @@ async function buyMarketSlot({ slackUserId, slot, marketDate = getMarketDateKey(
     marketDate,
     slot,
     species,
-    price: result.price,
-    remainingGold: result.remaining_gold,
+    price: formatGold(result.price),
+    remainingGold: formatGold(result.remaining_gold),
     captured: { id: result.user_pokemon_id },
   };
 }

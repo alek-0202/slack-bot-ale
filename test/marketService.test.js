@@ -9,13 +9,13 @@ test("getMarketDateKey gera chave ISO yyyy-mm-dd", () => {
 });
 
 test("getPriceByRarity usa nova tabela econômica base", () => {
-  assert.equal(getPriceByRarity("common"), 300);
-  assert.equal(getPriceByRarity("uncommon"), 800);
-  assert.equal(getPriceByRarity("rare"), 2500);
-  assert.equal(getPriceByRarity("epic"), 10000);
-  assert.equal(getPriceByRarity("legendary"), 35000);
-  assert.equal(getPriceByRarity("mythical"), 50000);
-  assert.equal(getPriceByRarity("invalid"), 300);
+  assert.equal(getPriceByRarity("common"), 300n);
+  assert.equal(getPriceByRarity("uncommon"), 800n);
+  assert.equal(getPriceByRarity("rare"), 2500n);
+  assert.equal(getPriceByRarity("epic"), 10000n);
+  assert.equal(getPriceByRarity("legendary"), 35000n);
+  assert.equal(getPriceByRarity("mythical"), 50000n);
+  assert.equal(getPriceByRarity("invalid"), 300n);
 });
 
 test("market change mantém exigência de três confirmações", () => {

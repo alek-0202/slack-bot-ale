@@ -1,5 +1,6 @@
 const { getSupabaseClient } = require("../database/supabase");
 const { getUser } = require("./userService");
+const { formatGold, isGoldGte, toDatabaseGold, toGoldBigInt } = require("../utils/gold");
 
 function isTradeParticipant(trade, slackUserId) {
   return trade.initiator_user_id === slackUserId || trade.target_user_id === slackUserId;
@@ -26,7 +27,7 @@ async function getPendingTradeForUserInChannel(channelId, slackUserId) {
     .maybeSingle();
 
   if (error) throw error;
-  return data;
+  return data ? { ...data, initiator_gold_offer: formatGold(data.initiator_gold_offer || 0), target_gold_offer: formatGold(data.target_gold_offer || 0) } : data;
 }
 
 async function createTrade({ channelId, initiatorUserId, targetUserId }) {
@@ -89,6 +90,8 @@ async function getTradeDetails(tradeId) {
 
   return {
     ...trade,
+    initiator_gold_offer: formatGold(trade.initiator_gold_offer || 0),
+    target_gold_offer: formatGold(trade.target_gold_offer || 0),
     items: items || [],
   };
 }
@@ -172,16 +175,17 @@ async function setGoldOffer({ trade, actorUserId, amount }) {
 
   if (trade.status !== "pending") return { ok: false, reason: "trade_not_pending" };
   if (!isTradeParticipant(trade, actorUserId)) return { ok: false, reason: "not_trade_participant" };
-  if (!Number.isInteger(amount) || amount < 0) return { ok: false, reason: "invalid_gold_amount" };
+  const normalizedAmount = toGoldBigInt(amount);
+  if (normalizedAmount < 0n) return { ok: false, reason: "invalid_gold_amount" };
 
   const user = await getUser(actorUserId);
   if (!user) return { ok: false, reason: "user_not_started" };
-  if ((user.gold || 0) < amount) return { ok: false, reason: "insufficient_gold" };
+  if (!isGoldGte(user.gold || 0, normalizedAmount)) return { ok: false, reason: "insufficient_gold" };
 
   const role = getRoleInTrade(trade, actorUserId);
   const field = role === "initiator" ? "initiator_gold_offer" : "target_gold_offer";
 
-  const { error } = await supabase.from("trades").update({ [field]: amount }).eq("id", trade.id);
+  const { error } = await supabase.from("trades").update({ [field]: toDatabaseGold(normalizedAmount) }).eq("id", trade.id);
   if (error) throw error;
 
   return { ok: true };
