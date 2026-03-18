@@ -64,7 +64,46 @@ function renderSlackCaptureResult({ slackUserId, result }) {
   return message;
 }
 
+function renderSlackUpgradeResult({ result, slackUserId, maxLevel, getNextUpgradeCost }) {
+  if (!result.ok) {
+    if (result.reason === 'user_not_started') {
+      return 'Você ainda não começou. Use `!poke start`.';
+    }
+
+    if (result.reason === 'pokemon_not_owned') {
+      return 'Você só pode melhorar Pokémons que pertencem a você.';
+    }
+
+    if (result.reason === 'max_level') {
+      return `Esse Pokémon já atingiu o nível máximo (${maxLevel}).`;
+    }
+
+    if (result.reason === 'insufficient_gold') {
+      return `Gold insuficiente. Custo para próximo upgrade: *${result.cost}*. Seu saldo atual: *${result.currentGold}*.`;
+    }
+
+    return 'Não consegui melhorar esse Pokémon agora 😵';
+  }
+
+  const speciesName = result.pokemon.pokemon_species?.name || 'Pokémon';
+  const nextUpgradeCost =
+    result.newLevel >= maxLevel ? 'MAX' : `${getNextUpgradeCost(result.newLevel)} gold`;
+
+  return (
+    `🛠️ *${speciesName}* (#${result.pokemon.id}) melhorado com sucesso!
+` +
+    `📈 Nível: *${result.previousLevel}* → *${result.newLevel}*
+` +
+    `💸 Custo pago: *${result.cost}* gold
+` +
+    `💰 Gold restante: *${result.remainingGold}*
+` +
+    `🔜 Próximo upgrade: *${nextUpgradeCost}*`
+  );
+}
+
 module.exports = {
   renderSlackProfileSummary,
   renderSlackCaptureResult,
+  renderSlackUpgradeResult,
 };

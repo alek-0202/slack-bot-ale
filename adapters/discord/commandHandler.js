@@ -2,8 +2,9 @@ const { EmbedBuilder } = require("discord.js");
 const { getUser } = require("../../services/userService");
 const { getProfileSummary } = require("../../application/useCases/pokemon/getProfileSummary");
 const { captureForUser } = require("../../application/useCases/pokemon/captureForUser");
+const { upgradePokemonForUser } = require("../../application/useCases/pokemon/upgradePokemonForUser");
 const { getPokedexView } = require("../../services/pokedexViewService");
-const { upgradePokemon, getUpgradeCost, MAX_LEVEL } = require("../../services/upgradeService");
+const { getUpgradeCost, MAX_LEVEL } = require("../../services/upgradeService");
 const { ensureDailyMarket, buyMarketSlot, getMarketDateKey } = require("../../services/marketService");
 const {
   getPendingTradeForUserInChannel,
@@ -17,7 +18,11 @@ const {
 } = require("../../services/tradeService");
 const { toPlatformUserId, toPlatformChannelId, fromPlatformId } = require("../../core/platformIdentity");
 const { buildPokedexDiscordPayload } = require("./handlers/pokedexNavigation");
-const { renderDiscordProfileSummary, renderDiscordCaptureResult } = require("./renderers/sharedPokemonRenderer");
+const {
+  renderDiscordProfileSummary,
+  renderDiscordCaptureResult,
+  renderDiscordUpgradeResult,
+} = require("./renderers/sharedPokemonRenderer");
 
 function platformCtx(interaction) {
   const userId = toPlatformUserId("discord", interaction.user.id);
@@ -96,24 +101,14 @@ async function handleDiscordCommand(interaction) {
 
   if (name === "upgrade") {
     const pokemonId = interaction.options.getInteger("pokemon_id", true);
-    const result = await upgradePokemon({ slackUserId: userId, pokemonId });
-    if (!result.ok) {
-      const map = {
-        user_not_started: "Você ainda não começou. Use `/profile`.",
-        pokemon_not_owned: "Você só pode melhorar Pokémons que pertencem a você.",
-        max_level: `Esse Pokémon já está no nível máximo (${MAX_LEVEL}).`,
-      };
-      if (result.reason === "insufficient_gold") {
-        await interaction.reply(`Gold insuficiente. Custo: ${result.cost}. Seu gold: ${result.currentGold}.`);
-        return;
-      }
-      await interaction.reply(map[result.reason] || "Não consegui melhorar esse Pokémon 😵");
-      return;
-    }
-
-    const speciesName = result.pokemon.pokemon_species?.name || "Pokémon";
-    const nextUpgradeCost = result.newLevel >= MAX_LEVEL ? "MAX" : `${getUpgradeCost(result.newLevel)} gold`;
-    await interaction.reply(`🛠️ **${speciesName}** (#${result.pokemon.id}) subiu ${result.previousLevel} → ${result.newLevel}. Próximo custo: ${nextUpgradeCost}.`);
+    const result = await upgradePokemonForUser({ userId, pokemonId });
+    await interaction.reply(
+      renderDiscordUpgradeResult({
+        result,
+        maxLevel: MAX_LEVEL,
+        getNextUpgradeCost: getUpgradeCost,
+      }),
+    );
     return;
   }
 
