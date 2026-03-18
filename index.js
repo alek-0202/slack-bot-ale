@@ -31,6 +31,9 @@ const marketCommand = require("./commands/pokemon/market");
 const tradeCommand = require("./commands/pokemon/trade");
 const sellCommand = require("./commands/pokemon/sell");
 const evolveCommand = require("./commands/pokemon/evolve");
+const upCommand = require("./commands/pokemon/up");
+const pokeidCommand = require("./commands/pokemon/pokeid");
+const pokeplayerCommand = require("./commands/pokemon/pokeplayer");
 const sbCommand = require("./commands/sb");
 const bCommand = require("./commands/b");
 const bpickCommand = require("./commands/bpick");
@@ -42,6 +45,7 @@ const { registerPokedexActions } = require("./handlers/pokedexActions");
 const { registerCoffeActions } = require("./handlers/coffeActions");
 const { registerBattleActions } = require("./handlers/battleActions");
 const { registerMarketActions } = require("./handlers/marketActions");
+const { registerPokemonActions } = require("./handlers/pokemonActions");
 
 
 const logger = createLogger("slack-bot");
@@ -56,6 +60,7 @@ registerPokedexActions(app);
 registerCoffeActions(app);
 registerBattleActions(app);
 registerMarketActions(app);
+registerPokemonActions(app);
 
 const mentionReplies = [
   "Fala comigo não, tô de férias 😴",
@@ -95,6 +100,9 @@ for (const commandModule of [
   tradeCommand,
   sellCommand,
   evolveCommand,
+  upCommand,
+  pokeidCommand,
+  pokeplayerCommand,
   sbCommand,
   bCommand,
   bpickCommand,
