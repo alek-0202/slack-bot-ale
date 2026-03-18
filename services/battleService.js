@@ -4,11 +4,22 @@ const { createLogger } = require("../utils/logger");
 const { getUserPokemonById } = require("./pokemonService");
 const store = require("./battleStateStore");
 const {
-  calculateBattleHp,
-  decideStartingPlayer,
-  resolveAttackTurn,
-  resolvePotionTurn,
-} = require("./battleEngineService");
+  createBattle,
+  isBattleOpen,
+  acceptInvite,
+  declineInvite,
+  getExpectedPickerId,
+  assignSelectedPokemon,
+  advanceSelectionState,
+  startBattle,
+} = require("../application/battle/domain/battleState");
+const {
+  BATTLE_ACTION,
+  validateInviteDecision,
+  validateSelection,
+  validateTurnAction,
+} = require("../application/battle/domain/actionResolver");
+const { resolveBattleTurn } = require("../application/battle/domain/turnResolver");
 const {
   renderBattleInvite,
   renderSelectionPrompt,
@@ -17,36 +28,6 @@ const {
 } = require("./battleRenderService");
 
 const logger = createLogger("battle-service");
-
-function createPlayerState(userId) {
-  return {
-    userId,
-    selectedPokemon: null,
-    stats: null,
-    battleHp: null,
-    potionsUsed: 0,
-    magicCooldown: 0,
-  };
-}
-
-function createBattle({ channelId, challengerId, challengedId }) {
-  return {
-    channelId,
-    challengerId,
-    challengedId,
-    status: "pending",
-    inviteStatus: "pending",
-    selectionStatus: "waiting_challenger",
-    currentTurnUserId: null,
-    round: 0,
-    startedAt: null,
-    finishedAt: null,
-    players: {
-      [challengerId]: createPlayerState(challengerId),
-      [challengedId]: createPlayerState(challengedId),
-    },
-  };
-}
 
 async function startChallenge({ event, args, say }) {
   const challengedId = extractMentionedUser(args || "");
@@ -62,7 +43,7 @@ async function startChallenge({ event, args, say }) {
   }
 
   const existingInChannel = store.getBattle(event.channel);
-  if (existingInChannel && ["pending", "selecting", "active"].includes(existingInChannel.status)) {
+  if (isBattleOpen(existingInChannel)) {
     await say("⚠️ Já existe uma batalha em andamento ou pendente neste canal.");
     return;
   }
@@ -73,9 +54,11 @@ async function startChallenge({ event, args, say }) {
   }
 
   const battle = createBattle({
+    battleId: event.channel,
     channelId: event.channel,
     challengerId: event.user,
     challengedId,
+    platform: "slack",
   });
 
   store.setBattle(event.channel, battle);
@@ -85,39 +68,36 @@ async function startChallenge({ event, args, say }) {
     challengedId,
   });
 
-  const invite = renderBattleInvite({
+  await say(renderBattleInvite({
     challengerId: event.user,
     challengedId,
     channelId: event.channel,
-  });
-
-  await say(invite);
+  }));
 }
 
 async function decideInvite({ channelId, actorUserId, decision, say }) {
   const battle = store.getBattle(channelId);
-  if (!battle || battle.status !== "pending") {
-    await say("Não encontrei um convite de batalha pendente neste canal.");
-    return;
-  }
+  const validation = validateInviteDecision({ battle, actorUserId });
 
-  if (actorUserId !== battle.challengedId) {
+  if (!validation.ok) {
+    if (validation.reason === "battle_not_pending") {
+      await say("Não encontrei um convite de batalha pendente neste canal.");
+      return;
+    }
+
     await say(`Apenas <@${battle.challengedId}> pode responder este convite.`);
     return;
   }
 
   if (decision === "decline") {
-    battle.status = "declined";
-    battle.inviteStatus = "declined";
+    declineInvite(battle);
     store.setBattle(channelId, battle);
     logger.info("Desafio recusado", { channelId, actorUserId });
     await say(`❌ <@${battle.challengedId}> recusou o duelo de <@${battle.challengerId}>.`);
     return;
   }
 
-  battle.status = "selecting";
-  battle.inviteStatus = "accepted";
-  battle.selectionStatus = "waiting_challenger";
+  acceptInvite(battle);
   store.setBattle(channelId, battle);
   logger.info("Desafio aceito", { channelId, actorUserId });
 
@@ -129,27 +109,25 @@ async function decideInvite({ channelId, actorUserId, decision, say }) {
 
 async function pickPokemon({ event, args, say }) {
   const battle = store.getBattle(event.channel);
-  if (!battle) {
-    await say("Não existe batalha ativa neste canal. Use `!b @player`.");
-    return;
-  }
+  const validation = validateSelection({ battle, actorUserId: event.user });
 
-  if (battle.status !== "selecting") {
-    await say("A seleção de Pokémon não está ativa agora.");
-    return;
-  }
+  if (!validation.ok) {
+    if (validation.reason === "battle_not_found") {
+      await say("Não existe batalha ativa neste canal. Use `!b @player`.");
+      return;
+    }
 
-  if (![battle.challengerId, battle.challengedId].includes(event.user)) {
-    await say("Você não participa desta batalha.");
-    return;
-  }
+    if (validation.reason === "selection_not_active") {
+      await say("A seleção de Pokémon não está ativa agora.");
+      return;
+    }
 
-  const shouldPickNow = battle.selectionStatus === "waiting_challenger"
-    ? battle.challengerId
-    : battle.challengedId;
+    if (validation.reason === "actor_not_in_battle") {
+      await say("Você não participa desta batalha.");
+      return;
+    }
 
-  if (event.user !== shouldPickNow) {
-    await say(`Aguardando escolha de <@${shouldPickNow}>.`);
+    await say(`Aguardando escolha de <@${validation.expectedUserId}>.`);
     return;
   }
 
@@ -165,26 +143,7 @@ async function pickPokemon({ event, args, say }) {
     return;
   }
 
-  const playerState = battle.players[event.user];
-  playerState.selectedPokemon = {
-    id: pokemon.id,
-    speciesId: pokemon.species_id,
-    name: pokemon.pokemon_species?.name || `Pokémon #${pokemon.species_id}`,
-    level: pokemon.level,
-    spriteUrl: pokemon.pokemon_species?.sprite_url || null,
-    baseHp: Number(pokemon.hp) || 1,
-  };
-  playerState.stats = {
-    attack: Number(pokemon.attack) || 1,
-    defense: Number(pokemon.defense) || 0,
-    hp: Number(pokemon.hp) || 1,
-  };
-  const hpMax = calculateBattleHp(playerState.stats.hp);
-  playerState.battleHp = {
-    base: playerState.stats.hp,
-    max: hpMax,
-    current: hpMax,
-  };
+  assignSelectedPokemon(battle, event.user, pokemon);
 
   logger.info("Pokémon selecionado para batalha", {
     channel: event.channel,
@@ -192,22 +151,19 @@ async function pickPokemon({ event, args, say }) {
     pokemonId,
   });
 
-  if (battle.selectionStatus === "waiting_challenger") {
-    battle.selectionStatus = "waiting_challenged";
-    store.setBattle(event.channel, battle);
+  const expectedPickerId = getExpectedPickerId(battle);
+  advanceSelectionState(battle);
+  store.setBattle(event.channel, battle);
+
+  if (expectedPickerId === battle.challengerId) {
     await say(
-      `✅ <@${event.user}> escolheu *${playerState.selectedPokemon.name}* (ID ${pokemonId}).\n` +
+      `✅ <@${event.user}> escolheu *${battle.players[event.user].selectedPokemon.name}* (ID ${pokemonId}).\n` +
       `Agora <@${battle.challengedId}> deve escolher com \`!bpick ID\`.`,
     );
     return;
   }
 
-  const { result, starter } = decideStartingPlayer(battle.challengerId, battle.challengedId);
-  battle.currentTurnUserId = starter;
-  battle.round = 1;
-  battle.status = "active";
-  battle.startedAt = new Date().toISOString();
-  store.setBattle(event.channel, battle);
+  const { result, starter } = finalizeSelectionAndStartBattle(battle, event.channel);
 
   logger.info("Coin flip da batalha", {
     channel: event.channel,
@@ -217,109 +173,110 @@ async function pickPokemon({ event, args, say }) {
     challengedId: battle.challengedId,
   });
 
-  const card = renderBattleState(battle);
   await say(
     `🪙 Cara ou Coroa para primeiro turno: resultado *${result.toUpperCase()}*.\n` +
     `👤 <@${battle.challengerId}> = cara | <@${battle.challengedId}> = coroa.\n` +
     `🎯 Primeiro turno: <@${starter}>`,
   );
-  await say(card);
+  await say(renderBattleState(battle));
 }
 
-async function validateActionContext({ event, say }) {
+function finalizeSelectionAndStartBattle(battle, channelId) {
+  const { coinflip: result, starter } = startBattle(battle);
+  store.setBattle(channelId, battle);
+  return { result, starter };
+}
+
+async function validateActionContext({ event, say, actionType }) {
   const battle = store.getBattle(event.channel);
-  if (!battle) {
-    await say("Não existe batalha neste canal.");
-    return null;
-  }
+  const validation = validateTurnAction({
+    battle,
+    actorUserId: event.user,
+    actionType,
+  });
 
-  if (battle.status !== "active") {
-    await say("A batalha não está ativa neste momento.");
-    return null;
-  }
+  if (!validation.ok) {
+    if (validation.reason === "battle_not_found") {
+      await say("Não existe batalha neste canal.");
+      return null;
+    }
 
-  if (![battle.challengerId, battle.challengedId].includes(event.user)) {
-    await say("Você não participa dessa batalha.");
-    return null;
-  }
+    if (validation.reason === "battle_not_active") {
+      await say("A batalha não está ativa neste momento.");
+      return null;
+    }
 
-  if (event.user !== battle.currentTurnUserId) {
-    await say(`Não é seu turno. Agora é a vez de <@${battle.currentTurnUserId}>.`);
+    if (validation.reason === "actor_not_in_battle") {
+      await say("Você não participa dessa batalha.");
+      return null;
+    }
+
+    if (validation.reason === "not_actor_turn") {
+      await say(`Não é seu turno. Agora é a vez de <@${validation.currentTurnUserId}>.`);
+      return null;
+    }
+
+    await say("Ação de batalha inválida para o estado atual.");
     return null;
   }
 
   return battle;
 }
 
-function getOpponentId(battle, actorId) {
-  return actorId === battle.challengerId ? battle.challengedId : battle.challengerId;
-}
-
-function finishBattleIfNeeded({ battle, say }) {
-  const challengerState = battle.players[battle.challengerId];
-  const challengedState = battle.players[battle.challengedId];
-
-  if (challengerState.battleHp.current > 0 && challengedState.battleHp.current > 0) {
-    return false;
-  }
-
-  const winnerId = challengerState.battleHp.current > 0 ? battle.challengerId : battle.challengedId;
-  const loserId = winnerId === battle.challengerId ? battle.challengedId : battle.challengerId;
-
-  battle.status = "finished";
-  battle.finishedAt = new Date().toISOString();
-  store.setBattle(battle.channelId, battle);
-
-  logger.info("Batalha encerrada", { channelId: battle.channelId, winnerId, loserId });
-  say(renderBattleFinished({ winnerId, loserId }));
-  return true;
-}
-
-function passTurn(battle) {
-  battle.currentTurnUserId = getOpponentId(battle, battle.currentTurnUserId);
-  battle.round += 1;
-  store.setBattle(battle.channelId, battle);
-}
-
 async function attack({ event, say }) {
-  const battle = await validateActionContext({ event, say });
+  const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.ATTACK });
   if (!battle) return;
 
-  const attacker = battle.players[event.user];
-  const defenderId = getOpponentId(battle, event.user);
-  const defender = battle.players[defenderId];
+  const resolution = resolveBattleTurn({
+    battle,
+    actorUserId: event.user,
+    actionType: BATTLE_ACTION.ATTACK,
+  });
+  const result = resolution.outcome;
 
-  const result = resolveAttackTurn({ attacker, defender });
   logger.info("Ação de ataque", {
     channelId: battle.channelId,
     attackerId: event.user,
-    defenderId,
+    defenderId: result.defenderId,
     damage: result.finalDamage,
     critical: result.isCritical,
     d6: result.d6Roll,
     d20: result.d20Roll,
   });
 
+  store.setBattle(battle.channelId, battle);
+
   await say(
-    `⚔️ <@${event.user}> atacou <@${defenderId}>!\n` +
+    `⚔️ <@${event.user}> atacou <@${result.defenderId}>!\n` +
     `🎲 d6: ${result.d6Roll} | d20: ${result.d20Roll}\n` +
     `${result.isCritical ? "💥 CRÍTICO!\n" : ""}` +
     `Dano final: *${result.finalDamage}*\n` +
-    `HP restante de <@${defenderId}>: *${result.defenderRemainingHp}/${defender.battleHp.max}*`,
+    `HP restante de <@${result.defenderId}>: *${result.defenderRemainingHp}/${battle.players[result.defenderId].battleHp.max}*`,
   );
 
-  if (finishBattleIfNeeded({ battle, say })) return;
+  if (resolution.finished) {
+    logger.info("Batalha encerrada", {
+      channelId: battle.channelId,
+      winnerId: resolution.finalized.winnerId,
+      loserId: resolution.finalized.loserId,
+    });
+    await say(renderBattleFinished(resolution.finalized));
+    return;
+  }
 
-  passTurn(battle);
   await say(renderBattleState(battle));
 }
 
 async function usePotion({ event, say }) {
-  const battle = await validateActionContext({ event, say });
+  const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.POTION });
   if (!battle) return;
 
-  const player = battle.players[event.user];
-  const result = resolvePotionTurn(player);
+  const resolution = resolveBattleTurn({
+    battle,
+    actorUserId: event.user,
+    actionType: BATTLE_ACTION.POTION,
+  });
+  const result = resolution.outcome;
 
   if (!result.ok) {
     if (result.reason === "limit") {
@@ -340,34 +297,33 @@ async function usePotion({ event, say }) {
     remainingPotions: result.remainingPotions,
   });
 
+  store.setBattle(battle.channelId, battle);
+
   await say(
     `🧪 <@${event.user}> usou poção e curou *${result.healAmount}* HP.\n` +
-    `HP atual: *${result.currentHp}/${player.battleHp.max}*\n` +
+    `HP atual: *${result.currentHp}/${battle.players[event.user].battleHp.max}*\n` +
     `Poções restantes: *${result.remainingPotions}*`,
   );
 
-  passTurn(battle);
   await say(renderBattleState(battle));
 }
 
 async function magicPlaceholder({ event, say }) {
-  const battle = store.getBattle(event.channel);
-  if (!battle || battle.status !== "active") {
+  const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.MAGIC });
+  if (!battle) return;
+
+  const resolution = resolveBattleTurn({
+    battle,
+    actorUserId: event.user,
+    actionType: BATTLE_ACTION.MAGIC,
+  });
+
+  if (!resolution.outcome.ok && resolution.outcome.reason === "not_implemented") {
     await say("✨ O sistema de magia ainda está em desenvolvimento e será liberado em breve.");
     return;
   }
 
-  if (![battle.challengerId, battle.challengedId].includes(event.user)) {
-    await say("Você não participa dessa batalha.");
-    return;
-  }
-
-  if (event.user !== battle.currentTurnUserId) {
-    await say(`Não é seu turno. Agora é a vez de <@${battle.currentTurnUserId}>.`);
-    return;
-  }
-
-  await say("✨ O sistema de magia ainda está em desenvolvimento e será liberado em breve.");
+  await say("✨ Ação mágica indisponível no momento.");
 }
 
 function buildBattleHelp() {
@@ -380,7 +336,7 @@ function buildBattleHelp() {
     "  - Player 1 (desafiante): *cara*\n" +
     "  - Player 2 (desafiado): *coroa*\n" +
     "• Comandos durante a batalha: `!ataque`, `!pocao`, `!magia`\n" +
-    "• `!magia` ainda está em desenvolvimento\n" +
+    "• `!magia` agora já usa o núcleo compartilhado, mas segue como placeholder funcional\n" +
     "• Apenas o jogador do turno pode agir"
   );
 }

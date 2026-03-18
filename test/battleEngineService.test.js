@@ -6,7 +6,16 @@ const {
   calculateDamage,
   resolvePotionTurn,
   decideStartingPlayer,
-} = require("../services/battleEngineService");
+} = require("../application/battle/domain/battleEngine");
+const {
+  createBattle,
+  acceptInvite,
+  assignSelectedPokemon,
+  advanceSelectionState,
+  startBattle,
+} = require("../application/battle/domain/battleState");
+const { BATTLE_ACTION } = require("../application/battle/domain/actionResolver");
+const { resolveBattleTurn } = require("../application/battle/domain/turnResolver");
 
 test("calculateBattleHp aplica multiplicador de 12.5", () => {
   assert.equal(calculateBattleHp(10), 125);
@@ -58,3 +67,92 @@ test("decideStartingPlayer sempre retorna um dos dois usuários", () => {
   assert.ok(["U1", "U2"].includes(result.starter));
   assert.ok(["cara", "coroa"].includes(result.result));
 });
+
+test("núcleo compartilhado inicia batalha após seleção dos dois jogadores", () => {
+  const battle = createBattle({
+    channelId: "C1",
+    challengerId: "U1",
+    challengedId: "U2",
+    platform: "slack",
+  });
+
+  acceptInvite(battle);
+  assignSelectedPokemon(battle, "U1", mockPokemon({ id: 1, speciesId: 25, name: "Pikachu" }));
+  advanceSelectionState(battle);
+  assignSelectedPokemon(battle, "U2", mockPokemon({ id: 2, speciesId: 4, name: "Charmander" }));
+  advanceSelectionState(battle);
+
+  const { battle: startedBattle, starter } = startBattle(battle);
+
+  assert.equal(startedBattle.status, "active");
+  assert.equal(startedBattle.round, 1);
+  assert.ok(["U1", "U2"].includes(starter));
+  assert.equal(startedBattle.players.U1.selectedPokemon.name, "Pikachu");
+  assert.equal(startedBattle.players.U2.selectedPokemon.name, "Charmander");
+});
+
+test("turn resolver compartilha ataque e finaliza batalha quando HP zera", () => {
+  const battle = createReadyBattle();
+  battle.currentTurnUserId = "U1";
+  battle.players.U2.battleHp.current = 5;
+
+  const resolution = resolveBattleTurn({
+    battle,
+    actorUserId: "U1",
+    actionType: BATTLE_ACTION.ATTACK,
+  });
+
+  assert.equal(resolution.outcome.ok, true);
+  assert.equal(resolution.outcome.type, "attack");
+  assert.equal(resolution.finished, true);
+  assert.equal(resolution.finalized.winnerId, "U1");
+  assert.equal(battle.status, "finished");
+});
+
+test("turn resolver mantém magia como placeholder compartilhado", () => {
+  const battle = createReadyBattle();
+  battle.currentTurnUserId = "U1";
+
+  const resolution = resolveBattleTurn({
+    battle,
+    actorUserId: "U1",
+    actionType: BATTLE_ACTION.MAGIC,
+  });
+
+  assert.equal(resolution.outcome.ok, false);
+  assert.equal(resolution.outcome.reason, "not_implemented");
+  assert.equal(resolution.shouldPassTurn, false);
+  assert.equal(battle.status, "active");
+});
+
+function mockPokemon({ id, speciesId, name }) {
+  return {
+    id,
+    species_id: speciesId,
+    level: 10,
+    hp: 20,
+    attack: 8,
+    defense: 4,
+    pokemon_species: {
+      name,
+      sprite_url: null,
+    },
+  };
+}
+
+function createReadyBattle() {
+  const battle = createBattle({
+    channelId: "C-ready",
+    challengerId: "U1",
+    challengedId: "U2",
+    platform: "slack",
+  });
+
+  acceptInvite(battle);
+  assignSelectedPokemon(battle, "U1", mockPokemon({ id: 1, speciesId: 25, name: "Pikachu" }));
+  advanceSelectionState(battle);
+  assignSelectedPokemon(battle, "U2", mockPokemon({ id: 2, speciesId: 4, name: "Charmander" }));
+  advanceSelectionState(battle);
+  startBattle(battle);
+  return battle;
+}
