@@ -3,7 +3,8 @@ const { getUserPokemonById } = require("./pokemonService");
 const { getUser } = require("./userService");
 const { getSpeciesById } = require("./pokemonLookupService");
 const { getEvolutionCost, evolvePokemon } = require("./evolutionService");
-const { MAX_LEVEL, getUpgradeCost, upgradePokemon } = require("./upgradeService");
+const { MAX_LEVEL, getUpgradeCost, calculateTotalUpgradeCost, upgradePokemon } = require("./upgradeService");
+const { formatGold, isGoldGte, toGoldBigInt } = require("../utils/gold");
 
 const logger = createLogger("slack-pokemon-actions");
 
@@ -80,7 +81,7 @@ async function buildEvolvePreview({ slackUserId, pokemonId }) {
     pokemonId,
     currentSpeciesId: currentSpecies.id,
     nextSpeciesId: evolutionSpecies.id,
-    cost,
+    cost: formatGold(cost),
   });
 
   return {
@@ -88,18 +89,10 @@ async function buildEvolvePreview({ slackUserId, pokemonId }) {
     pokemon,
     currentSpecies,
     nextSpecies: evolutionSpecies,
-    cost,
-    currentGold: user.gold,
-    canAfford: user.gold >= cost,
+    cost: formatGold(cost),
+    currentGold: formatGold(user.gold),
+    canAfford: isGoldGte(user.gold, cost),
   };
-}
-
-function calculateTotalUpgradeCost(currentLevel, targetLevel) {
-  let totalCost = 0;
-  for (let level = currentLevel; level < targetLevel; level += 1) {
-    totalCost += getUpgradeCost(level);
-  }
-  return totalCost;
 }
 
 async function buildUpgradeBatchPreview({ slackUserId, pokemonId, targetLevel }) {
@@ -143,9 +136,9 @@ async function buildUpgradeBatchPreview({ slackUserId, pokemonId, targetLevel })
     currentLevel,
     targetLevel: desiredLevel,
     levelsToGain: desiredLevel - currentLevel,
-    totalCost,
-    currentGold: user.gold,
-    canAfford: user.gold >= totalCost,
+    totalCost: formatGold(totalCost),
+    currentGold: formatGold(user.gold),
+    canAfford: isGoldGte(user.gold, totalCost),
     maxLevel: MAX_LEVEL,
   };
 }
@@ -203,7 +196,7 @@ async function upgradePokemonToLevel({ slackUserId, pokemonId, targetLevel }) {
     previousLevel: preview.currentLevel,
     newLevel: preview.targetLevel,
     totalCost: preview.totalCost,
-    remainingGold: lastResult?.remainingGold,
+    remainingGold: lastResult?.remainingGold ? formatGold(lastResult.remainingGold) : undefined,
     levelsGained: preview.levelsToGain,
   };
 }

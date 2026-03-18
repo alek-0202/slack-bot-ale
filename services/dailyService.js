@@ -1,5 +1,6 @@
 const { getSupabaseClient } = require("../database/supabase");
 const { getUser, createUserIfMissing } = require("./userService");
+const { addGold, assertNonNegativeGold, formatGold, toDatabaseGold, toGoldBigInt } = require("../utils/gold");
 
 const DAILY_REWARD_TIERS = [
   { chance: 0.00001, min: 5000, max: 10000 },
@@ -40,7 +41,7 @@ function pickDailyRewardTier(randomValue = Math.random()) {
 
 function generateDailyGoldReward() {
   const tier = pickDailyRewardTier();
-  return randomIntInclusive(tier.min, tier.max);
+  return BigInt(randomIntInclusive(tier.min, tier.max));
 }
 
 async function claimDaily(slackUserId) {
@@ -56,12 +57,14 @@ async function claimDaily(slackUserId) {
 
   const goldReward = generateDailyGoldReward();
   const nowIso = new Date().toISOString();
+  const previousGold = toGoldBigInt(user.gold);
+  const nextGold = assertNonNegativeGold(addGold(previousGold, goldReward));
 
   const { error: updateUserError } = await supabase
     .from("users")
     .update({
       last_claim_at: nowIso,
-      gold: (user.gold || 0) + goldReward,
+      gold: toDatabaseGold(nextGold),
     })
     .eq("slack_user_id", slackUserId);
 
@@ -70,14 +73,14 @@ async function claimDaily(slackUserId) {
   const { error: trxError } = await supabase.from("transactions").insert({
     slack_user_id: slackUserId,
     type: "daily_reward",
-    amount: goldReward,
+    amount: toDatabaseGold(goldReward),
   });
 
   if (trxError) throw trxError;
 
   return {
     ok: true,
-    goldReward,
+    goldReward: formatGold(goldReward),
   };
 }
 

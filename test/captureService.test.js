@@ -145,13 +145,13 @@ test('capturePokemon conclui captura com retorno mínimo do insertUserPokemon', 
     assert.equal(result.ok, true);
     assert.deepEqual(result.species, selectedSpecies);
     assert.deepEqual(result.captured, { id: 77, species_id: 25, level: 1, shiny: false, source: 'capture' });
-    assert.equal(result.goldReward, 250);
+    assert.equal(result.goldReward, "250");
     assert.equal(userUpdates.length, 1);
     assert.equal(userUpdates[0].column, 'slack_user_id');
     assert.equal(userUpdates[0].value, 'U123');
-    assert.equal(userUpdates[0].payload.gold, 350);
+    assert.equal(userUpdates[0].payload.gold, "350");
     assert.ok(userUpdates[0].payload.last_capture_at);
-    assert.deepEqual(transactions, [{ slack_user_id: 'U123', type: 'capture_reward', amount: 250 }]);
+    assert.deepEqual(transactions, [{ slack_user_id: 'U123', type: 'capture_reward', amount: '250' }]);
   } finally {
     Math.random = originalRandom;
   }

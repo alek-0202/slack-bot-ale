@@ -2,9 +2,10 @@ const { getSupabaseClient } = require("../database/supabase");
 const { getUserPokemonById } = require("./pokemonService");
 const { getUpgradeCost } = require("./upgradeService");
 const { getBaseGoldByRarity, getLevelBonus } = require("./economyService");
+const { addGold, assertNonNegativeGold, formatGold, toDatabaseGold, toGoldBigInt } = require("../utils/gold");
 
 function getBaseSellPriceByRarity(rarity) {
-  return getBaseGoldByRarity(rarity);
+  return BigInt(getBaseGoldByRarity(rarity));
 }
 
 function calculatePokemonSellPrice({ rarity, level }) {
@@ -12,20 +13,21 @@ function calculatePokemonSellPrice({ rarity, level }) {
   const basePrice = getBaseSellPriceByRarity(rarity);
   const extraLevels = safeLevel - 1;
 
-  let totalUpgradeCost = 0;
+  let totalUpgradeCost = 0n;
   for (let currentLevel = 1; currentLevel <= extraLevels; currentLevel += 1) {
     totalUpgradeCost += getUpgradeCost(currentLevel);
   }
 
-  const levelBonus = getLevelBonus(safeLevel);
-  const upgradeReturn = Math.floor(totalUpgradeCost * 0.2);
+  const levelBonus = BigInt(getLevelBonus(safeLevel));
+  const upgradeReturn = totalUpgradeCost / 5n;
+  const finalPrice = basePrice + levelBonus + upgradeReturn;
 
   return {
-    basePrice,
-    levelBonus,
-    totalUpgradeCost,
-    upgradeReturn,
-    finalPrice: Math.max(0, basePrice + levelBonus + upgradeReturn),
+    basePrice: formatGold(basePrice),
+    levelBonus: formatGold(levelBonus),
+    totalUpgradeCost: formatGold(totalUpgradeCost),
+    upgradeReturn: formatGold(upgradeReturn),
+    finalPrice: formatGold(finalPrice >= 0n ? finalPrice : 0n),
   };
 }
 
@@ -56,26 +58,28 @@ async function sellPokemon({ slackUserId, pokemonId }) {
     .eq("slack_user_id", slackUserId);
   if (deleteError) throw deleteError;
 
-  const nextGold = (user.gold || 0) + price.finalPrice;
+  const previousGold = toGoldBigInt(user.gold);
+  const goldReceived = toGoldBigInt(price.finalPrice);
+  const nextGold = assertNonNegativeGold(addGold(previousGold, goldReceived));
 
   const { error: updateUserError } = await supabase
     .from("users")
-    .update({ gold: nextGold })
+    .update({ gold: toDatabaseGold(nextGold) })
     .eq("slack_user_id", slackUserId);
   if (updateUserError) throw updateUserError;
 
   const { error: transactionError } = await supabase.from("transactions").insert({
     slack_user_id: slackUserId,
     type: "pokemon_sell",
-    amount: price.finalPrice,
+    amount: toDatabaseGold(goldReceived),
   });
   if (transactionError) throw transactionError;
 
   return {
     ok: true,
     pokemon,
-    goldReceived: price.finalPrice,
-    currentGold: nextGold,
+    goldReceived: formatGold(goldReceived),
+    currentGold: formatGold(nextGold),
     priceBreakdown: price,
   };
 }
