@@ -6,32 +6,33 @@ const { formatGold, toGoldBigInt } = require("../utils/gold");
 const logger = createLogger("upgrade-service");
 
 const MAX_LEVEL = 50;
-const BASE_UPGRADE_COST = 100n;
-const UPGRADE_GROWTH_PERCENTAGE = 15n;
-const UPGRADE_GROWTH_DIVISOR = 100n;
+const UPGRADE_COST_BANDS = [
+  { minLevel: 1, maxLevel: 4, baseCost: 200n, stepCost: 150n },
+  { minLevel: 5, maxLevel: 9, baseCost: 800n, stepCost: 200n },
+  { minLevel: 10, maxLevel: 14, baseCost: 1850n, stepCost: 250n },
+  { minLevel: 15, maxLevel: 19, baseCost: 3100n, stepCost: 250n },
+  { minLevel: 20, maxLevel: 24, baseCost: 4300n, stepCost: 100n },
+  { minLevel: 25, maxLevel: 34, baseCost: 4800n, stepCost: 20n },
+  { minLevel: 35, maxLevel: MAX_LEVEL - 1, baseCost: 5000n, stepCost: 0n },
+];
 
-function getUpgradeBandFlatBonus(currentLevel) {
-  if (currentLevel >= 20) return 300n;
-  if (currentLevel >= 10) return 200n;
-  return 0n;
+function normalizeUpgradeLevel(level) {
+  return Math.max(1, Math.min(MAX_LEVEL - 1, Number(level) || 1));
 }
 
-function applyUpgradeGrowth(cost, currentLevel) {
-  const normalizedCost = toGoldBigInt(cost, BASE_UPGRADE_COST);
-  const percentageIncrease = (normalizedCost * UPGRADE_GROWTH_PERCENTAGE) / UPGRADE_GROWTH_DIVISOR;
-  const guaranteedProgress = percentageIncrease > 0n ? percentageIncrease : 1n;
-  return normalizedCost + getUpgradeBandFlatBonus(currentLevel) + guaranteedProgress;
+function getUpgradeCostBand(currentLevel) {
+  const safeLevel = normalizeUpgradeLevel(currentLevel);
+  return (
+    UPGRADE_COST_BANDS.find((band) => safeLevel >= band.minLevel && safeLevel <= band.maxLevel) ||
+    UPGRADE_COST_BANDS[UPGRADE_COST_BANDS.length - 1]
+  );
 }
 
 function calculateUpgradeCost(currentLevel) {
-  const safeLevel = Math.max(1, Number(currentLevel) || 1);
-  let currentCost = BASE_UPGRADE_COST;
-
-  for (let level = 1; level < safeLevel; level += 1) {
-    currentCost = applyUpgradeGrowth(currentCost, level);
-  }
-
-  return currentCost;
+  const safeLevel = normalizeUpgradeLevel(currentLevel);
+  const band = getUpgradeCostBand(safeLevel);
+  const offset = BigInt(safeLevel - band.minLevel);
+  return band.baseCost + band.stepCost * offset;
 }
 
 function calculateTotalUpgradeCost(currentLevel, targetLevel) {
@@ -67,6 +68,18 @@ async function upgradePokemon({ slackUserId, pokemonId }) {
   }
 
   if (!result.ok) {
+    logger.warn("Upgrade recusado", {
+      slackUserId,
+      pokemonId,
+      currentLevel: result.previous_level ?? pokemon.level,
+      targetLevel: result.new_level ?? pokemon.level,
+      unitCost: formatGold(result.cost || 0),
+      totalCost: formatGold(result.cost || 0),
+      goldBefore: formatGold(result.remaining_gold || 0),
+      goldAfter: formatGold(result.remaining_gold || 0),
+      reason: result.reason,
+    });
+
     return {
       ok: false,
       reason: result.reason,
@@ -76,24 +89,21 @@ async function upgradePokemon({ slackUserId, pokemonId }) {
   }
 
   const upgradedPokemon = await getUserPokemonById(slackUserId, pokemonId);
+  const unitCost = toGoldBigInt(result.cost);
+  const goldAfter = toGoldBigInt(result.remaining_gold);
+  const goldBefore = goldAfter + unitCost;
 
-  logger.info("Upgrade recalculado com base na espécie", {
+  logger.info("Upgrade aplicado com sucesso", {
     slackUserId,
     pokemonId,
     speciesId: upgradedPokemon?.species_id || pokemon?.species_id || null,
-    previousLevel: result.previous_level,
-    newLevel: result.new_level,
-    cost: formatGold(result.cost),
-    goldBefore: formatGold(toGoldBigInt(result.remaining_gold) + toGoldBigInt(result.cost)),
-    goldAfter: formatGold(result.remaining_gold),
-    stats: upgradedPokemon
-      ? {
-          attack: upgradedPokemon.attack,
-          defense: upgradedPokemon.defense,
-          hp: upgradedPokemon.hp,
-          speed: upgradedPokemon.speed,
-        }
-      : null,
+    currentLevel: result.previous_level,
+    targetLevel: result.new_level,
+    unitCost,
+    totalCost: unitCost,
+    goldBefore,
+    goldAfter,
+    upgradeSpentGold: upgradedPokemon?.upgrade_spent_gold || null,
   });
 
   return {
@@ -108,9 +118,8 @@ async function upgradePokemon({ slackUserId, pokemonId }) {
 
 module.exports = {
   MAX_LEVEL,
-  BASE_UPGRADE_COST,
-  getUpgradeBandFlatBonus,
-  applyUpgradeGrowth,
+  UPGRADE_COST_BANDS,
+  getUpgradeCostBand,
   calculateUpgradeCost,
   calculateTotalUpgradeCost,
   getUpgradeCost: calculateUpgradeCost,

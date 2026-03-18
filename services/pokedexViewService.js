@@ -1,3 +1,4 @@
+const { calculatePokemonSellPrice } = require("./sellService");
 const { getUserPokemons, buildPokedexDisplayEntries } = require("./pokemonService");
 const { buildPokemonTypesLabel } = require("./pokemonTypeService");
 
@@ -77,6 +78,7 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
   }
 
   const species = entry.pokemon_species || {};
+  const sellPrice = calculatePokemonSellPrice({ rarity: species.rarity, level: entry.level, upgradeSpentGold: entry.upgrade_spent_gold }).finalPrice;
   const positionText = `${index + 1}/${total}`;
   const shinyTag = entry.shiny ? "\n✨ *Shiny*" : "";
   const quantitySuffix = entry.quantity > 1 ? ` (x${entry.quantity})` : "";
@@ -85,8 +87,9 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
   const attributesText = isAttributesMode
     ? `\n\n*📊 Atributos*\n` +
       `⚔️ ATK: *${entry.attack || 0}* | 🛡️ DEF: *${entry.defense || 0}*\n` +
-      `❤️ HP: *${entry.hp || 0}* | 💨 SPD: *${entry.speed || 0}*`
-    : "";
+      `❤️ HP: *${entry.hp || 0}* | 💨 SPD: *${entry.speed || 0}*\n` +
+      `💸 Venda atual: *${sellPrice}* gold`
+    : "\n💸 Venda atual: *" + sellPrice + "* gold";
 
   const detailsText =
     `*${species.name || "Pokémon desconhecido"}${quantitySuffix}* (#${species.id || "?"})\n` +
