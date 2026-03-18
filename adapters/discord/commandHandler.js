@@ -26,6 +26,10 @@ const {
   renderDiscordCaptureResult,
   renderDiscordUpgradeResult,
 } = require("./renderers/sharedPokemonRenderer");
+const { renderDiscordSpeciesCatalogEntry, renderDiscordElementsReference } = require("./renderers/speciesCatalogRenderer");
+const { findCatalogSpeciesByName, findCatalogSpeciesByTag } = require("../../application/useCases/pokemon/catalogLookup");
+const { getSpeciesView } = require("../../services/speciesCatalogViewService");
+const { getPokemonElementsReference } = require("../../services/pokemonElementsService");
 
 function platformCtx(interaction) {
   const userId = toPlatformUserId("discord", interaction.user.id);
@@ -72,7 +76,7 @@ async function handleDiscordCommand(interaction) {
 
   if (name === "pokemonhelp") {
     await interaction.reply(
-      "Comandos: /profile, /capture, /pokedex, /pa, /upgrade, /market, /trade.\nSe ainda não iniciou, use `/profile` e confirme o start automático.",
+      "Comandos: /profile, /capture, /pokedex, /pokename, /poketag, /elements, /pa, /upgrade, /market, /trade.\nSe ainda não iniciou, use `/profile` e confirme o start automático.",
     );
     return;
   }
@@ -86,6 +90,51 @@ async function handleDiscordCommand(interaction) {
   if (name === "capture") {
     const result = await captureForUser({ userId });
     await interaction.reply(renderDiscordCaptureResult({ result }));
+    return;
+  }
+
+
+  if (name === "pokename") {
+    const query = interaction.options.getString("nome", true);
+    const result = await findCatalogSpeciesByName(query);
+
+    if (!result.ok) {
+      if (result.reason === 'ambiguous') {
+        const options = result.matches.map((match) => `${match.name} (#${match.id})`).join(', ');
+        await interaction.reply(`A busca por **${query}** ficou ambígua. Seja mais específico. Possíveis resultados: ${options}.`);
+        return;
+      }
+
+      await interaction.reply(`Não encontrei nenhuma espécie no catálogo global com o nome **${query}**.`);
+      return;
+    }
+
+    const view = await getSpeciesView(result.index, result.speciesIds);
+    await interaction.reply(renderDiscordSpeciesCatalogEntry(view));
+    return;
+  }
+
+  if (name === "poketag") {
+    const query = interaction.options.getString("tag", true);
+    const result = await findCatalogSpeciesByTag(query);
+
+    if (!result.ok) {
+      const map = {
+        invalid_tag: `A tag **${query}** é inválida. Use a tag exibida ao lado do nome, por exemplo **#25**.`,
+        not_found: `Não encontrei nenhuma espécie no catálogo global com a tag **${query}**.`,
+        ambiguous: `Encontrei múltiplas espécies para a tag **${query}**. Verifique o catálogo ou a modelagem dessa espécie.`,
+      };
+      await interaction.reply(map[result.reason] || 'Não consegui consultar essa tag agora 😵');
+      return;
+    }
+
+    const view = await getSpeciesView(result.index, result.speciesIds);
+    await interaction.reply(renderDiscordSpeciesCatalogEntry(view));
+    return;
+  }
+
+  if (name === "elements") {
+    await interaction.reply(renderDiscordElementsReference(getPokemonElementsReference()));
     return;
   }
 

@@ -1,8 +1,8 @@
 const {
   buildSpeciesMessage,
-  findSpeciesByName,
   getSpeciesView,
 } = require("../../services/speciesCatalogViewService");
+const { findCatalogSpeciesByName } = require("../../application/useCases/pokemon/catalogLookup");
 
 module.exports = {
   name: "pokename",
@@ -15,14 +15,20 @@ module.exports = {
         return;
       }
 
-      const match = await findSpeciesByName(query);
+      const result = await findCatalogSpeciesByName(query);
 
-      if (!match) {
+      if (!result.ok) {
+        if (result.reason === "ambiguous") {
+          const options = result.matches.map((match) => `${match.name} (#${match.id})`).join(", ");
+          await say(`A busca por *${query}* ficou ambígua. Seja mais específico. Possíveis resultados: ${options}.`);
+          return;
+        }
+
         await say(`Não encontrei nenhuma espécie no catálogo global com o nome *${query}*.`);
         return;
       }
 
-      const view = await getSpeciesView(match.index, match.speciesIds);
+      const view = await getSpeciesView(result.index, result.speciesIds);
       const message = buildSpeciesMessage({
         slackUserId: event.user,
         entry: view.entry,
