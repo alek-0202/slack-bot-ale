@@ -85,6 +85,7 @@ function assignSelectedPokemon(battle, userId, pokemon) {
     name: pokemon.pokemon_species?.name || `Pokémon #${pokemon.species_id}`,
     level: pokemon.level,
     spriteUrl: pokemon.pokemon_species?.sprite_url || null,
+    elementTypes: pokemon.pokemon_species?.element_types || [],
     baseHp: Number(pokemon.hp) || 1,
   };
   playerState.stats = {

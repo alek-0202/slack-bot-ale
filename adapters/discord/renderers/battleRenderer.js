@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require("discord.js");
 const { buildBattleViewModel } = require("../../../application/battle/renderers/battlePresenter");
+const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService");
 
 function renderDiscordBattleInvite({ challengerId, challengedId }) {
   return {
@@ -21,6 +22,7 @@ function renderDiscordBattleState(battle) {
   const description = view.players
     .map((player) => (
       `• <@${player.userId}> — **${player.selectedPokemonName}** (Lv ${player.level}) | ` +
+      `${buildPokemonTypesLabel(player.selectedPokemonTypes) ? `${buildPokemonTypesLabel(player.selectedPokemonTypes)} | ` : ""}` +
       `HP ${player.hpCurrent}/${player.hpMax} | ATK ${player.attack} | DEF ${player.defense} | ` +
       `Poções ${player.potionsRemaining}`
     ))

@@ -6,6 +6,7 @@ const { upgradePokemonForUser } = require("../../application/useCases/pokemon/up
 const { getPokedexView } = require("../../services/pokedexViewService");
 const { getUpgradeCost, MAX_LEVEL } = require("../../services/upgradeService");
 const { ensureDailyMarket, buyMarketSlot, getMarketDateKey } = require("../../services/marketService");
+const { buildPokemonTypesLabel } = require("../../services/pokemonTypeService");
 const {
   getPendingTradeForUserInChannel,
   createTrade,
@@ -18,6 +19,8 @@ const {
 } = require("../../services/tradeService");
 const { toPlatformUserId, toPlatformChannelId, fromPlatformId } = require("../../core/platformIdentity");
 const { buildPokedexDiscordPayload } = require("./handlers/pokedexNavigation");
+const { requestDailyMarketChange } = require("../../application/useCases/market/changeDailyMarket");
+const { buildMarketChangeDiscordPayload } = require("../../services/marketChangeViewService");
 const {
   renderDiscordProfileSummary,
   renderDiscordCaptureResult,
@@ -119,12 +122,18 @@ async function handleDiscordCommand(interaction) {
     if (sub === "view") {
       const market = await ensureDailyMarket(marketDate);
       const rows = market
-        .map((item) => `**${item.slot}.** ${item.pokemon_species?.name || "Pokémon"} (${item.pokemon_species?.rarity || "common"}) - 💰 ${item.price}`)
+        .map((item) => `**${item.slot}.** ${item.pokemon_species?.name || "Pokémon"} (${item.pokemon_species?.rarity || "common"})${buildPokemonTypesLabel(item.pokemon_species?.element_types) ? ` | ${buildPokemonTypesLabel(item.pokemon_species?.element_types)}` : ""} - 💰 ${item.price}`)
         .join("\n");
 
       await interaction.reply({
         embeds: [new EmbedBuilder().setTitle(`Mercado diário (${marketDate})`).setDescription(rows || "Sem slots hoje.").setColor(0xe67e22)],
       });
+      return;
+    }
+
+    if (sub === "change") {
+      const result = await requestDailyMarketChange({ userId, channelId, platform: "discord" });
+      await interaction.reply(buildMarketChangeDiscordPayload({ result }));
       return;
     }
 
@@ -144,7 +153,7 @@ async function handleDiscordCommand(interaction) {
       return;
     }
 
-    await interaction.reply(`✅ Compra concluída: **${result.species.name}** (${result.species.rarity}) por ${result.price} gold. ID: #${result.captured.id}.`);
+    await interaction.reply(`✅ Compra concluída: **${result.species.name}** (${result.species.rarity})${buildPokemonTypesLabel(result.species.element_types) ? ` | ${buildPokemonTypesLabel(result.species.element_types)}` : ""} por ${result.price} gold. ID: #${result.captured.id}.`);
     return;
   }
 
