@@ -45,6 +45,7 @@ function renderDiscordUpgradeResult({ result, maxLevel, getNextUpgradeCost }) {
       user_not_started: 'Você ainda não começou. Use `/profile`.',
       pokemon_not_owned: 'Você só pode melhorar Pokémons que pertencem a você.',
       max_level: `Esse Pokémon já está no nível máximo (${maxLevel}).`,
+      species_stats_missing: 'Os stats base da espécie ainda não estão prontos. Execute a migration/backfill.',
     };
 
     if (result.reason === 'insufficient_gold') {

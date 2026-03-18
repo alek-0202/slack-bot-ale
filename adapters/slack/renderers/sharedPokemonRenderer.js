@@ -80,6 +80,10 @@ function renderSlackUpgradeResult({ result, slackUserId, maxLevel, getNextUpgrad
       return `Esse Pokémon já atingiu o nível máximo (${maxLevel}).`;
     }
 
+    if (result.reason === 'species_stats_missing') {
+      return 'Os stats base da espécie ainda não estão prontos. Rode a migration/backfill e tente novamente.';
+    }
+
     if (result.reason === 'insufficient_gold') {
       return `Gold insuficiente. Custo para próximo upgrade: *${result.cost}*. Seu saldo atual: *${result.currentGold}*.`;
     }

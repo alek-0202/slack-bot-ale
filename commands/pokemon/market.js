@@ -94,6 +94,7 @@ module.exports = {
           invalid_slot: "Slot inválido. Use `!market` para ver os slots de hoje.",
           already_bought_slot: "Você já comprou esse slot hoje.",
           insufficient_gold: `Gold insuficiente para esse slot.`,
+          species_stats_missing: 'Os stats base da espécie desse slot ainda não foram configurados.',
         };
 
         await say(

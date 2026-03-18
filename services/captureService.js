@@ -2,11 +2,13 @@ const { pickByRarity } = require("../pokemon/rarity");
 const { getSupabaseClient } = require("../database/supabase");
 const { getUser, createUserIfMissing } = require("./userService");
 const { getAllSpecies, insertUserPokemon } = require("./pokemonService");
-const { generatePokemonStats } = require("./pokemonInstanceService");
+const { calculatePokemonStats } = require("./pokemonStatsService");
 const { getGoldValueByRarityAndLevel } = require("./economyService");
+const { createLogger } = require("../utils/logger");
 
 const CAPTURE_COOLDOWN_MS = 60 * 60 * 1000;
 const SHINY_CHANCE = 0.02;
+const logger = createLogger("capture-service");
 
 function getCooldownRemainingMs(lastCaptureAt) {
   if (!lastCaptureAt) return 0;
@@ -54,7 +56,19 @@ async function capturePokemon(slackUserId) {
     level,
   });
   const nowIso = new Date().toISOString();
-  const stats = generatePokemonStats(selected);
+  const stats = calculatePokemonStats({
+    species: selected,
+    level,
+  });
+
+  logger.info("Captura calculada com base na espécie", {
+    slackUserId,
+    speciesId: selected.id,
+    speciesName: selected.name,
+    level,
+    stats,
+    shiny,
+  });
 
   const captured = await insertUserPokemon({
     slackUserId,

@@ -1,5 +1,8 @@
 const { getSupabaseClient } = require("../database/supabase");
 const { getRarityTier } = require("./economyService");
+const { createLogger } = require("../utils/logger");
+
+const logger = createLogger("evolution-service");
 
 const EVOLUTION_BASE_COST = 4000;
 const EVOLUTION_RARITY_STEP_COST = 1000;
@@ -34,6 +37,15 @@ async function evolvePokemon({ slackUserId, pokemonId }) {
       currentGold: result.remaining_gold || 0,
     };
   }
+
+  logger.info("Evolução recalculada com base na espécie", {
+    slackUserId,
+    pokemonId,
+    previousSpeciesId: result.previous_species_id,
+    newSpeciesId: result.new_species_id,
+    previousSpeciesName: result.previous_species_name,
+    newSpeciesName: result.new_species_name,
+  });
 
   return {
     ok: true,
