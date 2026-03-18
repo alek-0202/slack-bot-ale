@@ -1,7 +1,7 @@
 const { EmbedBuilder } = require("discord.js");
-const { createUserIfMissing, getUser } = require("../../services/userService");
-const { getProfileStats } = require("../../services/pokemonService");
-const { capturePokemon } = require("../../services/captureService");
+const { getUser } = require("../../services/userService");
+const { getProfileSummary } = require("../../application/useCases/pokemon/getProfileSummary");
+const { captureForUser } = require("../../application/useCases/pokemon/captureForUser");
 const { getPokedexView } = require("../../services/pokedexViewService");
 const { upgradePokemon, getUpgradeCost, MAX_LEVEL } = require("../../services/upgradeService");
 const { ensureDailyMarket, buyMarketSlot, getMarketDateKey } = require("../../services/marketService");
@@ -17,6 +17,7 @@ const {
 } = require("../../services/tradeService");
 const { toPlatformUserId, toPlatformChannelId, fromPlatformId } = require("../../core/platformIdentity");
 const { buildPokedexDiscordPayload } = require("./handlers/pokedexNavigation");
+const { renderDiscordProfileSummary, renderDiscordCaptureResult } = require("./renderers/sharedPokemonRenderer");
 
 function platformCtx(interaction) {
   const userId = toPlatformUserId("discord", interaction.user.id);
@@ -69,40 +70,14 @@ async function handleDiscordCommand(interaction) {
   }
 
   if (name === "profile") {
-    let user = await getUser(userId);
-    if (!user) user = await createUserIfMissing(userId);
-    const stats = await getProfileStats(userId);
-    await interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle(`Perfil de ${interaction.user.username}`)
-          .setDescription(`💰 Gold: **${user.gold}**\n🎯 Total capturado: **${stats.totalCaptured}**\n📘 Pokédex descoberta: **${stats.uniqueCount}**`)
-          .setColor(0x3498db),
-      ],
-    });
+    const result = await getProfileSummary({ userId, createIfMissing: true });
+    await interaction.reply(renderDiscordProfileSummary({ username: interaction.user.username, profile: result.profile }));
     return;
   }
 
   if (name === "capture") {
-    const result = await capturePokemon(userId);
-    if (!result.ok) {
-      const map = {
-        cooldown: `⏳ Você ainda está em cooldown. Tente novamente em ${result.remainingText}.`,
-        no_species: "A Pokédex global está vazia no banco.",
-        user_not_started: "Você ainda não começou. Use `/profile` para iniciar automaticamente.",
-      };
-      await interaction.reply(map[result.reason] || "Não consegui capturar agora 😵");
-      return;
-    }
-
-    const species = result.species || {};
-    const embed = new EmbedBuilder()
-      .setTitle(`Você capturou ${species.name || "Pokémon"}! ${result.shiny ? "✨" : ""}`)
-      .setDescription(`Raridade: **${species.rarity}**\nNível: **${result.captured.level}**\nRecompensa: **+${result.goldReward} gold**`)
-      .setColor(0x2ecc71);
-    if (species.sprite_url) embed.setThumbnail(species.sprite_url);
-
-    await interaction.reply({ embeds: [embed] });
+    const result = await captureForUser({ userId });
+    await interaction.reply(renderDiscordCaptureResult({ result }));
     return;
   }
 

@@ -1,6 +1,32 @@
+const { getSharedCommand } = require("../application/shared/commandCatalog");
+
 module.exports = {
   name: "help",
   async execute({ say }) {
+    const helpCommand = getSharedCommand("help");
+    const pokemonHelpCommand = getSharedCommand("pokemonhelp");
+
+    const text = [
+      "📘 *HELP DO BOT*",
+      "",
+      "*Comandos gerais*",
+      `${helpCommand.slackUsage} → ${helpCommand.summary.toLowerCase()}`,
+      "`!ping` → testa se o bot está vivo",
+      "`!gif termo` → manda um GIF aleatório",
+      "`!gif` → manda um GIF aleatório genérico",
+      "`!ia pergunta` → pergunta para a IA",
+      "`!ia help` → mostra os modos da IA",
+      "`!caraoucoroa @usuario cara|coroa` → desafia alguém",
+      "`!aceitar` → aceita o desafio pendente",
+      "`!recusar` → recusa o desafio pendente",
+      "`!daily` → resgata recompensa diária de gold",
+      "`!dhelp` → explica como funciona o !daily",
+      "`!coffe` → envia um card de convite para o coffe break",
+      "",
+      "*Sistema Pokémon*",
+      `${pokemonHelpCommand.slackUsage} → ${pokemonHelpCommand.summary.toLowerCase()}`,
+    ].join("\n");
+
     await say({
       text: "Help do bot",
       blocks: [
@@ -8,23 +34,7 @@ module.exports = {
           type: "section",
           text: {
             type: "mrkdwn",
-            text:
-              "📘 *HELP DO BOT*\n\n" +
-              "*Comandos gerais*\n" +
-              "`!help` → mostra este menu\n" +
-              "`!ping` → testa se o bot está vivo\n" +
-              "`!gif termo` → manda um GIF aleatório\n" +
-              "`!gif` → manda um GIF aleatório genérico\n" +
-              "`!ia pergunta` → pergunta para a IA\n" +
-              "`!ia help` → mostra os modos da IA\n" +
-              "`!caraoucoroa @usuario cara|coroa` → desafia alguém\n" +
-              "`!aceitar` → aceita o desafio pendente\n" +
-              "`!recusar` → recusa o desafio pendente\n" +
-              "`!daily` → resgata recompensa diária de gold\n" +
-              "`!dhelp` → explica como funciona o !daily\n" +
-              "`!coffe` → envia um card de convite para o coffe break\n\n" +
-              "*Sistema Pokémon*\n" +
-              "`!pokemonhelp` → mostra comandos de Pokédex, coleção, upgrades, venda e mercado",
+            text,
           },
         },
       ],
