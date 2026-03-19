@@ -171,7 +171,7 @@ function renderMagicOptions({ battle, actorUserId, magicSlots = [] }) {
         elements: magicSlots.map((magic) => ({
           type: "button",
           action_id: buildBattleMagicActionId(magic.slot),
-          text: { type: "plain_text", text: `${magic.slot}: ${magic.name} ${magic.icon}`.slice(0, 75) },
+          text: { type: "plain_text", text: `${magic.slot}: ${magic.icon} ${magic.name}`.slice(0, 75) },
           value: JSON.stringify({ channelId: battle.channelId, magicSlot: magic.slot }),
         })),
       },
@@ -213,7 +213,7 @@ function renderMagicRegisterElementPrompt({ pokemon, elements, maxSlots }) {
 
 function renderPokemonBlock(player) {
   const magicText = Array.isArray(player.magicSlots) && player.magicSlots.length
-    ? player.magicSlots.map((magic) => `${magic.slot}. ${magic.name} ${magic.icon}`).join("\n")
+    ? player.magicSlots.map((magic) => `${magic.slot}. ${magic.icon} ${magic.name}`).join("\n")
     : "Nenhuma registrada";
 
   return (
