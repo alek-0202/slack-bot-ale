@@ -44,8 +44,7 @@ function buildAccessoryImage({ species = {}, level = 1 }) {
   return {
     type: "image",
     image_url: species.sprite_url,
-    alt_text: species.name || "Pokémon",
-  title: `${frameEmojis} ${species.name || "Pokémon"} · Lv ${normalizeLevel(level)} ${frameEmojis}`,
+    alt_text: `${frameEmojis} ${species.name || "Pokémon"} · Lv ${normalizeLevel(level)} ${frameEmojis}`,
   };
 }
 
