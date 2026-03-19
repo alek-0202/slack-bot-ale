@@ -242,6 +242,7 @@ async function attack({ event, say }) {
     critical: result.isCritical,
     d6: result.d6Roll,
     d20: result.d20Roll,
+    speedContext: result.turnFlow || null,
   });
 
   store.setBattle(battle.channelId, battle);
@@ -295,6 +296,7 @@ async function usePotion({ event, say }) {
     userId: event.user,
     healAmount: result.healAmount,
     remainingPotions: result.remainingPotions,
+    speedContext: result.turnFlow || null,
   });
 
   store.setBattle(battle.channelId, battle);

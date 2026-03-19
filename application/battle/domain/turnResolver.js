@@ -39,7 +39,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType }) {
       };
     }
 
-    passTurn(battle);
+    const turnFlow = passTurn(battle, actorUserId);
     return {
       battle,
       actionType,
@@ -49,6 +49,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType }) {
         actorUserId,
         defenderId,
         ...result,
+        turnFlow,
       },
       finished: false,
       shouldPassTurn: true,
@@ -72,7 +73,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType }) {
     };
   }
 
-  passTurn(battle);
+  const turnFlow = passTurn(battle, actorUserId);
   return {
     battle,
     actionType,
@@ -81,6 +82,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType }) {
       ok: true,
       type: "potion",
       actorUserId,
+      turnFlow,
     },
     finished: false,
     shouldPassTurn: true,

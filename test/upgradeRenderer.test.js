@@ -48,7 +48,7 @@ test('renderDiscordUpgradeResult preserva mensagem de sucesso', () => {
     getNextUpgradeCost: () => 999,
   });
 
-  assert.equal(message, '🛠️ **Charizard** (#321) subiu 10 → 11. Próximo custo: 999 gold.');
+  assert.equal(message, '🛠️ **Charizard** (#321) subiu 10 → 11 (★). Próximo custo: 999 gold.');
 });
 
 test('renderDiscordUpgradeResult preserva mensagem de erro por gold insuficiente', () => {

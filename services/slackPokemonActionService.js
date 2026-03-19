@@ -6,6 +6,7 @@ const { getEvolutionCost, evolvePokemon } = require("./evolutionService");
 const { MAX_LEVEL, calculateTotalUpgradeCost, upgradePokemonBatch } = require("./upgradeService");
 const { buildSellPreview, sellPokemon } = require("./sellService");
 const { formatGold, isGoldGte } = require("../utils/gold");
+const { getPokemonProgressionSnapshot } = require("./pokemonStatsService");
 
 const logger = createLogger("slack-pokemon-actions");
 
@@ -78,6 +79,13 @@ async function buildEvolvePreview({ slackUserId, pokemonId }) {
     rarity: currentSpecies.rarity,
     evolutionStage: currentSpecies.evolution_stage,
   });
+  const currentProgression = getPokemonProgressionSnapshot({ species: currentSpecies, level: pokemon.level });
+  const evolvedProgression = getPokemonProgressionSnapshot({
+    species: evolutionSpecies,
+    level: pokemon.level,
+    log: true,
+    context: { flow: "evolve_preview", pokemonId, slackUserId, previousSpeciesId: currentSpecies.id },
+  });
 
   logger.info("Preview de evolução gerado", {
     slackUserId,
@@ -92,6 +100,8 @@ async function buildEvolvePreview({ slackUserId, pokemonId }) {
     pokemon,
     currentSpecies,
     nextSpecies: evolutionSpecies,
+    currentProgression,
+    evolvedProgression,
     cost: formatGold(cost),
     currentGold: formatGold(user.gold),
     canAfford: isGoldGte(user.gold, cost),
@@ -124,6 +134,13 @@ async function buildUpgradeBatchPreview({ slackUserId, pokemonId, targetLevel })
     return { ok: false, reason: "target_must_be_higher", pokemon, currentLevel };
   }
 
+  const currentProgression = getPokemonProgressionSnapshot({ species: pokemon.pokemon_species || {}, level: currentLevel });
+  const targetProgression = getPokemonProgressionSnapshot({
+    species: pokemon.pokemon_species || {},
+    level: desiredLevel,
+    log: true,
+    context: { flow: "upgrade_batch_preview", pokemonId, slackUserId, currentLevel, targetLevel: desiredLevel },
+  });
   const totalCost = calculateTotalUpgradeCost(currentLevel, desiredLevel);
   logger.info("Preview de upgrade em lote gerado", {
     slackUserId,
@@ -140,6 +157,8 @@ async function buildUpgradeBatchPreview({ slackUserId, pokemonId, targetLevel })
     currentLevel,
     targetLevel: desiredLevel,
     levelsToGain: desiredLevel - currentLevel,
+    currentProgression,
+    targetProgression,
     totalCost: formatGold(totalCost),
     currentGold: formatGold(user.gold),
     canAfford: isGoldGte(user.gold, totalCost),
