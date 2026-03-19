@@ -1,0 +1,8 @@
+{
+  "_meta": {
+    "description": "Biblioteca base de nomes de magias por elemento.",
+    "format": {
+      "element": ["Nome da magia 1", "Nome da magia 2"]
+    }
+  }
+}

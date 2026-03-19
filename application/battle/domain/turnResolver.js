@@ -1,18 +1,73 @@
-const { resolveAttackTurn, resolvePotionTurn } = require("./battleEngine");
+const { resolveAttackTurn, resolvePotionTurn, resolveMagicTurn } = require("./battleEngine");
 const { BATTLE_ACTION } = require("./actionResolver");
 const { getOpponentId, passTurn, finishBattle } = require("./battleState");
 
-function resolveBattleTurn({ battle, actorUserId, actionType }) {
-  if (actionType === BATTLE_ACTION.MAGIC) {
+function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {} }) {
+  if (actionType === BATTLE_ACTION.DEFENSE) {
     return {
       battle,
       actionType,
       outcome: {
         ok: false,
         reason: "not_implemented",
+        type: "defense",
       },
       finished: false,
       shouldPassTurn: false,
+    };
+  }
+
+  if (actionType === BATTLE_ACTION.MAGIC) {
+    const attacker = battle.players[actorUserId];
+    const defenderId = getOpponentId(battle, actorUserId);
+    const defender = battle.players[defenderId];
+    const magicEntry = (attacker.magicSlots || []).find((entry) => Number(entry.slot) === Number(actionPayload.magicSlot));
+
+    if (!magicEntry) {
+      return {
+        battle,
+        actionType,
+        outcome: {
+          ok: false,
+          reason: "magic_not_found",
+          type: "magic",
+        },
+        finished: false,
+        shouldPassTurn: false,
+      };
+    }
+
+    const result = resolveMagicTurn({ attacker, defender, magicEntry });
+
+    if (defender.battleHp.current <= 0) {
+      const finalized = finishBattle(battle, actorUserId);
+      return {
+        battle,
+        actionType,
+        outcome: {
+          ...result,
+          type: "magic",
+          actorUserId,
+          defenderId,
+        },
+        finished: true,
+        finalized,
+      };
+    }
+
+    const turnFlow = passTurn(battle, actorUserId, { energyPenalty: result.energyConsumed });
+    return {
+      battle,
+      actionType,
+      outcome: {
+        ...result,
+        type: "magic",
+        actorUserId,
+        defenderId,
+        turnFlow,
+      },
+      finished: false,
+      shouldPassTurn: true,
     };
   }
 

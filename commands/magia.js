@@ -1,8 +1,8 @@
-const { magicPlaceholder } = require("../services/battleService");
+const { showMagicOptions } = require("../services/battleService");
 
 module.exports = {
   name: "magia",
   async execute(context) {
-    return magicPlaceholder(context);
+    return showMagicOptions(context);
   },
 };

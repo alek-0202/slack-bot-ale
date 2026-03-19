@@ -2,6 +2,7 @@ const { extractMentionedUser } = require("../utils/helpers");
 const { parsePositiveInt } = require("../utils/number");
 const { createLogger } = require("../utils/logger");
 const { getUserPokemonById } = require("./pokemonService");
+const { getPokemonMagicLoadout } = require("./pokemonMagicService");
 const store = require("./battleStateStore");
 const {
   createBattle,
@@ -25,6 +26,7 @@ const {
   renderSelectionPrompt,
   renderBattleState,
   renderBattleFinished,
+  renderMagicOptions,
 } = require("./battleRenderService");
 
 const logger = createLogger("battle-service");
@@ -143,12 +145,15 @@ async function pickPokemon({ event, args, say }) {
     return;
   }
 
+  const loadout = await getPokemonMagicLoadout(pokemonId);
+  pokemon.magicSlots = Array.isArray(loadout?.spells) ? loadout.spells : [];
   assignSelectedPokemon(battle, event.user, pokemon);
 
   logger.info("Pokémon selecionado para batalha", {
     channel: event.channel,
     userId: event.user,
     pokemonId,
+    magicSlots: pokemon.magicSlots.length,
   });
 
   const expectedPickerId = getExpectedPickerId(battle);
@@ -310,7 +315,20 @@ async function usePotion({ event, say }) {
   await say(renderBattleState(battle));
 }
 
-async function magicPlaceholder({ event, say }) {
+async function showMagicOptions({ event, say }) {
+  const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.MAGIC });
+  if (!battle) return;
+
+  const player = battle.players[event.user];
+  if (!player.magicSlots?.length) {
+    await say("✨ Seu Pokémon atual não possui magias registradas. Use `!magicregister <pokeid>` antes da batalha.");
+    return;
+  }
+
+  await say(renderMagicOptions({ battle, actorUserId: event.user, magicSlots: player.magicSlots }));
+}
+
+async function castMagic({ event, say, magicSlot }) {
   const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.MAGIC });
   if (!battle) return;
 
@@ -318,14 +336,63 @@ async function magicPlaceholder({ event, say }) {
     battle,
     actorUserId: event.user,
     actionType: BATTLE_ACTION.MAGIC,
+    actionPayload: { magicSlot },
   });
+  const result = resolution.outcome;
 
-  if (!resolution.outcome.ok && resolution.outcome.reason === "not_implemented") {
-    await say("✨ O sistema de magia ainda está em desenvolvimento e será liberado em breve.");
+  if (!result.ok && result.reason === "magic_not_found") {
+    await say("✨ Não encontrei essa magia no loadout do Pokémon atual.");
     return;
   }
 
-  await say("✨ Ação mágica indisponível no momento.");
+  logger.info("Ação de magia", {
+    pokemonId: battle.players[event.user]?.selectedPokemon?.id,
+    channelId: battle.channelId,
+    actorUserId: event.user,
+    magicName: result.magicEntry?.name,
+    magicElement: result.magicEntry?.element,
+    targetUserId: result.defenderId,
+    dieSides: result.rollSides,
+    dieResult: result.rollValue,
+    critical: result.isCritical,
+    elementalRelation: result.elemental?.relation,
+    advantageAgainst: result.elemental?.advantageAgainst,
+    disadvantagedAgainst: result.elemental?.disadvantagedAgainst,
+    finalDamage: result.finalDamage,
+    energyConsumed: result.energyConsumed,
+    speedContext: result.turnFlow || null,
+  });
+
+  store.setBattle(battle.channelId, battle);
+
+  const relationMessage = result.elemental?.hasAdvantage
+    ? `🌟 Vantagem elemental contra: ${result.elemental.advantageAgainst.join(", ")}\n`
+    : result.elemental?.hasDisadvantage
+      ? `⚠️ Desvantagem elemental contra: ${result.elemental.disadvantagedAgainst.join(", ")}\n`
+      : "";
+
+  await say(
+    `✨ <@${event.user}> lançou *${result.magicEntry.name}* ${result.magicEntry.icon} em <@${result.defenderId}>!\n` +
+    `🎲 d${result.rollSides}: ${result.rollValue}\n` +
+    `${result.isCritical ? "💥 CRÍTICO MÁGICO GARANTIDO!\n" : ""}` +
+    relationMessage +
+    `Multiplicador: *x${result.multiplier}* | Energia consumida: *${result.energyConsumed}*\n` +
+    `Dano final: *${result.finalDamage}*\n` +
+    `HP restante de <@${result.defenderId}>: *${result.defenderRemainingHp}/${battle.players[result.defenderId].battleHp.max}*`,
+  );
+
+  if (resolution.finished) {
+    await say(renderBattleFinished(resolution.finalized));
+    return;
+  }
+
+  await say(renderBattleState(battle));
+}
+
+async function defendPlaceholder({ event, say }) {
+  const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.DEFENSE });
+  if (!battle) return;
+  await say("🛡️ A mecânica de defesa ainda está em desenvolvimento e será liberada em breve.");
 }
 
 function buildBattleHelp() {
@@ -337,9 +404,10 @@ function buildBattleHelp() {
     "• Primeiro turno é definido por cara ou coroa:\n" +
     "  - Player 1 (desafiante): *cara*\n" +
     "  - Player 2 (desafiado): *coroa*\n" +
-    "• Comandos durante a batalha: `!ataque`, `!pocao`, `!magia`\n" +
-    "• `!magia` agora já usa o núcleo compartilhado, mas segue como placeholder funcional\n" +
-    "• Apenas o jogador do turno pode agir"
+    "• Ações principais no turno: `!ataque`, `!defesa`, `!magia`, `!pocao`\n" +
+    "• `!magia` abre as magias registradas do Pokémon atual\n" +
+    "• Apenas o jogador do turno pode agir\n" +
+    "• Botões da batalha seguem as mesmas regras dos comandos textuais"
   );
 }
 
@@ -349,6 +417,8 @@ module.exports = {
   pickPokemon,
   attack,
   usePotion,
-  magicPlaceholder,
+  showMagicOptions,
+  castMagic,
+  defendPlaceholder,
   buildBattleHelp,
 };
