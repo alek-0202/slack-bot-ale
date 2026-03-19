@@ -2,7 +2,210 @@
   "_meta": {
     "description": "Biblioteca base de nomes de magias por elemento.",
     "format": {
-      "element": ["Nome da magia 1", "Nome da magia 2"]
+      "fire": [
+        "Meteoro Flamejante",
+        "Explosão Vulcânica",
+        "Inferno Ardente",
+        "Chama Ancestral",
+        "Rajada Incandescente",
+        "Colapso Ígneo",
+        "Fúria da Lava",
+        "Coração em Brasas",
+        "Tormenta de Fogo",
+        "Labareda Suprema"
+      ],
+      "water": [
+        "Dilúvio Abissal",
+        "Maré Devastadora",
+        "Jato Oceânico",
+        "Corrente Profunda",
+        "Tempestade Marinha",
+        "Lâmina de Água",
+        "Fúria das Marés",
+        "Vórtice Aquático",
+        "Impacto de Tsunami",
+        "Essência do Oceano"
+      ],
+      "grass": [
+        "Vinhas Aprisionadoras",
+        "Explosão de Espinhos",
+        "Fúria da Floresta",
+        "Raiz Ancestral",
+        "Crescimento Selvagem",
+        "Lâmina Natural",
+        "Sopro da Selva",
+        "Coroa de Espinhos",
+        "Domínio Verde",
+        "Renascimento Natural"
+      ],
+      "electric": [
+        "Descarga Suprema",
+        "Tempestade Elétrica",
+        "Pulso de Trovão",
+        "Raio Divino",
+        "Choque Relâmpago",
+        "Corrente Estática",
+        "Explosão de Plasma",
+        "Ira do Trovão",
+        "Campo Energizado",
+        "Impacto Elétrico"
+      ],
+      "ice": [
+        "Nevasca Eterna",
+        "Lança Glacial",
+        "Tempestade Congelante",
+        "Prisão de Gelo",
+        "Sopro Ártico",
+        "Impacto Congelante",
+        "Cristalização Total",
+        "Coração Gelado",
+        "Explosão de Geada",
+        "Domínio do Inverno"
+      ],
+      "fighting": [
+        "Impacto Brutal",
+        "Golpe do Titã",
+        "Fúria Marcial",
+        "Punho Devastador",
+        "Sequência Imparável",
+        "Colisão Suprema",
+        "Ataque Dominante",
+        "Força Absoluta",
+        "Ruptura Física",
+        "Investida Violenta"
+      ],
+      "psychic": [
+        "Colapso Mental",
+        "Explosão Psíquica",
+        "Domínio da Mente",
+        "Pressão Telecinética",
+        "Ruptura Neural",
+        "Olhar do Abismo",
+        "Controle Mental",
+        "Pulso Psíquico",
+        "Ilusão Suprema",
+        "Quebra da Realidade"
+      ],
+      "ghost": [
+        "Almas Torturadas",
+        "Sussurro do Além",
+        "Toque Fantasma",
+        "Eclipse Espiritual",
+        "Lamento Sombrio",
+        "Corrente das Almas",
+        "Abraço do Vazio",
+        "Grito do Além",
+        "Sombra Persistente",
+        "Domínio Espectral"
+      ],
+      "dark": [
+        "Abismo Sombrio",
+        "Fúria das Trevas",
+        "Impacto Obscuro",
+        "Noite Eterna",
+        "Colapso Sombrio",
+        "Sombra Devastadora",
+        "Olhar Tenebroso",
+        "Domínio das Trevas",
+        "Explosão Negra",
+        "Ruptura da Escuridão"
+      ],
+      "dragon": [
+        "Fúria Dracônica",
+        "Sopro do Dragão",
+        "Domínio Ancestral",
+        "Impacto Dracônico",
+        "Ira do Dragão",
+        "Rugido Primordial",
+        "Ascensão Dracônica",
+        "Explosão Mítica",
+        "Colapso Ancestral",
+        "Força Dracônica"
+      ],
+      "fairy": [
+        "Encanto Radiante",
+        "Luz Feérica",
+        "Explosão Mágica",
+        "Toque Encantado",
+        "Brilho Celestial",
+        "Fúria Feérica",
+        "Benção Arcana",
+        "Cintilação Mística",
+        "Aura Encantada",
+        "Explosão de Luz"
+      ],
+      "rock": [
+        "Colapso Rochoso",
+        "Impacto de Pedra",
+        "Fúria da Montanha",
+        "Deslizamento Brutal",
+        "Terra Partida",
+        "Explosão Mineral",
+        "Domínio Rochoso",
+        "Ruptura da Terra",
+        "Peso Absoluto",
+        "Impacto Sísmico"
+      ],
+      "ground": [
+        "Terremoto Devastador",
+        "Ruptura do Solo",
+        "Impacto Sísmico",
+        "Domínio da Terra",
+        "Fenda Profunda",
+        "Colapso Terrestre",
+        "Fúria do Subsolo",
+        "Abalo Estrutural",
+        "Explosão de Terra",
+        "Força Geológica"
+      ],
+      "flying": [
+        "Rajada Aérea",
+        "Tempestade dos Ventos",
+        "Impacto Celeste",
+        "Fúria dos Céus",
+        "Asas Cortantes",
+        "Vendaval Supremo",
+        "Domínio dos Ventos",
+        "Explosão Aérea",
+        "Ataque dos Céus",
+        "Sopro Celestial"
+      ],
+      "bug": [
+        "Enxame Devastador",
+        "Investida Insetoide",
+        "Fúria do Enxame",
+        "Mordida Ácida",
+        "Explosão de Casulo",
+        "Colapso Biológico",
+        "Ataque Parasitário",
+        "Domínio do Enxame",
+        "Impacto Insetoide",
+        "Infestação Total"
+      ],
+      "poison": [
+        "Névoa Tóxica",
+        "Veneno Letal",
+        "Explosão Ácida",
+        "Corrente Venenosa",
+        "Impacto Tóxico",
+        "Domínio Venenoso",
+        "Fúria Ácida",
+        "Nuvem Corrosiva",
+        "Contaminação Total",
+        "Essência Venenosa"
+      ],
+      "steel": [
+        "Lâmina de Aço",
+        "Impacto Metálico",
+        "Fúria de Ferro",
+        "Colisão de Aço",
+        "Domínio Metálico",
+        "Ruptura Blindada",
+        "Investida de Titânio",
+        "Explosão de Aço",
+        "Defesa Implacável",
+        "Força Industrial"
+      ]
     }
   }
 }

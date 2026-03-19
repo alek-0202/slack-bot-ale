@@ -2,7 +2,23 @@
   "_meta": {
     "description": "Biblioteca base de insígnias por elemento.",
     "format": {
-      "element": "emoji ou texto curto"
+      "fire": "🔥",
+      "water": "💧",
+      "grass": "🌿",
+      "electric": "⚡",
+      "ice": "❄️",
+      "fighting": "🥊",
+      "psychic": "🧠",
+      "ghost": "👻",
+      "dark": "🌑",
+      "dragon": "🐉",
+      "fairy": "✨",
+      "rock": "🪨",
+      "ground": "🌎",
+      "flying": "🌪️",
+      "bug": "🐛",
+      "poison": "☠️",
+      "steel": "⚙️"
     }
   }
 }
