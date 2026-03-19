@@ -18,7 +18,7 @@ test('buildPokemonVisualBlocks expõe accessory à direita e não inclui texto d
 
   assert.equal(visual.accessory?.type, 'image');
   assert.equal(visual.accessory?.image_url, species.sprite_url);
-  assert.match(visual.accessory?.alt_text || '', /Pikachu/);
+  assert.match(visual.accessory?.title || '', /Pikachu/);
   assert.equal(visual.blocks.length, 1);
   assert.equal(visual.blocks[0].type, 'context');
   assert.ok(visual.blocks[0].elements.every((element) => !element.text.includes('Moldura:')));
