@@ -104,6 +104,14 @@ const sharedCommandCatalog = {
     slackUsage: '`!market` / `!market buy <slot>`',
     discordDescription: 'Mostra o mercado diário ou compra um slot',
   },
+
+  magicregister: {
+    name: 'magicregister',
+    category: 'pokemon',
+    summary: 'Registra ou atualiza as magias de um Pokémon',
+    slackUsage: '`!magicregister <pokeid>`',
+    discordDescription: 'Registra as magias de um Pokémon',
+  },
   trade: {
     name: 'trade',
     category: 'pokemon',

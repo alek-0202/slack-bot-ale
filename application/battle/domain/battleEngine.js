@@ -1,8 +1,10 @@
 const { randomCoinflip } = require("../../../utils/helpers");
+const { resolveElementalRelation } = require("../../../services/pokemonElementsService");
 
 const BATTLE_HP_MULTIPLIER = 12.5;
 const MAX_POTIONS_PER_BATTLE = 5;
 const INITIATIVE_THRESHOLD = 100;
+const MAGIC_ENERGY_COST = 50;
 
 function rollDie(sides) {
   return Math.floor(Math.random() * sides) + 1;
@@ -42,6 +44,38 @@ function calculateDamage({ attackerAttack, defenderDefense, d6Roll, d20Roll }) {
   };
 }
 
+function calculateMagicDamage({ attackerAttack, magicElement, defenderElements = [], d10Roll, d6Roll }) {
+  const attack = Math.max(1, Number(attackerAttack) || 1);
+  const elemental = resolveElementalRelation({ attackElement: magicElement, defenderElements });
+  const useDisadvantageDie = elemental.hasDisadvantage && !elemental.hasAdvantage;
+  const rollSides = useDisadvantageDie ? 6 : 10;
+  const rolledValue = useDisadvantageDie ? (d6Roll || rollDie(6)) : (d10Roll || rollDie(10));
+  const normalDamage = attack + rolledValue;
+
+  let finalDamage = normalDamage;
+  let isCritical = false;
+  let multiplier = 1;
+
+  if (elemental.hasAdvantage) {
+    multiplier = 2.0;
+    isCritical = true;
+    finalDamage = normalDamage * multiplier;
+  } else if (elemental.hasDisadvantage) {
+    multiplier = 0.7;
+    finalDamage = normalDamage * multiplier;
+  }
+
+  return {
+    rollSides,
+    rollValue: rolledValue,
+    normalDamage: Math.round(normalDamage),
+    multiplier,
+    finalDamage: Math.max(0, Math.round(finalDamage)),
+    isCritical,
+    elemental,
+  };
+}
+
 function resolveAttackTurn({ attacker, defender }) {
   const result = calculateDamage({
     attackerAttack: attacker.stats.attack,
@@ -51,6 +85,24 @@ function resolveAttackTurn({ attacker, defender }) {
   defender.battleHp.current = Math.max(0, defender.battleHp.current - result.finalDamage);
 
   return {
+    ...result,
+    defenderRemainingHp: defender.battleHp.current,
+  };
+}
+
+function resolveMagicTurn({ attacker, defender, magicEntry }) {
+  const result = calculateMagicDamage({
+    attackerAttack: attacker.stats.attack,
+    magicElement: magicEntry?.element,
+    defenderElements: defender.selectedPokemon?.elementTypes || [],
+  });
+
+  defender.battleHp.current = Math.max(0, defender.battleHp.current - result.finalDamage);
+
+  return {
+    ok: true,
+    magicEntry,
+    energyConsumed: MAGIC_ENERGY_COST,
     ...result,
     defenderRemainingHp: defender.battleHp.current,
   };
@@ -105,12 +157,13 @@ function createInitialInitiativeState({ challengerId, challengedId, starter }) {
   };
 }
 
-function resolveNextTurnBySpeed({ battle, actorUserId }) {
+function resolveNextTurnBySpeed({ battle, actorUserId, energyPenalty = 0 }) {
   const playerIds = [battle.challengerId, battle.challengedId];
   const gauges = battle.initiative?.gauges || {};
   const threshold = battle.initiative?.threshold || INITIATIVE_THRESHOLD;
+  const appliedPenalty = Math.max(0, Number(energyPenalty) || 0);
 
-  gauges[actorUserId] = Math.max(0, (Number(gauges[actorUserId]) || 0) - threshold);
+  gauges[actorUserId] = Math.max(0, (Number(gauges[actorUserId]) || 0) - threshold - appliedPenalty);
 
   let ticks = 0;
   while (!playerIds.some((userId) => (Number(gauges[userId]) || 0) >= threshold) && ticks < 1000) {
@@ -145,6 +198,7 @@ function resolveNextTurnBySpeed({ battle, actorUserId }) {
     nextActorUserId,
     ticks,
     threshold,
+    energyPenalty: appliedPenalty,
     gauges: Object.fromEntries(playerIds.map((userId) => [userId, Number(gauges[userId]) || 0])),
     speeds: Object.fromEntries(playerIds.map((userId) => [userId, Math.max(1, Number(battle.players[userId]?.stats?.speed) || 1)])),
     reason: extraTurn
@@ -171,10 +225,13 @@ module.exports = {
   BATTLE_HP_MULTIPLIER,
   MAX_POTIONS_PER_BATTLE,
   INITIATIVE_THRESHOLD,
+  MAGIC_ENERGY_COST,
   rollDie,
   calculateBattleHp,
   calculateDamage,
+  calculateMagicDamage,
   resolveAttackTurn,
+  resolveMagicTurn,
   resolvePotionTurn,
   decideStartingPlayer,
   createInitialInitiativeState,

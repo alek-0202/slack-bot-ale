@@ -1,0 +1,24 @@
+{
+  "_meta": {
+    "description": "Biblioteca base de insígnias por elemento.",
+    "format": {
+      "fire": "🔥",
+      "water": "💧",
+      "grass": "🌿",
+      "electric": "⚡",
+      "ice": "❄️",
+      "fighting": "🥊",
+      "psychic": "🧠",
+      "ghost": "👻",
+      "dark": "🌑",
+      "dragon": "🐉",
+      "fairy": "✨",
+      "rock": "🪨",
+      "ground": "🌎",
+      "flying": "🌪️",
+      "bug": "🐛",
+      "poison": "☠️",
+      "steel": "⚙️"
+    }
+  }
+}

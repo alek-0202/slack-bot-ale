@@ -41,6 +41,8 @@ const bpickCommand = require("./commands/bpick");
 const ataqueCommand = require("./commands/ataque");
 const pocaoCommand = require("./commands/pocao");
 const magiaCommand = require("./commands/magia");
+const defesaCommand = require("./commands/defesa");
+const magicregisterCommand = require("./commands/magicregister");
 const bhelpCommand = require("./commands/bhelp");
 const { registerPokedexActions } = require("./handlers/pokedexActions");
 const { registerCoffeActions } = require("./handlers/coffeActions");
@@ -111,6 +113,8 @@ for (const commandModule of [
   ataqueCommand,
   pocaoCommand,
   magiaCommand,
+  defesaCommand,
+  magicregisterCommand,
   bhelpCommand,
 ]) {
   commandRegistry.set(commandModule.name, commandModule);
