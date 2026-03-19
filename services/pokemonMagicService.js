@@ -2,22 +2,29 @@ const { getSupabaseClient } = require("../database/supabase");
 const { createLogger } = require("../utils/logger");
 const { getOwnedPokemonById } = require("./pokemonLookupService");
 const { normalizePokemonTypes } = require("./pokemonTypeService");
-const { buildDefaultMagicName, getElementIcon, getElementLabel } = require("./magicLibraryService");
+const { getRandomMagicName, getElementIcon, getElementLabel } = require("./magicLibraryService");
 
 const logger = createLogger("pokemon-magic-service");
 const MAX_MAGIC_SLOTS = 3;
 const pendingMagicSelectionByKey = new Map();
 
 function buildMagicEntriesFromElements(elements = []) {
+  const usedNames = new Set();
+
   return normalizePokemonTypes(elements)
     .slice(0, MAX_MAGIC_SLOTS)
-    .map((element, index) => ({
-      slot: index + 1,
-      name: buildDefaultMagicName(element, index),
-      element,
-      icon: getElementIcon(element),
-      elementLabel: getElementLabel(element),
-    }));
+    .map((element, index) => {
+      const name = getRandomMagicName(element, [...usedNames]);
+      usedNames.add(name);
+
+      return {
+        slot: index + 1,
+        name,
+        element,
+        icon: getElementIcon(element),
+        elementLabel: getElementLabel(element),
+      };
+    });
 }
 
 async function getPokemonMagicLoadout(pokemonId) {
@@ -122,7 +129,7 @@ function buildMagicSummary(spells = []) {
   if (!spells.length) return "Nenhuma magia registrada.";
 
   return spells
-    .map((spell) => `• ${spell.slot}: *${spell.name}* ${spell.icon} (${spell.elementLabel || getElementLabel(spell.element)})`)
+    .map((spell) => `• ${spell.slot}: ${spell.icon || getElementIcon(spell.element)} *${spell.name}*`)
     .join("\n");
 }
 
