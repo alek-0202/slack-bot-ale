@@ -35,7 +35,8 @@ function buildPlayerViewModel(userId, playerState, initiative) {
     speed: playerState.stats?.speed ?? null,
     initiativeGauge: initiative?.gauges?.[userId] ?? null,
     initiativeThreshold: initiative?.threshold ?? null,
-    potionsRemaining: MAX_POTIONS_PER_BATTLE - (playerState.potionsUsed || 0),
+    potionsRemaining: Math.max(0, MAX_POTIONS_PER_BATTLE - (playerState.potionsUsed || 0)),
+    magicSlots: Array.isArray(playerState.magicSlots) ? playerState.magicSlots : [],
   };
 }
 

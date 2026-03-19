@@ -3,6 +3,9 @@ const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService
 
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
 const BATTLE_DECLINE_ACTION_ID = "battle_decline_invite";
+const BATTLE_TURN_ACTION_ID = "battle_turn_action";
+const BATTLE_MAGIC_ACTION_ID = "battle_magic_action";
+const MAGIC_REGISTER_REMOVE_ACTION_ID = "magic_register_remove_element";
 
 function renderBattleInvite({ challengerId, challengedId, channelId }) {
   return {
@@ -91,11 +94,113 @@ function renderBattleState(battle) {
           },
         ],
       },
+      buildBattleActionBlock(battle),
+    ].filter(Boolean),
+  };
+}
+
+function buildBattleActionBlock(battle) {
+  if (battle.status !== "active") return null;
+
+  return {
+    type: "actions",
+    elements: [
+      buildTurnButton({ battle, label: "⚔️ Ataque", action: "attack", style: "primary" }),
+      buildTurnButton({ battle, label: "🛡️ Defesa", action: "defense" }),
+      buildTurnButton({ battle, label: "✨ Magia", action: "magic" }),
+      buildTurnButton({ battle, label: "🧪 Poção", action: "potion" }),
+    ],
+  };
+}
+
+function buildTurnButton({ battle, label, action, style }) {
+  const button = {
+    type: "button",
+    action_id: BATTLE_TURN_ACTION_ID,
+    text: { type: "plain_text", text: label },
+    value: JSON.stringify({ channelId: battle.channelId, action }),
+  };
+
+  if (style) button.style = style;
+  return button;
+}
+
+function renderMagicOptions({ battle, actorUserId, magicSlots = [] }) {
+  if (!magicSlots.length) {
+    return {
+      text: "Seu Pokémon não possui magias registradas.",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: "✨ Este Pokémon não possui magias registradas. Use `!magicregister <pokeid>` fora da batalha.",
+          },
+        },
+      ],
+    };
+  }
+
+  return {
+    text: "Escolha uma magia",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `✨ *Escolha a magia de <@${actorUserId}>*`,
+        },
+      },
+      {
+        type: "actions",
+        elements: magicSlots.map((magic) => ({
+          type: "button",
+          action_id: BATTLE_MAGIC_ACTION_ID,
+          text: { type: "plain_text", text: `${magic.slot}: ${magic.name} ${magic.icon}`.slice(0, 75) },
+          value: JSON.stringify({ channelId: battle.channelId, magicSlot: magic.slot }),
+        })),
+      },
+    ],
+  };
+}
+
+function renderMagicRegisterElementPrompt({ pokemon, elements, maxSlots }) {
+  return {
+    text: "Escolha quais elementos manter",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            `✨ *${pokemon.pokemon_species?.name || `Pokémon #${pokemon.id}`}* possui ${elements.length} elementos.\n` +
+            `Para registrar magias, remova elementos excedentes até ficar com *${maxSlots}* opções.`,
+        },
+      },
+      {
+        type: "context",
+        elements: [
+          { type: "mrkdwn", text: `Elementos atuais: ${elements.join(", ")}` },
+        ],
+      },
+      {
+        type: "actions",
+        elements: elements.map((element) => ({
+          type: "button",
+          action_id: MAGIC_REGISTER_REMOVE_ACTION_ID,
+          text: { type: "plain_text", text: `Remover ${element}` },
+          value: JSON.stringify({ pokemonId: pokemon.id, removeElement: element }),
+        })),
+      },
     ],
   };
 }
 
 function renderPokemonBlock(player) {
+  const magicText = Array.isArray(player.magicSlots) && player.magicSlots.length
+    ? player.magicSlots.map((magic) => `${magic.slot}. ${magic.name} ${magic.icon}`).join("\n")
+    : "Nenhuma registrada";
+
   return (
     `*<@${player.userId}>*\n` +
     `*${player.selectedPokemonName}* (Nv. ${player.level})${player.starText !== "-" ? ` | ${player.starText}` : ""}\n` +
@@ -103,7 +208,8 @@ function renderPokemonBlock(player) {
     `❤️ ${player.hpCurrent}/${player.hpMax}\n` +
     `⚔️ ATK ${player.attack} | 🛡️ DEF ${player.defense}\n` +
     `💨 SPD ${player.speed} | ⚡ Iniciativa ${player.initiativeGauge}/${player.initiativeThreshold}\n` +
-    `🧪 Poções: ${player.potionsRemaining}`
+    `🧪 Poções: ${player.potionsRemaining}\n` +
+    `✨ Magias:\n${magicText}`
   );
 }
 
@@ -120,8 +226,13 @@ function renderBattleFinished({ winnerId, loserId }) {
 module.exports = {
   BATTLE_ACCEPT_ACTION_ID,
   BATTLE_DECLINE_ACTION_ID,
+  BATTLE_TURN_ACTION_ID,
+  BATTLE_MAGIC_ACTION_ID,
+  MAGIC_REGISTER_REMOVE_ACTION_ID,
   renderBattleInvite,
   renderSelectionPrompt,
   renderBattleState,
+  renderMagicOptions,
+  renderMagicRegisterElementPrompt,
   renderBattleFinished,
 };

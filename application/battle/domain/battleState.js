@@ -29,6 +29,7 @@ function createPlayerState(userId) {
     battleHp: null,
     potionsUsed: 0,
     magicCooldown: 0,
+    magicSlots: [],
   };
 }
 
@@ -93,6 +94,7 @@ function assignSelectedPokemon(battle, userId, pokemon) {
     elementTypes: pokemon.pokemon_species?.element_types || [],
     baseHp: Number(pokemon.hp) || 1,
   };
+  playerState.magicSlots = Array.isArray(pokemon.magicSlots) ? pokemon.magicSlots : [];
   playerState.stats = {
     attack: Number(pokemon.attack) || 1,
     defense: Number(pokemon.defense) || 0,
@@ -141,8 +143,8 @@ function getOpponentId(battle, actorId) {
   return actorId === battle.challengerId ? battle.challengedId : battle.challengerId;
 }
 
-function passTurn(battle, actorUserId = battle.currentTurnUserId) {
-  const initiativeResult = resolveNextTurnBySpeed({ battle, actorUserId });
+function passTurn(battle, actorUserId = battle.currentTurnUserId, options = {}) {
+  const initiativeResult = resolveNextTurnBySpeed({ battle, actorUserId, energyPenalty: options.energyPenalty });
   battle.currentTurnUserId = initiativeResult.nextActorUserId;
   battle.round += 1;
   return initiativeResult;

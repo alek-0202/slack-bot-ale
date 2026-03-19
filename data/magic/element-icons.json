@@ -1,0 +1,8 @@
+{
+  "_meta": {
+    "description": "Biblioteca base de insígnias por elemento.",
+    "format": {
+      "element": "emoji ou texto curto"
+    }
+  }
+}
