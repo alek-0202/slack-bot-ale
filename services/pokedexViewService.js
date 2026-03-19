@@ -91,34 +91,35 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
       `⚔️ ATK: *${entry.attack || 0}* | 🛡️ DEF: *${entry.defense || 0}*\n` +
       `❤️ HP: *${entry.hp || 0}* | 💨 SPD: *${entry.speed || 0}*\n` +
       `💸 Venda atual: *${sellPrice}* gold`
-    : "\n💸 Venda atual: *" + sellPrice + "* gold";
+    : `\n💸 Venda atual: *${sellPrice}* gold`;
 
   const detailsText =
     `*${species.name || "Pokémon desconhecido"}${quantitySuffix}* (#${species.id || "?"})\n` +
     `🆔 ID${entry.quantity > 1 ? "s" : ""}: *${idsText}*\n` +
     `🎚️ Level: *${entry.level || 1}*\n` +
     `⭐ Estrelas: *${visual.starsLabel}*\n` +
-    `🖼️ Moldura: *${visual.border.label}*\n` +
-    `${visual.finalEvolution ? "👑 *Última evolução*\n" : "🧬 *Ainda possui evolução*\n"}` +
-    `⭐ Raridade: *${species.rarity || "desconhecida"}*\n` +
+    `${visual.finalEvolution ? "👑 *Última evolução*\n" : ""}` +
+    `🏅 Raridade: *${species.rarity || "desconhecida"}*\n` +
     `${buildPokemonTypesLabel(species.element_types) ? `🧪 ${buildPokemonTypesLabel(species.element_types)}\n` : ""}` +
     `🏷️ Origem: *${entry.source || "capture"}*\n` +
     `${entry.grouped ? "📦 Grupo: *instâncias equivalentes (Lv 1)*\n" : ""}` +
     `🎯 Captura #${entry.id}${shinyTag}${attributesText}`;
 
+  const visualBlocks = buildPokemonVisualBlocks({ species, level: entry.level });
   const section = {
     type: "section",
     text: {
       type: "mrkdwn",
       text: detailsText,
     },
+    ...(visualBlocks.accessory ? { accessory: visualBlocks.accessory } : {}),
   };
 
   return {
     text: `📘 Pokédex ${positionText}: ${species.name || "Pokémon"}${quantitySuffix}`,
     blocks: [
-      ...buildPokemonVisualBlocks({ species, level: entry.level }).blocks,
       section,
+      ...visualBlocks.blocks,
       {
         type: "context",
         elements: [

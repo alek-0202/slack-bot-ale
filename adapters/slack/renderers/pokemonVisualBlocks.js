@@ -35,46 +35,52 @@ function buildPokemonVisualSummary({ species = {}, level = 1 }) {
   };
 }
 
+function buildAccessoryImage({ species = {}, level = 1 }) {
+  if (!species.sprite_url) return undefined;
+
+  const border = getLevelBorderStyle(level);
+  const frameEmojis = border.hasBorder ? `${border.emoji} ${border.emoji}` : "▫️ ▫️";
+
+  return {
+    type: "image",
+    image_url: species.sprite_url,
+    alt_text: species.name || "Pokémon",
+  title: `${frameEmojis} ${species.name || "Pokémon"} · Lv ${normalizeLevel(level)} ${frameEmojis}`,
+  };
+}
+
 function buildPokemonVisualBlocks({ species = {}, level = 1 }) {
   const visual = buildPokemonVisualSummary({ species, level });
   const blocks = [];
+  const contextElements = [
+    {
+      type: "mrkdwn",
+      text: `⭐ *${visual.starsLabel}*`,
+    },
+  ];
 
-  // O Slack Block Kit não suporta borda/overlay real em image blocks.
-  // Por isso centralizamos a melhor aproximação visual possível:
-  // imagem + linha de status logo abaixo com estrelas, moldura e selo de forma final.
-  if (species.sprite_url) {
-    blocks.push({
-      type: "image",
-      image_url: species.sprite_url,
-      alt_text: species.name || "Pokémon",
-      title: {
-        type: "plain_text",
-        text: `${species.name || "Pokémon"} · Lv ${normalizeLevel(level)}`,
-        emoji: true,
-      },
+  if (visual.finalEvolution) {
+    contextElements.push({
+      type: "mrkdwn",
+      text: "👑 *Última evolução*",
+    });
+  }
+
+  if (visual.border.hasBorder) {
+    contextElements.push({
+      type: "mrkdwn",
+      text: `${visual.border.emoji} ${visual.border.emoji} ${visual.border.emoji}`,
     });
   }
 
   blocks.push({
     type: "context",
-    elements: [
-      {
-        type: "mrkdwn",
-        text: `*Estrelas:* ${visual.starsLabel}`,
-      },
-      {
-        type: "mrkdwn",
-        text: `*Moldura:* ${visual.border.emoji} ${visual.border.label}`,
-      },
-      {
-        type: "mrkdwn",
-        text: visual.finalEvolutionLabel,
-      },
-    ],
+    elements: contextElements,
   });
 
   return {
     ...visual,
+    accessory: buildAccessoryImage({ species, level }),
     blocks,
   };
 }
@@ -84,6 +90,7 @@ module.exports = {
   getLevelBorderStyle,
   isFinalEvolution,
   buildStarsLabel,
+  buildAccessoryImage,
   buildPokemonVisualSummary,
   buildPokemonVisualBlocks,
 };

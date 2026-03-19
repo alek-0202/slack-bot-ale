@@ -1,6 +1,7 @@
 const { parsePositiveInt } = require("../../utils/number");
 const { createLogger } = require("../../utils/logger");
 const { getOwnedPokemonById } = require("../../services/pokemonLookupService");
+const { buildPokemonTypesLabel } = require("../../services/pokemonTypeService");
 const { buildPokemonVisualBlocks, buildPokemonVisualSummary } = require("../../adapters/slack/renderers/pokemonVisualBlocks");
 
 const logger = createLogger("command:pokeid");
@@ -28,36 +29,36 @@ module.exports = {
 
       const species = pokemon.pokemon_species || {};
       const visual = buildPokemonVisualSummary({ species, level: pokemon.level });
-      const shinyLabel = pokemon.shiny ? " | ✨ Shiny" : "";
-      const rarityLabel = species.rarity ? `\n*Raridade:* ${species.rarity}` : "";
-      const typesLabel = Array.isArray(species.element_types) && species.element_types.length
-        ? `\n*Tipos:* ${species.element_types.join(", ")}`
+      const visualBlocks = buildPokemonVisualBlocks({ species, level: pokemon.level });
+      const shinyLabel = pokemon.shiny ? "\n✨ *Shiny*" : "";
+      const rarityLabel = species.rarity ? `\n🏅 *Raridade:* ${species.rarity}` : "";
+      const typesLabel = buildPokemonTypesLabel(species.element_types)
+        ? `\n🧪 ${buildPokemonTypesLabel(species.element_types)}`
         : "";
-      const visualLabels =
-        `\n*Estrelas:* ${visual.starsLabel}` +
-        `\n*Moldura:* ${visual.border.label}` +
-        `\n*Status evolutivo:* ${visual.finalEvolution ? "👑 Última evolução" : "🧬 Ainda possui evolução"}`;
+      const finalEvolutionLabel = visual.finalEvolution ? "\n👑 *Última evolução*" : "";
 
       await say({
         text: `Consulta do Pokémon ID ${pokemonId}`,
         blocks: [
-          { type: "header", text: { type: "plain_text", text: `Pokémon #${pokemonId}`, emoji: true } },
-          ...buildPokemonVisualBlocks({ species, level: pokemon.level }).blocks,
+          { type: "header", text: { type: "plain_text", text: `🎯 Pokémon #${pokemonId}`, emoji: true } },
           {
             type: "section",
             text: {
               type: "mrkdwn",
               text:
-                `*Espécie:* ${species.name || "Pokémon"}${shinyLabel}\n` +
-                `*Level:* ${pokemon.level}\n` +
-                `*ID da coleção:* ${pokemon.id}\n` +
-                `*Species ID:* ${pokemon.species_id}\n` +
-                `*Dono:* <@${pokemon.slack_user_id}>` +
-                visualLabels +
+                `*${species.name || "Pokémon"}* (#${species.id || "?"})\n` +
+                `🆔 *ID da coleção:* ${pokemon.id}\n` +
+                `🎚️ *Level:* ${pokemon.level}\n` +
+                `⭐ *Estrelas:* ${visual.starsLabel}\n` +
+                `👤 *Dono:* <@${pokemon.slack_user_id}>` +
+                finalEvolutionLabel +
                 rarityLabel +
-                typesLabel,
+                typesLabel +
+                shinyLabel,
             },
+            ...(visualBlocks.accessory ? { accessory: visualBlocks.accessory } : {}),
           },
+          ...visualBlocks.blocks,
         ],
       });
     } catch (error) {
