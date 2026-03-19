@@ -10,6 +10,10 @@ const {
   renderMagicRegisterElementPrompt,
 } = require("../services/battleRenderService");
 
+const BATTLE_TURN_ACTION_PATTERN = new RegExp(`^${BATTLE_TURN_ACTION_ID}_.+$`);
+const BATTLE_MAGIC_ACTION_PATTERN = new RegExp(`^${BATTLE_MAGIC_ACTION_ID}_.+$`);
+const MAGIC_REGISTER_REMOVE_ACTION_PATTERN = new RegExp(`^${MAGIC_REGISTER_REMOVE_ACTION_ID}_.+$`);
+
 const logger = createLogger("battle-actions");
 
 function parseValue(value) {
@@ -91,7 +95,6 @@ function registerBattleActions(app) {
 
     if (nextElements.length > 3) {
       clearPendingMagicSelection({ slackUserId, pokemonId });
-      // reusar o próprio upsert só ao final; manter o estado em memória agora
       storePendingMagicSelection({ slackUserId, pokemonId, allElements: nextElements });
       await reply(renderMagicRegisterElementPrompt({
         pokemon: { id: pokemonId, pokemon_species: { name: `Pokémon #${pokemonId}` } },
@@ -120,9 +123,9 @@ function registerBattleActions(app) {
 
   app.action(BATTLE_ACCEPT_ACTION_ID, inviteHandler);
   app.action(BATTLE_DECLINE_ACTION_ID, inviteHandler);
-  app.action(BATTLE_TURN_ACTION_ID, turnActionHandler);
-  app.action(BATTLE_MAGIC_ACTION_ID, magicActionHandler);
-  app.action(MAGIC_REGISTER_REMOVE_ACTION_ID, magicRegisterHandler);
+  app.action(BATTLE_TURN_ACTION_PATTERN, turnActionHandler);
+  app.action(BATTLE_MAGIC_ACTION_PATTERN, magicActionHandler);
+  app.action(MAGIC_REGISTER_REMOVE_ACTION_PATTERN, magicRegisterHandler);
 }
 
 module.exports = {

@@ -7,6 +7,21 @@ const BATTLE_TURN_ACTION_ID = "battle_turn_action";
 const BATTLE_MAGIC_ACTION_ID = "battle_magic_action";
 const MAGIC_REGISTER_REMOVE_ACTION_ID = "magic_register_remove_element";
 
+function buildBattleTurnActionId(action) {
+  return `${BATTLE_TURN_ACTION_ID}_${action}`;
+}
+
+function buildBattleMagicActionId(slot) {
+  return `${BATTLE_MAGIC_ACTION_ID}_${slot}`;
+}
+
+function buildMagicRegisterRemoveActionId(element) {
+  return `${MAGIC_REGISTER_REMOVE_ACTION_ID}_${String(element || "unknown")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "unknown"}`;
+}
+
 function renderBattleInvite({ challengerId, challengedId, channelId }) {
   return {
     text:
@@ -116,7 +131,7 @@ function buildBattleActionBlock(battle) {
 function buildTurnButton({ battle, label, action, style }) {
   const button = {
     type: "button",
-    action_id: BATTLE_TURN_ACTION_ID,
+    action_id: buildBattleTurnActionId(action),
     text: { type: "plain_text", text: label },
     value: JSON.stringify({ channelId: battle.channelId, action }),
   };
@@ -155,7 +170,7 @@ function renderMagicOptions({ battle, actorUserId, magicSlots = [] }) {
         type: "actions",
         elements: magicSlots.map((magic) => ({
           type: "button",
-          action_id: BATTLE_MAGIC_ACTION_ID,
+          action_id: buildBattleMagicActionId(magic.slot),
           text: { type: "plain_text", text: `${magic.slot}: ${magic.name} ${magic.icon}`.slice(0, 75) },
           value: JSON.stringify({ channelId: battle.channelId, magicSlot: magic.slot }),
         })),
@@ -187,7 +202,7 @@ function renderMagicRegisterElementPrompt({ pokemon, elements, maxSlots }) {
         type: "actions",
         elements: elements.map((element) => ({
           type: "button",
-          action_id: MAGIC_REGISTER_REMOVE_ACTION_ID,
+          action_id: buildMagicRegisterRemoveActionId(element),
           text: { type: "plain_text", text: `Remover ${element}` },
           value: JSON.stringify({ pokemonId: pokemon.id, removeElement: element }),
         })),
@@ -229,6 +244,9 @@ module.exports = {
   BATTLE_TURN_ACTION_ID,
   BATTLE_MAGIC_ACTION_ID,
   MAGIC_REGISTER_REMOVE_ACTION_ID,
+  buildBattleTurnActionId,
+  buildBattleMagicActionId,
+  buildMagicRegisterRemoveActionId,
   renderBattleInvite,
   renderSelectionPrompt,
   renderBattleState,
