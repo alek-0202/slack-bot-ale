@@ -3,8 +3,9 @@ const assert = require("node:assert/strict");
 
 const {
   MIN_EVOLUTION_GROWTH,
-  getLevelStatMultiplier,
   calculatePokemonStats,
+  getPokemonProgressionSnapshot,
+  getPokemonStars,
 } = require("../services/pokemonStatsService");
 const { deriveBaseStats } = require("../services/pokedexImportService");
 
@@ -21,7 +22,7 @@ test("deriveBaseStats cresce por raridade e garante +35% por estágio", () => {
   assert.ok(commonStage2.base_speed >= Math.ceil(commonStage1.base_speed * MIN_EVOLUTION_GROWTH));
 });
 
-test("calculatePokemonStats usa stats base da espécie e multiplicador do nível", () => {
+test("calculatePokemonStats aplica progressão forte, marcos e bônus do nível 50", () => {
   const species = {
     id: 25,
     name: "pikachu",
@@ -32,11 +33,30 @@ test("calculatePokemonStats usa stats base da espécie e multiplicador do nível
   };
 
   const level1 = calculatePokemonStats({ species, level: 1 });
-  const level5 = calculatePokemonStats({ species, level: 5 });
+  const level10 = calculatePokemonStats({ species, level: 10 });
+  const level50 = calculatePokemonStats({ species, level: 50 });
 
   assert.deepEqual(level1, { attack: 20, defense: 18, hp: 24, speed: 22 });
-  assert.equal(level5.attack, Math.ceil(20 * getLevelStatMultiplier(5)));
-  assert.equal(level5.defense, Math.ceil(18 * getLevelStatMultiplier(5)));
-  assert.equal(level5.hp, Math.ceil(24 * getLevelStatMultiplier(5)));
-  assert.equal(level5.speed, Math.ceil(22 * getLevelStatMultiplier(5)));
+  assert.deepEqual(level10, { attack: 57, defense: 52, hp: 84, speed: 45 });
+  assert.deepEqual(level50, { attack: 226, defense: 204, hp: 363, speed: 151 });
+});
+
+test("snapshot de progressão expõe estrelas e marcos corretamente", () => {
+  const species = {
+    id: 6,
+    name: "charizard",
+    base_attack: 30,
+    base_defense: 20,
+    base_hp: 25,
+    base_speed: 28,
+  };
+
+  const snapshot = getPokemonProgressionSnapshot({ species, level: 20 });
+
+  assert.equal(snapshot.stars, 2);
+  assert.equal(snapshot.starText, "★★");
+  assert.deepEqual(snapshot.milestonesApplied, [10, 20]);
+  assert.equal(getPokemonStars(9), 0);
+  assert.equal(getPokemonStars(10), 1);
+  assert.equal(getPokemonStars(50), 5);
 });

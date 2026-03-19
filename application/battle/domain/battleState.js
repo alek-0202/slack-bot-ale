@@ -1,4 +1,5 @@
-const { calculateBattleHp, decideStartingPlayer } = require("./battleEngine");
+const { calculateBattleHp, decideStartingPlayer, createInitialInitiativeState, resolveNextTurnBySpeed } = require("./battleEngine");
+const { getPokemonStars, formatPokemonStars } = require("../../../services/pokemonProgressionService");
 
 const BATTLE_STATUS = {
   PENDING: "pending",
@@ -46,6 +47,7 @@ function createBattle({ battleId, channelId, challengerId, challengedId, platfor
     startedAt: null,
     finishedAt: null,
     metadata,
+    initiative: null,
     players: {
       [challengerId]: createPlayerState(challengerId),
       [challengedId]: createPlayerState(challengedId),
@@ -79,11 +81,14 @@ function getExpectedPickerId(battle) {
 
 function assignSelectedPokemon(battle, userId, pokemon) {
   const playerState = battle.players[userId];
+  const level = Number(pokemon.level) || 1;
   playerState.selectedPokemon = {
     id: pokemon.id,
     speciesId: pokemon.species_id,
     name: pokemon.pokemon_species?.name || `Pokémon #${pokemon.species_id}`,
-    level: pokemon.level,
+    level,
+    stars: getPokemonStars(level),
+    starText: formatPokemonStars(level),
     spriteUrl: pokemon.pokemon_species?.sprite_url || null,
     elementTypes: pokemon.pokemon_species?.element_types || [],
     baseHp: Number(pokemon.hp) || 1,
@@ -92,6 +97,7 @@ function assignSelectedPokemon(battle, userId, pokemon) {
     attack: Number(pokemon.attack) || 1,
     defense: Number(pokemon.defense) || 0,
     hp: Number(pokemon.hp) || 1,
+    speed: Number(pokemon.speed) || 1,
   };
 
   const hpMax = calculateBattleHp(playerState.stats.hp);
@@ -118,6 +124,11 @@ function startBattle(battle) {
   battle.status = BATTLE_STATUS.ACTIVE;
   battle.selectionStatus = SELECTION_STATUS.COMPLETE;
   battle.startedAt = new Date().toISOString();
+  battle.initiative = createInitialInitiativeState({
+    challengerId: battle.challengerId,
+    challengedId: battle.challengedId,
+    starter,
+  });
 
   return {
     battle,
@@ -130,10 +141,11 @@ function getOpponentId(battle, actorId) {
   return actorId === battle.challengerId ? battle.challengedId : battle.challengerId;
 }
 
-function passTurn(battle) {
-  battle.currentTurnUserId = getOpponentId(battle, battle.currentTurnUserId);
+function passTurn(battle, actorUserId = battle.currentTurnUserId) {
+  const initiativeResult = resolveNextTurnBySpeed({ battle, actorUserId });
+  battle.currentTurnUserId = initiativeResult.nextActorUserId;
   battle.round += 1;
-  return battle;
+  return initiativeResult;
 }
 
 function finishBattle(battle, winnerId) {

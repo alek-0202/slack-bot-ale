@@ -6,6 +6,8 @@ const {
   calculateDamage,
   resolvePotionTurn,
   decideStartingPlayer,
+  createInitialInitiativeState,
+  resolveNextTurnBySpeed,
 } = require("../application/battle/domain/battleEngine");
 const {
   createBattle,
@@ -68,6 +70,21 @@ test("decideStartingPlayer sempre retorna um dos dois usuários", () => {
   assert.ok(["cara", "coroa"].includes(result.result));
 });
 
+test("iniciativa por speed mantém medidor e pode conceder turno extra", () => {
+  const battle = createReadyBattle({ u1Speed: 15, u2Speed: 10 });
+  battle.initiative = createInitialInitiativeState({ challengerId: "U1", challengedId: "U2", starter: "U1" });
+
+  const first = resolveNextTurnBySpeed({ battle, actorUserId: "U1" });
+  assert.equal(first.nextActorUserId, "U1");
+  assert.equal(first.extraTurn, true);
+  assert.equal(first.gauges.U1, 105);
+  assert.equal(first.gauges.U2, 70);
+
+  const second = resolveNextTurnBySpeed({ battle, actorUserId: "U1" });
+  assert.equal(second.nextActorUserId, "U2");
+  assert.equal(second.extraTurn, false);
+});
+
 test("núcleo compartilhado inicia batalha após seleção dos dois jogadores", () => {
   const battle = createBattle({
     channelId: "C1",
@@ -89,6 +106,7 @@ test("núcleo compartilhado inicia batalha após seleção dos dois jogadores", 
   assert.ok(["U1", "U2"].includes(starter));
   assert.equal(startedBattle.players.U1.selectedPokemon.name, "Pikachu");
   assert.equal(startedBattle.players.U2.selectedPokemon.name, "Charmander");
+  assert.ok(startedBattle.initiative);
 });
 
 test("turn resolver compartilha ataque e finaliza batalha quando HP zera", () => {
@@ -125,7 +143,7 @@ test("turn resolver mantém magia como placeholder compartilhado", () => {
   assert.equal(battle.status, "active");
 });
 
-function mockPokemon({ id, speciesId, name }) {
+function mockPokemon({ id, speciesId, name, speed = 12 }) {
   return {
     id,
     species_id: speciesId,
@@ -133,6 +151,7 @@ function mockPokemon({ id, speciesId, name }) {
     hp: 20,
     attack: 8,
     defense: 4,
+    speed,
     pokemon_species: {
       name,
       sprite_url: null,
@@ -140,7 +159,7 @@ function mockPokemon({ id, speciesId, name }) {
   };
 }
 
-function createReadyBattle() {
+function createReadyBattle({ u1Speed = 12, u2Speed = 12 } = {}) {
   const battle = createBattle({
     channelId: "C-ready",
     challengerId: "U1",
@@ -149,9 +168,9 @@ function createReadyBattle() {
   });
 
   acceptInvite(battle);
-  assignSelectedPokemon(battle, "U1", mockPokemon({ id: 1, speciesId: 25, name: "Pikachu" }));
+  assignSelectedPokemon(battle, "U1", mockPokemon({ id: 1, speciesId: 25, name: "Pikachu", speed: u1Speed }));
   advanceSelectionState(battle);
-  assignSelectedPokemon(battle, "U2", mockPokemon({ id: 2, speciesId: 4, name: "Charmander" }));
+  assignSelectedPokemon(battle, "U2", mockPokemon({ id: 2, speciesId: 4, name: "Charmander", speed: u2Speed }));
   advanceSelectionState(battle);
   startBattle(battle);
   return battle;

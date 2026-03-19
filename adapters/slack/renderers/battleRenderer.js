@@ -8,8 +8,8 @@ function renderBattleInvite({ challengerId, challengedId, channelId }) {
   return {
     text:
       `⚔️ <@${challengerId}> desafiou <@${challengedId}> para um duelo PvP!\n` +
-      "Use os botões abaixo para aceitar ou recusar." +
-      "\nApós aceitar, cada jogador deve escolher seu Pokémon com `!bpick ID`.",
+      "Use os botões abaixo para aceitar ou recusar.\n" +
+      "Após aceitar, cada jogador deve escolher seu Pokémon com `!bpick ID`.",
     blocks: [
       {
         type: "section",
@@ -98,17 +98,19 @@ function renderBattleState(battle) {
 function renderPokemonBlock(player) {
   return (
     `*<@${player.userId}>*\n` +
-    `*${player.selectedPokemonName}* (Nv. ${player.level})\n` +
+    `*${player.selectedPokemonName}* (Nv. ${player.level})${player.starText !== "-" ? ` | ${player.starText}` : ""}\n` +
     `${buildPokemonTypesLabel(player.selectedPokemonTypes) ? `🧪 ${buildPokemonTypesLabel(player.selectedPokemonTypes)}\n` : ""}` +
     `❤️ ${player.hpCurrent}/${player.hpMax}\n` +
     `⚔️ ATK ${player.attack} | 🛡️ DEF ${player.defense}\n` +
+    `💨 SPD ${player.speed} | ⚡ Iniciativa ${player.initiativeGauge}/${player.initiativeThreshold}\n` +
     `🧪 Poções: ${player.potionsRemaining}`
   );
 }
 
 function renderPokemonLine(player) {
   const typesLabel = buildPokemonTypesLabel(player.selectedPokemonTypes);
-  return `• <@${player.userId}> — ${player.selectedPokemonName} Nv.${player.level}${typesLabel ? ` | ${typesLabel}` : ""} | HP ${player.hpCurrent}/${player.hpMax}`;
+  const starsLabel = player.starText !== "-" ? ` | ${player.starText}` : "";
+  return `• <@${player.userId}> — ${player.selectedPokemonName} Nv.${player.level}${starsLabel}${typesLabel ? ` | ${typesLabel}` : ""} | HP ${player.hpCurrent}/${player.hpMax} | SPD ${player.speed}`;
 }
 
 function renderBattleFinished({ winnerId, loserId }) {
