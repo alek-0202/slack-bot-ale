@@ -1,6 +1,7 @@
 const { calculatePokemonSellPrice } = require("./sellService");
 const { getUserPokemons, buildPokedexDisplayEntries } = require("./pokemonService");
 const { buildPokemonTypesLabel } = require("./pokemonTypeService");
+const { buildPokemonVisualBlocks, buildPokemonVisualSummary } = require("../adapters/slack/renderers/pokemonVisualBlocks");
 
 const POKEDEX_NAV_PREV_ACTION_ID = "pokedex_navigate_prev";
 const POKEDEX_NAV_NEXT_ACTION_ID = "pokedex_navigate_next";
@@ -78,6 +79,7 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
   }
 
   const species = entry.pokemon_species || {};
+  const visual = buildPokemonVisualSummary({ species, level: entry.level });
   const sellPrice = calculatePokemonSellPrice({ rarity: species.rarity, level: entry.level, upgradeSpentGold: entry.upgrade_spent_gold }).finalPrice;
   const positionText = `${index + 1}/${total}`;
   const shinyTag = entry.shiny ? "\n✨ *Shiny*" : "";
@@ -89,38 +91,35 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
       `⚔️ ATK: *${entry.attack || 0}* | 🛡️ DEF: *${entry.defense || 0}*\n` +
       `❤️ HP: *${entry.hp || 0}* | 💨 SPD: *${entry.speed || 0}*\n` +
       `💸 Venda atual: *${sellPrice}* gold`
-    : "\n💸 Venda atual: *" + sellPrice + "* gold";
+    : `\n💸 Venda atual: *${sellPrice}* gold`;
 
   const detailsText =
     `*${species.name || "Pokémon desconhecido"}${quantitySuffix}* (#${species.id || "?"})\n` +
     `🆔 ID${entry.quantity > 1 ? "s" : ""}: *${idsText}*\n` +
     `🎚️ Level: *${entry.level || 1}*\n` +
-    `⭐ Raridade: *${species.rarity || "desconhecida"}*\n` +
+    `⭐ Estrelas: *${visual.starsLabel}*\n` +
+    `${visual.finalEvolution ? "👑 *Última evolução*\n" : ""}` +
+    `🏅 Raridade: *${species.rarity || "desconhecida"}*\n` +
     `${buildPokemonTypesLabel(species.element_types) ? `🧪 ${buildPokemonTypesLabel(species.element_types)}\n` : ""}` +
     `🏷️ Origem: *${entry.source || "capture"}*\n` +
     `${entry.grouped ? "📦 Grupo: *instâncias equivalentes (Lv 1)*\n" : ""}` +
     `🎯 Captura #${entry.id}${shinyTag}${attributesText}`;
 
+  const visualBlocks = buildPokemonVisualBlocks({ species, level: entry.level });
   const section = {
     type: "section",
     text: {
       type: "mrkdwn",
       text: detailsText,
     },
+    ...(visualBlocks.accessory ? { accessory: visualBlocks.accessory } : {}),
   };
-
-  if (species.sprite_url) {
-    section.accessory = {
-      type: "image",
-      image_url: species.sprite_url,
-      alt_text: species.name || "Pokémon",
-    };
-  }
 
   return {
     text: `📘 Pokédex ${positionText}: ${species.name || "Pokémon"}${quantitySuffix}`,
     blocks: [
       section,
+      ...visualBlocks.blocks,
       {
         type: "context",
         elements: [

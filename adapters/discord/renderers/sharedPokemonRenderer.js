@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const { buildPokemonTypesLabel } = require('../../../services/pokemonTypeService');
+const { formatPokemonStars } = require('../../../services/pokemonProgressionService');
 
 function renderDiscordProfileSummary({ username, profile }) {
   return {
@@ -56,9 +57,10 @@ function renderDiscordUpgradeResult({ result, maxLevel, getNextUpgradeCost }) {
   }
 
   const speciesName = result.pokemon.pokemon_species?.name || 'Pokémon';
+  const stars = formatPokemonStars(result.newLevel);
   const nextUpgradeCost = result.newLevel >= maxLevel ? 'MAX' : `${getNextUpgradeCost(result.newLevel)} gold`;
 
-  return `🛠️ **${speciesName}** (#${result.pokemon.id}) subiu ${result.previousLevel} → ${result.newLevel}. Próximo custo: ${nextUpgradeCost}.`;
+  return `🛠️ **${speciesName}** (#${result.pokemon.id}) subiu ${result.previousLevel} → ${result.newLevel} ${stars !== '-' ? `(${stars})` : ''}. Próximo custo: ${nextUpgradeCost}.`;
 }
 
 module.exports = {

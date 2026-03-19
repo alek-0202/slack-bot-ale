@@ -1,25 +1,24 @@
 const { createLogger } = require("../utils/logger");
+const {
+  STAT_FIELDS,
+  MAX_LEVEL,
+  LEVEL_GROWTH_RATES,
+  MILESTONE_GROWTH_RATES,
+  LEVEL_FIFTY_FLAT_BONUS,
+  toPositiveInteger,
+  normalizeLevel,
+  getPokemonStars,
+  formatPokemonStars,
+  calculateProgressedStats,
+} = require("./pokemonProgressionService");
 
 const logger = createLogger("pokemon-stats-service");
 
-const STAT_FIELDS = ["attack", "defense", "hp", "speed"];
 const SPECIES_STAT_FIELDS = ["base_attack", "base_defense", "base_hp", "base_speed"];
-const STAT_SCALE_PER_LEVEL = 0.02;
 const MIN_EVOLUTION_GROWTH = 1.35;
-
-function toPositiveInteger(value, fallback = 0) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return Math.round(parsed);
-}
 
 function hasCompleteBaseStats(species = {}) {
   return SPECIES_STAT_FIELDS.every((field) => toPositiveInteger(species[field], 0) > 0);
-}
-
-function getLevelStatMultiplier(level = 1) {
-  const safeLevel = Math.max(1, toPositiveInteger(level, 1));
-  return Math.pow(1 + STAT_SCALE_PER_LEVEL, Math.max(safeLevel - 1, 0));
 }
 
 function getSpeciesBaseStats(species = {}, options = {}) {
@@ -49,34 +48,71 @@ function getSpeciesBaseStats(species = {}, options = {}) {
   return baseStats;
 }
 
-function calculatePokemonStats({ species = {}, level = 1, fallbackStats = {} } = {}) {
-  const baseStats = getSpeciesBaseStats(species, { fallbackStats });
-  const multiplier = getLevelStatMultiplier(level);
+function getLevelStatMultiplier(level = 1) {
+  const safeLevel = normalizeLevel(level);
+  const result = calculateProgressedStats({
+    baseStats: { attack: 100, defense: 100, hp: 100, speed: 100 },
+    level: safeLevel,
+  });
 
-  return {
-    attack: Math.max(1, Math.ceil(baseStats.attack * multiplier)),
-    defense: Math.max(1, Math.ceil(baseStats.defense * multiplier)),
-    hp: Math.max(1, Math.ceil(baseStats.hp * multiplier)),
-    speed: Math.max(1, Math.ceil(baseStats.speed * multiplier)),
-  };
+  return result.stats.attack / 100;
+}
+
+function calculatePokemonStats({ species = {}, level = 1, fallbackStats = {}, log = false, context = {} } = {}) {
+  const baseStats = getSpeciesBaseStats(species, { fallbackStats });
+  const progression = calculateProgressedStats({
+    baseStats,
+    level,
+    log,
+    context: {
+      speciesId: species.id || null,
+      speciesName: species.name || null,
+      ...context,
+    },
+  });
+
+  return progression.stats;
+}
+
+function getPokemonProgressionSnapshot({ species = {}, level = 1, fallbackStats = {}, log = false, context = {} } = {}) {
+  const baseStats = getSpeciesBaseStats(species, { fallbackStats });
+  return calculateProgressedStats({
+    baseStats,
+    level,
+    log,
+    context: {
+      speciesId: species.id || null,
+      speciesName: species.name || null,
+      ...context,
+    },
+  });
 }
 
 function getStatSnapshotMetadata({ species = {}, level = 1, previousSpeciesId = null } = {}) {
+  const safeLevel = normalizeLevel(level);
   return {
     speciesId: species.id || null,
-    level: Math.max(1, toPositiveInteger(level, 1)),
+    level: safeLevel,
     previousSpeciesId: previousSpeciesId || null,
+    stars: getPokemonStars(safeLevel),
+    starText: formatPokemonStars(safeLevel),
   };
 }
 
 module.exports = {
   STAT_FIELDS,
   SPECIES_STAT_FIELDS,
-  STAT_SCALE_PER_LEVEL,
+  MAX_LEVEL,
+  LEVEL_GROWTH_RATES,
+  MILESTONE_GROWTH_RATES,
+  LEVEL_FIFTY_FLAT_BONUS,
   MIN_EVOLUTION_GROWTH,
   hasCompleteBaseStats,
   getLevelStatMultiplier,
   getSpeciesBaseStats,
+  getPokemonStars,
+  formatPokemonStars,
   calculatePokemonStats,
+  getPokemonProgressionSnapshot,
   getStatSnapshotMetadata,
 };

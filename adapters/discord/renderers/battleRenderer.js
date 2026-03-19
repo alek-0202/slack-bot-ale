@@ -23,8 +23,8 @@ function renderDiscordBattleState(battle) {
     .map((player) => (
       `• <@${player.userId}> — **${player.selectedPokemonName}** (Lv ${player.level}) | ` +
       `${buildPokemonTypesLabel(player.selectedPokemonTypes) ? `${buildPokemonTypesLabel(player.selectedPokemonTypes)} | ` : ""}` +
-      `HP ${player.hpCurrent}/${player.hpMax} | ATK ${player.attack} | DEF ${player.defense} | ` +
-      `Poções ${player.potionsRemaining}`
+      `HP ${player.hpCurrent}/${player.hpMax} | ATK ${player.attack} | DEF ${player.defense} | SPD ${player.speed} | ${player.starText !== "-" ? `${player.starText} | ` : ""}` +
+      `Ini ${player.initiativeGauge}/${player.initiativeThreshold} | Poções ${player.potionsRemaining}`
     ))
     .join("\n");
 

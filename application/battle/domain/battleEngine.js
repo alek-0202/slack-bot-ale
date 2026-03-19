@@ -2,6 +2,7 @@ const { randomCoinflip } = require("../../../utils/helpers");
 
 const BATTLE_HP_MULTIPLIER = 12.5;
 const MAX_POTIONS_PER_BATTLE = 5;
+const INITIATIVE_THRESHOLD = 100;
 
 function rollDie(sides) {
   return Math.floor(Math.random() * sides) + 1;
@@ -91,13 +92,91 @@ function decideStartingPlayer(challengerId, challengedId) {
   };
 }
 
+function createInitialInitiativeState({ challengerId, challengedId, starter }) {
+  return {
+    threshold: INITIATIVE_THRESHOLD,
+    gauges: {
+      [challengerId]: starter === challengerId ? INITIATIVE_THRESHOLD : 0,
+      [challengedId]: starter === challengedId ? INITIATIVE_THRESHOLD : 0,
+    },
+    lastActorUserId: null,
+    lastTickCount: 0,
+    lastDebug: null,
+  };
+}
+
+function resolveNextTurnBySpeed({ battle, actorUserId }) {
+  const playerIds = [battle.challengerId, battle.challengedId];
+  const gauges = battle.initiative?.gauges || {};
+  const threshold = battle.initiative?.threshold || INITIATIVE_THRESHOLD;
+
+  gauges[actorUserId] = Math.max(0, (Number(gauges[actorUserId]) || 0) - threshold);
+
+  let ticks = 0;
+  while (!playerIds.some((userId) => (Number(gauges[userId]) || 0) >= threshold) && ticks < 1000) {
+    for (const userId of playerIds) {
+      const speed = Math.max(1, Number(battle.players[userId]?.stats?.speed) || 1);
+      gauges[userId] = (Number(gauges[userId]) || 0) + speed;
+    }
+    ticks += 1;
+  }
+
+  const sortedCandidates = playerIds
+    .map((userId) => ({
+      userId,
+      gauge: Number(gauges[userId]) || 0,
+      speed: Math.max(1, Number(battle.players[userId]?.stats?.speed) || 1),
+    }))
+    .sort((left, right) => {
+      if (right.gauge !== left.gauge) return right.gauge - left.gauge;
+      if (right.speed !== left.speed) return right.speed - left.speed;
+      if (left.userId === actorUserId) return 1;
+      if (right.userId === actorUserId) return -1;
+      return left.userId.localeCompare(right.userId);
+    });
+
+  const nextActorUserId = sortedCandidates[0]?.userId || actorUserId;
+  const opponentId = playerIds.find((userId) => userId !== actorUserId) || actorUserId;
+  const extraTurn = nextActorUserId === actorUserId;
+
+  const debug = {
+    actorUserId,
+    opponentId,
+    nextActorUserId,
+    ticks,
+    threshold,
+    gauges: Object.fromEntries(playerIds.map((userId) => [userId, Number(gauges[userId]) || 0])),
+    speeds: Object.fromEntries(playerIds.map((userId) => [userId, Math.max(1, Number(battle.players[userId]?.stats?.speed) || 1)])),
+    reason: extraTurn
+      ? "same_actor_retained_turn_due_to_higher_initiative"
+      : "turn_passed_after_initiative_resolution",
+  };
+
+  battle.initiative = {
+    threshold,
+    gauges,
+    lastActorUserId: actorUserId,
+    lastTickCount: ticks,
+    lastDebug: debug,
+  };
+
+  return {
+    nextActorUserId,
+    extraTurn,
+    ...debug,
+  };
+}
+
 module.exports = {
   BATTLE_HP_MULTIPLIER,
   MAX_POTIONS_PER_BATTLE,
+  INITIATIVE_THRESHOLD,
   rollDie,
   calculateBattleHp,
   calculateDamage,
   resolveAttackTurn,
   resolvePotionTurn,
   decideStartingPlayer,
+  createInitialInitiativeState,
+  resolveNextTurnBySpeed,
 };

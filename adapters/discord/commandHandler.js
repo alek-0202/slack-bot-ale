@@ -26,10 +26,25 @@ const {
   renderDiscordCaptureResult,
   renderDiscordUpgradeResult,
 } = require("./renderers/sharedPokemonRenderer");
-const { renderDiscordSpeciesCatalogEntry, renderDiscordElementsReference } = require("./renderers/speciesCatalogRenderer");
+const { renderDiscordElementsReference } = require("./renderers/speciesCatalogRenderer");
 const { findCatalogSpeciesByName, findCatalogSpeciesByTag } = require("../../application/useCases/pokemon/catalogLookup");
 const { getSpeciesView } = require("../../services/speciesCatalogViewService");
 const { getPokemonElementsReference } = require("../../services/pokemonElementsService");
+const { getOwnedPokemonById, findUserPokemonsBySpeciesName } = require("../../services/pokemonLookupService");
+const { claimDaily } = require("../../services/dailyService");
+const { createLogger } = require("../../utils/logger");
+const {
+  buildEvolvePreviewPayload,
+  buildUpgradePreviewPayload,
+  buildSellPreviewPayload,
+  buildEvolvePreview,
+  buildUpgradeBatchPreview,
+  buildSellPreviewCard,
+  buildConfirmRow,
+} = require("./handlers/pokemonActions");
+const { buildSpeciesCatalogDiscordPayload } = require("./handlers/speciesCatalogNavigation");
+
+const logger = createLogger("discord-command-handler");
 
 function platformCtx(interaction) {
   const userId = toPlatformUserId("discord", interaction.user.id);
@@ -68,6 +83,14 @@ function tradeEmbed(details) {
 async function handleDiscordCommand(interaction) {
   const { userId, channelId } = platformCtx(interaction);
   const name = interaction.commandName;
+  const logContext = {
+    command: name,
+    userId,
+    guildId: interaction.guildId || null,
+    channelId: interaction.channelId || null,
+  };
+
+  logger.info("Comando Discord recebido", logContext);
 
   if (name === "help") {
     await interaction.reply("Use `/pokemonhelp` para comandos Pokémon e `/capture` para começar.");
@@ -76,7 +99,15 @@ async function handleDiscordCommand(interaction) {
 
   if (name === "pokemonhelp") {
     await interaction.reply(
-      "Comandos: /profile, /capture, /pokedex, /pokename, /poketag, /elements, /pa, /upgrade, /market, /trade.\nSe ainda não iniciou, use `/profile` e confirme o start automático.",
+      [
+        "Comandos Pokémon no Discord:",
+        "• /profile, /balance, /daily, /dhelp",
+        "• /capture, /pokedex, /pa, /pokeall, /pokename, /poketag, /pokeid, /pokeplayer, /elements",
+        "• /upgrade, /up, /evolve, /sell, /resetpokeid",
+        "• /market e /trade",
+        "",
+        "Se ainda não iniciou, use `/profile` para criar seu perfil automaticamente.",
+      ].join("\n"),
     );
     return;
   }
@@ -87,12 +118,70 @@ async function handleDiscordCommand(interaction) {
     return;
   }
 
+  if (name === "balance") {
+    const user = await getUser(userId);
+    if (!user) {
+      await interaction.reply("Você ainda não começou. Use `/profile` para iniciar automaticamente.");
+      return;
+    }
+
+    await interaction.reply(`💰 Seu saldo atual é **${user.gold}** gold.`);
+    return;
+  }
+
+  if (name === "daily") {
+    const result = await claimDaily(userId);
+
+    if (!result.ok && result.reason === "already_claimed_today") {
+      await interaction.reply("⏳ Você já resgatou seu `/daily` hoje. Volte depois da virada do dia.");
+      return;
+    }
+
+    if (!result.ok) {
+      await interaction.reply("Não consegui processar seu `/daily` agora 😵");
+      return;
+    }
+
+    await interaction.reply(`🎁 Seu \`/daily\` caiu e você ganhou **${result.goldReward}** gold!`);
+    return;
+  }
+
+  if (name === "dhelp") {
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("Ajuda do /daily")
+          .setDescription(
+            [
+              "`/daily` pode ser usado **1 vez por dia**.",
+              "Exemplo: se você usou 23:59, às 00:00 já pode usar novamente.",
+              "",
+              "**Chances de recompensa:**",
+              "• **5000 a 10000 gold** → 0,001%",
+              "• **2000 a 5000 gold** → 0,05%",
+              "• **1000 a 2000 gold** → 0,3%",
+              "• **700 a 1000 gold** → 5%",
+              "• **500 a 700 gold** → 18%",
+              "• **150 a 500 gold** → restante",
+            ].join("\n"),
+          )
+          .setColor(0xf1c40f),
+      ],
+    });
+    return;
+  }
+
   if (name === "capture") {
     const result = await captureForUser({ userId });
     await interaction.reply(renderDiscordCaptureResult({ result }));
     return;
   }
 
+  if (name === "pokeall") {
+    const view = await getSpeciesView(0);
+    await interaction.reply(buildSpeciesCatalogDiscordPayload({ ownerUserId: userId, view }));
+    return;
+  }
 
   if (name === "pokename") {
     const query = interaction.options.getString("nome", true);
@@ -110,7 +199,7 @@ async function handleDiscordCommand(interaction) {
     }
 
     const view = await getSpeciesView(result.index, result.speciesIds);
-    await interaction.reply(renderDiscordSpeciesCatalogEntry(view));
+    await interaction.reply(buildSpeciesCatalogDiscordPayload({ ownerUserId: userId, view }));
     return;
   }
 
@@ -129,7 +218,7 @@ async function handleDiscordCommand(interaction) {
     }
 
     const view = await getSpeciesView(result.index, result.speciesIds);
-    await interaction.reply(renderDiscordSpeciesCatalogEntry(view));
+    await interaction.reply(buildSpeciesCatalogDiscordPayload({ ownerUserId: userId, view }));
     return;
   }
 
@@ -151,6 +240,78 @@ async function handleDiscordCommand(interaction) {
     return;
   }
 
+  if (name === "pokeid") {
+    const pokemonId = interaction.options.getInteger("pokemon_id", true);
+    const pokemon = await getOwnedPokemonById(pokemonId);
+
+    if (!pokemon) {
+      await interaction.reply(`Não encontrei nenhum Pokémon de coleção com o ID **${pokemonId}**.`);
+      return;
+    }
+
+    const species = pokemon.pokemon_species || {};
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(`Pokémon #${pokemonId}`)
+          .setDescription(
+            [
+              `**Espécie:** ${species.name || "Pokémon"}${pokemon.shiny ? " ✨" : ""}`,
+              `**Level:** ${pokemon.level}`,
+              `**ID da coleção:** ${pokemon.id}`,
+              `**Species ID:** ${pokemon.species_id}`,
+              `**Dono:** <@${fromPlatformId(pokemon.slack_user_id)}>`,
+              species.rarity ? `**Raridade:** ${species.rarity}` : null,
+              Array.isArray(species.element_types) && species.element_types.length
+                ? `**Tipos:** ${species.element_types.join(", ")}`
+                : null,
+            ].filter(Boolean).join("\n"),
+          )
+          .setThumbnail(species.sprite_url || null)
+          .setColor(0x16a085),
+      ],
+    });
+    return;
+  }
+
+  if (name === "pokeplayer") {
+    const target = interaction.options.getUser("usuario", true);
+    const speciesQuery = interaction.options.getString("pokemon", true);
+    const speciesResult = await findCatalogSpeciesByName(speciesQuery);
+
+    if (!speciesResult.ok) {
+      if (speciesResult.reason === "ambiguous") {
+        const options = speciesResult.matches.map((match) => `${match.name} (#${match.id})`).join(", ");
+        await interaction.reply(`O nome **${speciesQuery}** ficou ambíguo. Possíveis resultados: ${options}.`);
+        return;
+      }
+
+      await interaction.reply(`Não encontrei nenhuma espécie com o nome **${speciesQuery}**.`);
+      return;
+    }
+
+    const found = await findUserPokemonsBySpeciesName({
+      slackUserId: toPlatformUserId("discord", target.id),
+      speciesName: speciesResult.species.name,
+    });
+
+    if (!found.length) {
+      await interaction.reply(`<@${target.id}> não possui nenhum **${speciesResult.species.name}** na coleção.`);
+      return;
+    }
+
+    const summary = found
+      .slice(0, 10)
+      .map((pokemon) => `• ID ${pokemon.id} — level ${pokemon.level}${pokemon.shiny ? " — shiny" : ""}`)
+      .join("\n");
+    const extra = found.length > 10 ? `\n…e mais **${found.length - 10}** exemplar(es).` : "";
+
+    await interaction.reply(
+      `🔎 <@${target.id}> possui **${found.length}** exemplar(es) de **${speciesResult.species.name}**.\n${summary}${extra}`,
+    );
+    return;
+  }
+
   if (name === "upgrade") {
     const pokemonId = interaction.options.getInteger("pokemon_id", true);
     const result = await upgradePokemonForUser({ userId, pokemonId });
@@ -161,6 +322,111 @@ async function handleDiscordCommand(interaction) {
         getNextUpgradeCost: getUpgradeCost,
       }),
     );
+    return;
+  }
+
+  if (name === "up") {
+    const pokemonId = interaction.options.getInteger("pokemon_id", true);
+    const targetLevel = interaction.options.getInteger("nivel", true);
+    const preview = await buildUpgradeBatchPreview({ slackUserId: userId, pokemonId, targetLevel });
+
+    if (!preview.ok) {
+      const map = {
+        user_not_started: "Você ainda não começou. Use `/profile`.",
+        pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
+        invalid_target_level: "O nível alvo informado é inválido.",
+        target_must_be_higher: `O nível alvo precisa ser maior que o nível atual (${preview.currentLevel}).`,
+        target_above_max_level: `O nível alvo ultrapassa o máximo permitido (${preview.maxLevel}).`,
+      };
+      await interaction.reply(map[preview.reason] || "Não consegui preparar esse upgrade agora 😵");
+      return;
+    }
+
+    if (!preview.canAfford) {
+      await interaction.reply(
+        `💸 Você precisa de **${preview.totalCost}** gold para subir **${preview.pokemon.pokemon_species?.name || "esse Pokémon"}** até o nível **${preview.targetLevel}**, mas possui **${preview.currentGold}** gold.`,
+      );
+      return;
+    }
+
+    await interaction.reply(buildUpgradePreviewPayload({ ownerUserId: userId, preview }));
+    return;
+  }
+
+  if (name === "evolve") {
+    const pokemonId = interaction.options.getInteger("pokemon_id", true);
+    const preview = await buildEvolvePreview({ slackUserId: userId, pokemonId });
+
+    if (!preview.ok) {
+      const map = {
+        user_not_started: "Você ainda não começou. Use `/profile`.",
+        pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
+        species_stats_missing: "Os dados da próxima evolução estão incompletos no momento.",
+      };
+
+      if (preview.reason === "no_evolution_available") {
+        await interaction.reply("Esse Pokémon não possui próxima evolução disponível no momento.");
+        return;
+      }
+
+      await interaction.reply(map[preview.reason] || "Não consegui preparar essa evolução agora 😵");
+      return;
+    }
+
+    await interaction.reply(buildEvolvePreviewPayload({ ownerUserId: userId, preview }));
+    return;
+  }
+
+  if (name === "sell") {
+    const pokemonId = interaction.options.getInteger("pokemon_id", true);
+    const preview = await buildSellPreviewCard({ slackUserId: userId, pokemonId });
+
+    if (!preview.ok) {
+      await interaction.reply(
+        preview.reason === "pokemon_not_owned"
+          ? "Você só pode vender Pokémons que pertencem a você."
+          : "Não consegui preparar a venda desse Pokémon agora 😵",
+      );
+      return;
+    }
+
+    await interaction.reply(buildSellPreviewPayload({ ownerUserId: userId, preview }));
+    return;
+  }
+
+  if (name === "resetpokeid") {
+    const pokemonId = interaction.options.getInteger("pokemon_id", true);
+    const pokemon = await getOwnedPokemonById(pokemonId);
+
+    if (!pokemon || pokemon.slack_user_id !== userId) {
+      await interaction.reply("Pokémon não encontrado ou não pertence a você.");
+      return;
+    }
+
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("Confirmar reset de upgrades")
+          .setDescription(
+            [
+              `**Pokémon:** ${pokemon.pokemon_species?.name || "Pokémon"} (#${pokemon.id})`,
+              `**Nível atual:** ${pokemon.level}`,
+              `**Ação:** resetar upgrades e devolver o gold investido`,
+            ].join("\n"),
+          )
+          .setThumbnail(pokemon.pokemon_species?.sprite_url || null)
+          .setColor(0xf39c12),
+      ],
+      components: [
+        buildConfirmRow({
+          confirmAction: "poke-reset-confirm",
+          cancelAction: "poke-reset-cancel",
+          ownerUserId: userId,
+          pokemonId,
+          danger: true,
+        }),
+      ],
+    });
     return;
   }
 

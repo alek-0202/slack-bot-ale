@@ -1,4 +1,5 @@
 const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService");
+const { formatPokemonStars } = require("../../../services/pokemonProgressionService");
 
 function renderSlackProfileSummary({ slackUserId, profile }) {
   return (
@@ -92,13 +93,14 @@ function renderSlackUpgradeResult({ result, slackUserId, maxLevel, getNextUpgrad
   }
 
   const speciesName = result.pokemon.pokemon_species?.name || 'Pokémon';
+  const stars = formatPokemonStars(result.newLevel);
   const nextUpgradeCost =
     result.newLevel >= maxLevel ? 'MAX' : `${getNextUpgradeCost(result.newLevel)} gold`;
 
   return (
     `🛠️ *${speciesName}* (#${result.pokemon.id}) melhorado com sucesso!
 ` +
-    `📈 Nível: *${result.previousLevel}* → *${result.newLevel}*
+    `📈 Nível: *${result.previousLevel}* → *${result.newLevel}* ${stars !== '-' ? `(${stars})` : ''}
 ` +
     `💸 Custo pago: *${result.cost}* gold
 ` +
