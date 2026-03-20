@@ -108,10 +108,15 @@ function assignSelectedPokemon(battle, userId, pokemon) {
   };
 
   const hpMax = calculateBattleHp(playerState.stats.hp);
+  const rawPersistentCurrentHp = pokemon.current_hp;
+  const persistentCurrentHp = rawPersistentCurrentHp == null
+    ? Math.max(1, Number(pokemon.hp) || 1)
+    : Math.max(0, Number(rawPersistentCurrentHp) || 0);
+  const persistentMaxHp = Math.max(1, Number(pokemon.hp) || 1);
   playerState.battleHp = {
     base: playerState.stats.hp,
     max: hpMax,
-    current: hpMax,
+    current: Math.max(0, Math.min(hpMax, Math.round((persistentCurrentHp / persistentMaxHp) * hpMax))),
   };
 
   return playerState;

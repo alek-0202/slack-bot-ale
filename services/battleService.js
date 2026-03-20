@@ -3,6 +3,7 @@ const { parsePositiveInt } = require("../utils/number");
 const { createLogger } = require("../utils/logger");
 const { getUserPokemonById } = require("./pokemonService");
 const { getPokemonMagicLoadout } = require("./pokemonMagicService");
+const { assertPokemonAvailableForAction, persistBattleHp } = require("./healingStationService");
 const store = require("./battleStateStore");
 const {
   createBattle,
@@ -145,6 +146,17 @@ async function pickPokemon({ event, args, say }) {
     return;
   }
 
+  const availability = await assertPokemonAvailableForAction({ slackUserId: event.user, pokemonId, action: "battle" });
+  if (!availability.ok) {
+    await say("Esse Pokémon está na estação de cura e não pode batalhar agora.");
+    return;
+  }
+
+  if (Number(pokemon.current_hp) <= 0) {
+    await say("Esse Pokémon está sem HP e precisa passar pela estação de cura.");
+    return;
+  }
+
   const loadout = await getPokemonMagicLoadout(pokemonId);
   pokemon.magicSlots = Array.isArray(loadout?.spells) ? loadout.spells : [];
   assignSelectedPokemon(battle, event.user, pokemon);
@@ -190,6 +202,19 @@ function finalizeSelectionAndStartBattle(battle, channelId) {
   const { coinflip: result, starter } = startBattle(battle);
   store.setBattle(channelId, battle);
   return { result, starter };
+}
+
+async function persistBattleResultHp(battle) {
+  for (const [userId, player] of Object.entries(battle.players || {})) {
+    if (!player?.selectedPokemon?.id || !player?.battleHp) continue;
+    await persistBattleHp({
+      slackUserId: userId,
+      pokemonId: player.selectedPokemon.id,
+      hpStat: player.stats?.hp,
+      battleHpCurrent: player.battleHp.current,
+      battleHpMax: player.battleHp.max,
+    });
+  }
 }
 
 async function validateActionContext({ event, say, actionType }) {
@@ -251,6 +276,10 @@ async function attack({ event, say }) {
   });
 
   store.setBattle(battle.channelId, battle);
+
+  if (resolution.finished) {
+    await persistBattleResultHp(battle);
+  }
 
   await say(
     `⚔️ <@${event.user}> atacou <@${result.defenderId}>!\n` +
@@ -398,6 +427,10 @@ async function castMagic({ event, say, magicSlot }) {
   });
 
   store.setBattle(battle.channelId, battle);
+
+  if (resolution.finished) {
+    await persistBattleResultHp(battle);
+  }
 
   const relationMessage = result.elemental?.hasAdvantage
     ? `🌟 Vantagem elemental contra: ${result.elemental.advantageAgainst.join(", ")}\n`

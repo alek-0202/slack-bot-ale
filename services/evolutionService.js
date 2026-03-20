@@ -2,6 +2,7 @@ const { getSupabaseClient } = require("../database/supabase");
 const { getRarityTier } = require("./economyService");
 const { createLogger } = require("../utils/logger");
 const { formatGold } = require("../utils/gold");
+const { assertPokemonAvailableForAction } = require("./healingStationService");
 
 const logger = createLogger("evolution-service");
 
@@ -19,6 +20,8 @@ function getEvolutionCost({ rarity, evolutionStage }) {
 }
 
 async function evolvePokemon({ slackUserId, pokemonId }) {
+  const availability = await assertPokemonAvailableForAction({ slackUserId, pokemonId, action: "evolve" });
+  if (!availability.ok) return { ok: false, reason: availability.reason };
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.rpc("evolve_user_pokemon", {
     p_slack_user_id: slackUserId,
