@@ -50,7 +50,7 @@ module.exports = {
                 `🆔 *ID da coleção:* ${pokemon.id}\n` +
                 `🎚️ *Level:* ${pokemon.level}\n` +
                 `⚔️ *ATK:* ${pokemon.attack || 0} | ✨ *MAG:* ${pokemon.magic ?? pokemon.attack ?? 0}\n` +
-                `🛡️ *DEF:* ${pokemon.defense || 0} | ❤️ *HP:* ${pokemon.hp || 0} | 💨 *SPD:* ${pokemon.speed || 0}\n` +
+                `🛡️ *DEF:* ${pokemon.defense || 0} | ❤️ *HP:* ${pokemon.current_hp ?? pokemon.hp ?? 0}/${pokemon.hp || 0} | 💨 *SPD:* ${pokemon.speed || 0}\n` +
                 `⭐ *Estrelas:* ${visual.starsLabel}\n` +
                 `👤 *Dono:* <@${pokemon.slack_user_id}>` +
                 finalEvolutionLabel +

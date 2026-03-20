@@ -77,6 +77,10 @@ function renderSlackUpgradeResult({ result, slackUserId, maxLevel, getNextUpgrad
       return 'Você só pode melhorar Pokémons que pertencem a você.';
     }
 
+    if (result.reason === 'pokemon_in_healing_station') {
+      return 'Esse Pokémon está na estação de cura e não pode receber upgrade agora.';
+    }
+
     if (result.reason === 'max_level') {
       return `Esse Pokémon já atingiu o nível máximo (${maxLevel}).`;
     }

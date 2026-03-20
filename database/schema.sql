@@ -38,8 +38,32 @@ alter table public.user_pokemons add column if not exists attack integer not nul
 alter table public.user_pokemons add column if not exists magic integer not null default 10;
 alter table public.user_pokemons add column if not exists defense integer not null default 10;
 alter table public.user_pokemons add column if not exists hp integer not null default 10;
+alter table public.user_pokemons add column if not exists current_hp integer;
 alter table public.user_pokemons add column if not exists speed integer not null default 10;
 alter table public.user_pokemons add column if not exists source text not null default 'capture';
+
+update public.user_pokemons
+set current_hp = hp
+where current_hp is null;
+
+alter table public.user_pokemons alter column current_hp set not null;
+
+create table if not exists public.healing_stations (
+  slack_user_id text primary key references public.users(slack_user_id) on delete cascade,
+  level integer not null default 1 check (level between 1 and 10),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.healing_station_slots (
+  id bigint generated always as identity primary key,
+  slack_user_id text not null references public.healing_stations(slack_user_id) on delete cascade,
+  user_pokemon_id bigint not null references public.user_pokemons(id) on delete cascade,
+  healing_started_at timestamptz not null default now(),
+  last_processed_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique (user_pokemon_id)
+);
 
 do $$
 begin
@@ -170,6 +194,8 @@ create index if not exists idx_trades_channel_status on public.trades(channel_id
 create index if not exists idx_trades_participants_status on public.trades(initiator_user_id, target_user_id, status);
 create index if not exists idx_trade_items_trade on public.trade_items(trade_id);
 create index if not exists idx_trade_items_pokemon on public.trade_items(user_pokemon_id);
+create index if not exists idx_healing_station_slots_user on public.healing_station_slots(slack_user_id);
+create index if not exists idx_healing_station_slots_pokemon on public.healing_station_slots(user_pokemon_id);
 
 create index if not exists idx_user_pokemons_user on public.user_pokemons(slack_user_id);
 create index if not exists idx_user_pokemons_species on public.user_pokemons(species_id);
@@ -205,6 +231,11 @@ for each row execute function public.set_updated_at();
 drop trigger if exists trg_user_medals_set_updated_at on public.user_medals;
 create trigger trg_user_medals_set_updated_at
 before update on public.user_medals
+for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_healing_stations_set_updated_at on public.healing_stations;
+create trigger trg_healing_stations_set_updated_at
+before update on public.healing_stations
 for each row execute function public.set_updated_at();
 
 create or replace function public.calculate_upgrade_cost(p_current_level integer)
@@ -529,6 +560,7 @@ begin
       attack = v_attack,
       magic = v_magic,
       defense = v_defense,
+      current_hp = least(v_hp, greatest(0, round((greatest(coalesce(current_hp, hp), 0)::numeric / greatest(hp, 1)::numeric) * v_hp)::integer)),
       hp = v_hp,
       speed = v_speed
   where id = p_pokemon_id
@@ -634,6 +666,7 @@ begin
       attack = v_attack,
       magic = v_magic,
       defense = v_defense,
+      current_hp = least(v_hp, greatest(0, round((greatest(coalesce(current_hp, hp), 0)::numeric / greatest(hp, 1)::numeric) * v_hp)::integer)),
       hp = v_hp,
       speed = v_speed
   where id = p_pokemon_id
@@ -766,6 +799,7 @@ begin
       attack = v_attack,
       magic = v_magic,
       defense = v_defense,
+      current_hp = least(v_hp, greatest(0, round((greatest(coalesce(current_hp, hp), 0)::numeric / greatest(hp, 1)::numeric) * v_hp)::integer)),
       hp = v_hp,
       speed = v_speed
   where id = p_pokemon_id
@@ -867,6 +901,7 @@ begin
     magic,
     defense,
     hp,
+    current_hp,
     speed,
     source
   )
@@ -878,6 +913,7 @@ begin
     greatest(1, v_base_attack),
     greatest(1, coalesce(v_base_magic, v_base_attack)),
     greatest(1, v_base_defense),
+    greatest(1, v_base_hp),
     greatest(1, v_base_hp),
     greatest(1, v_base_speed),
     'market'

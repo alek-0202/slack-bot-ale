@@ -2,6 +2,7 @@ const { getSupabaseClient } = require("../database/supabase");
 const { getUserPokemonById } = require("./pokemonService");
 const { createLogger } = require("../utils/logger");
 const { formatGold, toGoldBigInt } = require("../utils/gold");
+const { assertPokemonAvailableForAction } = require("./healingStationService");
 
 const logger = createLogger("upgrade-service");
 
@@ -55,6 +56,8 @@ async function upgradePokemon({ slackUserId, pokemonId }) {
   if (!pokemon) {
     return { ok: false, reason: "pokemon_not_owned" };
   }
+  const availability = await assertPokemonAvailableForAction({ slackUserId, pokemonId, action: "upgrade" });
+  if (!availability.ok) return { ok: false, reason: availability.reason };
 
   const { data, error } = await supabase.rpc("upgrade_user_pokemon", {
     p_slack_user_id: slackUserId,
@@ -124,6 +127,8 @@ async function upgradePokemonBatch({ slackUserId, pokemonId, targetLevel }) {
   if (!pokemon) {
     return { ok: false, reason: "pokemon_not_owned" };
   }
+  const availability = await assertPokemonAvailableForAction({ slackUserId, pokemonId, action: "upgrade_batch" });
+  if (!availability.ok) return { ok: false, reason: availability.reason };
 
   const { data, error } = await supabase.rpc("upgrade_user_pokemon_batch", {
     p_slack_user_id: slackUserId,

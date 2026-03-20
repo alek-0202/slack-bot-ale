@@ -39,6 +39,7 @@ module.exports = {
         const map = {
           user_not_started: "Você ainda não começou. Use `!poke start`.",
           pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
+          pokemon_in_healing_station: "Esse Pokémon está na estação de cura e não pode receber upgrade agora.",
           invalid_target_level: "O nível alvo informado é inválido.",
           target_must_be_higher: `O nível alvo precisa ser maior que o nível atual (*${preview.currentLevel}*).`,
           target_above_max_level: `O nível alvo ultrapassa o máximo permitido (*${preview.maxLevel}*).`,

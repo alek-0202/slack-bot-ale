@@ -32,6 +32,7 @@ module.exports = {
         const map = {
           user_not_started: "Você ainda não começou. Use `!poke start`.",
           pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
+          pokemon_in_healing_station: "Esse Pokémon está na estação de cura e não pode evoluir agora.",
           species_stats_missing: "Os dados da próxima evolução estão incompletos no momento.",
         };
 
