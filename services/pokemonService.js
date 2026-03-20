@@ -4,7 +4,7 @@ async function getAllSpecies() {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("pokemon_species")
-    .select("id, name, sprite_url, rarity, base_value, evolution_stage, element_types, base_attack, base_defense, base_hp, base_speed")
+    .select("id, name, sprite_url, rarity, base_value, evolution_stage, element_types, base_attack, base_magic, base_defense, base_hp, base_speed")
     .order("id", { ascending: true });
 
   if (error) throw error;
@@ -28,12 +28,13 @@ async function insertUserPokemon({
       level,
       shiny,
       attack: stats.attack,
+      magic: stats.magic ?? stats.attack,
       defense: stats.defense,
       hp: stats.hp,
       speed: stats.speed,
       source,
     })
-    .select("id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at, upgrade_spent_gold")
+    .select("id, species_id, level, shiny, attack, magic, defense, hp, speed, source, captured_at, upgrade_spent_gold")
     .single();
 
   if (error) throw error;
@@ -71,7 +72,7 @@ async function getUserPokemonPage(slackUserId, index) {
   const { data, count, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at, upgrade_spent_gold, pokemon_species(id, name, sprite_url, rarity, element_types, evolves_to, evolution_stage, base_attack, base_defense, base_hp, base_speed)",
+      "id, species_id, level, shiny, attack, magic, defense, hp, speed, source, captured_at, upgrade_spent_gold, pokemon_species(id, name, sprite_url, rarity, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
       
       { count: "exact" },
     )
@@ -94,7 +95,7 @@ async function getUserPokemonById(slackUserId, pokemonId) {
   const { data, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, slack_user_id, species_id, level, shiny, attack, defense, hp, speed, upgrade_spent_gold, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, evolves_to, evolution_stage, base_attack, base_defense, base_hp, base_speed)",
+      "id, slack_user_id, species_id, level, shiny, attack, magic, defense, hp, speed, upgrade_spent_gold, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
     )
     .eq("id", pokemonId)
     .eq("slack_user_id", slackUserId)
@@ -109,7 +110,7 @@ async function getUserPokemons(slackUserId) {
   const { data, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, species_id, level, shiny, attack, defense, hp, speed, source, captured_at, upgrade_spent_gold, pokemon_species(id, name, sprite_url, rarity, element_types, evolves_to, evolution_stage, base_attack, base_defense, base_hp, base_speed)",
+      "id, species_id, level, shiny, attack, magic, defense, hp, speed, source, captured_at, upgrade_spent_gold, pokemon_species(id, name, sprite_url, rarity, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
     )
     .eq("slack_user_id", slackUserId)
     .order("captured_at", { ascending: false })
@@ -125,7 +126,7 @@ function buildPokedexDisplayEntries(pokemons) {
 
   for (const pokemon of pokemons || []) {
     const canGroup = Number(pokemon.level || 1) === 1;
-    const groupKey = `${pokemon.species_id}|${pokemon.shiny ? 1 : 0}|${pokemon.attack}|${pokemon.defense}|${pokemon.hp}|${pokemon.speed}`;
+    const groupKey = `${pokemon.species_id}|${pokemon.shiny ? 1 : 0}|${pokemon.attack}|${pokemon.magic ?? pokemon.attack}|${pokemon.defense}|${pokemon.hp}|${pokemon.speed}`;
 
     if (!canGroup) {
       entries.push({

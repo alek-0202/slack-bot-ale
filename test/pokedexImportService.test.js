@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   normalizeGeneration,
   parsePokemonIdFromUrl,
+  deriveBaseStats,
 } = require("../services/pokedexImportService");
 
 test("normalizeGeneration converte gerações romanas", () => {
@@ -16,4 +17,10 @@ test("normalizeGeneration converte gerações romanas", () => {
 test("parsePokemonIdFromUrl extrai id corretamente", () => {
   assert.equal(parsePokemonIdFromUrl("https://pokeapi.co/api/v2/pokemon-species/25/"), 25);
   assert.equal(parsePokemonIdFromUrl(null), null);
+});
+
+test("deriveBaseStats inclui base_magic compatível com fallback atual", () => {
+  const result = deriveBaseStats({ rarity: "rare", evolutionStage: 2 });
+  assert.ok(result.base_magic >= 1);
+  assert.equal(typeof result.base_magic, "number");
 });

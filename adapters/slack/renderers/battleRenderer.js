@@ -116,19 +116,28 @@ function renderBattleState(battle) {
 
 function buildBattleActionBlock(battle) {
   if (battle.status !== "active") return null;
+  const currentPlayer = battle.players[battle.currentTurnUserId];
+  const magicOnCooldown = (currentPlayer?.magicCooldown?.blockedOwnTurnsRemaining || 0) > 0;
 
   return {
     type: "actions",
     elements: [
       buildTurnButton({ battle, label: "⚔️ Ataque", action: "attack", style: "primary" }),
       buildTurnButton({ battle, label: "🛡️ Defesa", action: "defense" }),
-      buildTurnButton({ battle, label: "✨ Magia", action: "magic" }),
+      buildTurnButton({
+        battle,
+        label: magicOnCooldown
+          ? `✨ Magia (${currentPlayer.magicCooldown.blockedOwnTurnsRemaining})`
+          : "✨ Magia",
+        action: "magic",
+        disabled: magicOnCooldown,
+      }),
       buildTurnButton({ battle, label: "🧪 Poção", action: "potion" }),
     ],
   };
 }
 
-function buildTurnButton({ battle, label, action, style }) {
+function buildTurnButton({ battle, label, action, style, disabled = false }) {
   const button = {
     type: "button",
     action_id: buildBattleTurnActionId(action),
@@ -137,6 +146,15 @@ function buildTurnButton({ battle, label, action, style }) {
   };
 
   if (style) button.style = style;
+  if (disabled) button.style = undefined;
+  if (disabled) button.text = { type: "plain_text", text: label.slice(0, 75) };
+  if (disabled) button.value = JSON.stringify({ channelId: battle.channelId, action, unavailable: true });
+  if (disabled) button.confirm = {
+    title: { type: "plain_text", text: "Magia em cooldown" },
+    text: { type: "mrkdwn", text: "A magia ainda está em cooldown nas próximas rodadas do mesmo jogador." },
+    confirm: { type: "plain_text", text: "Ok" },
+    deny: { type: "plain_text", text: "Fechar" },
+  };
   return button;
 }
 
@@ -221,9 +239,11 @@ function renderPokemonBlock(player) {
     `*${player.selectedPokemonName}* (Nv. ${player.level})${player.starText !== "-" ? ` | ${player.starText}` : ""}\n` +
     `${buildPokemonTypesLabel(player.selectedPokemonTypes) ? `🧪 ${buildPokemonTypesLabel(player.selectedPokemonTypes)}\n` : ""}` +
     `❤️ ${player.hpCurrent}/${player.hpMax}\n` +
-    `⚔️ ATK ${player.attack} | 🛡️ DEF ${player.defense}\n` +
+    `⚔️ ATK ${player.attack} | ✨ MAG ${player.magic}\n` +
+    `🛡️ DEF ${player.defense}\n` +
     `💨 SPD ${player.speed} | ⚡ Iniciativa ${player.initiativeGauge}/${player.initiativeThreshold}\n` +
     `🧪 Poções: ${player.potionsRemaining}\n` +
+    `⏳ Cooldown magia: ${player.magicCooldownRemaining}\n` +
     `✨ Magias:\n${magicText}`
   );
 }
