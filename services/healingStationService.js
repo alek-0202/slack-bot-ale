@@ -1,7 +1,8 @@
 const { getSupabaseClient } = require('../database/supabase');
 const { createLogger } = require('../utils/logger');
 const battleStore = require('./battleStateStore');
-const { createUserIfMissing } = require('./userService');
+const { createUserIfMissing, getUser } = require('./userService');
+const { formatGold, isGoldGte } = require('../utils/gold');
 
 const logger = createLogger('healing-station-service');
 
@@ -9,8 +10,8 @@ const MAX_STATION_LEVEL = 10;
 const MAX_STATION_SLOTS = 5;
 const BASE_UPGRADE_COST = 7000n;
 const UPGRADE_COST_STEP = 3000n;
-const BASE_REGEN_PER_MINUTE = 2;
-const REGEN_PER_LEVEL_STEP = 1;
+const BASE_REGEN_PER_MINUTE = 0.5;
+const REGEN_PER_LEVEL_STEP = 0.2;
 
 function getHealingStationUpgradeCost(targetLevel) {
   const safeTargetLevel = Math.max(1, Math.min(MAX_STATION_LEVEL, Number(targetLevel) || 1));
@@ -19,7 +20,12 @@ function getHealingStationUpgradeCost(targetLevel) {
 
 function getHealingRatePerMinute(level = 1) {
   const safeLevel = Math.max(1, Math.min(MAX_STATION_LEVEL, Number(level) || 1));
-  return BASE_REGEN_PER_MINUTE + (safeLevel - 1) * REGEN_PER_LEVEL_STEP;
+  return Number((BASE_REGEN_PER_MINUTE + (safeLevel - 1) * REGEN_PER_LEVEL_STEP).toFixed(1));
+}
+
+function formatHealingRate(ratePerMinute) {
+  const normalized = Number(ratePerMinute) || 0;
+  return Number.isInteger(normalized) ? String(normalized) : normalized.toFixed(1);
 }
 
 async function ensureHealingStation(slackUserId) {
@@ -33,6 +39,85 @@ async function ensureHealingStation(slackUserId) {
     .single();
   if (error) throw error;
   return data;
+}
+
+
+async function buildHealingStationUpgradePreview(slackUserId) {
+  const [station, user] = await Promise.all([
+    ensureHealingStation(slackUserId),
+    createUserIfMissing(slackUserId),
+  ]);
+
+  const currentLevel = Math.max(1, Number(station.level) || 1);
+  if (currentLevel >= MAX_STATION_LEVEL) {
+    return {
+      ok: false,
+      reason: 'max_level_reached',
+      station,
+      currentLevel,
+      maxLevel: MAX_STATION_LEVEL,
+      currentGold: formatGold(user.gold || 0),
+    };
+  }
+
+  const nextLevel = currentLevel + 1;
+  const cost = getHealingStationUpgradeCost(nextLevel);
+  return {
+    ok: true,
+    station,
+    currentLevel,
+    nextLevel,
+    cost: formatGold(cost),
+    currentGold: formatGold(user.gold || 0),
+    canAfford: isGoldGte(user.gold || 0, cost),
+    currentRatePerMinute: getHealingRatePerMinute(currentLevel),
+    nextRatePerMinute: getHealingRatePerMinute(nextLevel),
+  };
+}
+
+async function upgradeHealingStation(slackUserId) {
+  const preview = await buildHealingStationUpgradePreview(slackUserId);
+  if (!preview.ok) return preview;
+
+  const user = await getUser(slackUserId);
+  if (!user) return { ok: false, reason: 'user_not_started' };
+  if (!preview.canAfford) {
+    return {
+      ok: false,
+      reason: 'insufficient_gold',
+      currentLevel: preview.currentLevel,
+      nextLevel: preview.nextLevel,
+      cost: preview.cost,
+      currentGold: formatGold(user.gold || 0),
+    };
+  }
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.rpc('upgrade_healing_station', { p_slack_user_id: slackUserId });
+
+  if (error) {
+    const message = String(error.message || '');
+    if (message.includes('Nível máximo')) {
+      return { ok: false, reason: 'max_level_reached', currentLevel: preview.currentLevel, maxLevel: MAX_STATION_LEVEL, currentGold: formatGold(user.gold || 0) };
+    }
+    if (message.includes('Gold insuficiente')) {
+      return { ok: false, reason: 'insufficient_gold', currentLevel: preview.currentLevel, nextLevel: preview.nextLevel, cost: preview.cost, currentGold: formatGold(user.gold || 0) };
+    }
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+
+  return {
+    ok: true,
+    previousLevel: Number(row?.previous_level ?? preview.currentLevel),
+    newLevel: Number(row?.new_level ?? preview.nextLevel),
+    cost: formatGold(row?.cost_paid ?? preview.cost),
+    remainingGold: formatGold(row?.remaining_gold ?? 0),
+    previousRatePerMinute: preview.currentRatePerMinute,
+    newRatePerMinute: preview.nextRatePerMinute,
+    station: { ...preview.station, level: Number(row?.new_level ?? preview.nextLevel) },
+  };
 }
 
 function mapHealingEntry(slot, level) {
@@ -76,12 +161,13 @@ async function refreshHealingStation(slackUserId) {
     const hpMax = Number(pokemon.hp) || 1;
     const currentHp = Number(pokemon.current_hp) || 0;
     const lastProcessedAt = new Date(slot.last_processed_at || slot.healing_started_at || station.created_at).getTime();
-    const elapsedMinutes = Math.max(0, Math.floor((now - lastProcessedAt) / 60000));
-    if (elapsedMinutes <= 0) continue;
-    const healedHp = elapsedMinutes * ratePerMinute;
+    const elapsedMs = Math.max(0, now - lastProcessedAt);
+    const healedHpFloat = (elapsedMs / 60000) * ratePerMinute;
+    const healedHp = Math.floor(healedHpFloat);
+    if (healedHp <= 0) continue;
     const nextHp = Math.min(hpMax, currentHp + healedHp);
 
-    logger.info('Regen calculada na estação', { slackUserId, pokemonId: pokemon.id, elapsedMinutes, healedHp, previousHp: currentHp, nextHp, hpMax, ratePerMinute });
+    logger.info('Regen calculada na estação', { slackUserId, pokemonId: pokemon.id, elapsedMs, healedHpFloat, healedHp, previousHp: currentHp, nextHp, hpMax, ratePerMinute });
 
     const { error: updateError } = await supabase
       .from('user_pokemons')
@@ -96,9 +182,11 @@ async function refreshHealingStation(slackUserId) {
       continue;
     }
 
+    const consumedMs = Math.floor((healedHp / ratePerMinute) * 60000);
+    const nextProcessedAt = new Date(lastProcessedAt + consumedMs).toISOString();
     const { error: slotUpdateError } = await supabase
       .from('healing_station_slots')
-      .update({ last_processed_at: new Date(now).toISOString() })
+      .update({ last_processed_at: nextProcessedAt })
       .eq('id', slot.id)
       .eq('slack_user_id', slackUserId);
     if (slotUpdateError) throw slotUpdateError;
@@ -231,9 +319,12 @@ module.exports = {
   UPGRADE_COST_STEP,
   getHealingStationUpgradeCost,
   getHealingRatePerMinute,
+  formatHealingRate,
   ensureHealingStation,
   refreshHealingStation,
   getHealingStationView,
+  buildHealingStationUpgradePreview,
+  upgradeHealingStation,
   getHealingEligibilityList,
   addPokemonToHealingStation,
   removePokemonFromHealingStation,

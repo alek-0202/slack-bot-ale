@@ -9,8 +9,9 @@ const { assignSelectedPokemon, createBattle } = require('../application/battle/d
 const { calculateBattleHp } = require('../application/battle/domain/battleEngine');
 
 test('healing station progression helpers are deterministic', () => {
-  assert.equal(getHealingRatePerMinute(1), 2);
-  assert.equal(getHealingRatePerMinute(10), 11);
+  assert.equal(getHealingRatePerMinute(1), 0.5);
+  assert.equal(getHealingRatePerMinute(2), 0.7);
+  assert.equal(getHealingRatePerMinute(10), 2.3);
   assert.equal(getHealingStationUpgradeCost(1), 7000n);
   assert.equal(getHealingStationUpgradeCost(2), 10000n);
   assert.equal(getHealingStationUpgradeCost(3), 13000n);
