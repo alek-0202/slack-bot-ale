@@ -23,12 +23,12 @@ const GENERATION_MAP = {
 };
 
 const RARITY_BASE_STATS = {
-  common: { attack: 10, defense: 10, hp: 14, speed: 9 },
-  uncommon: { attack: 12, defense: 12, hp: 17, speed: 11 },
-  rare: { attack: 15, defense: 14, hp: 21, speed: 14 },
-  epic: { attack: 19, defense: 18, hp: 26, speed: 17 },
-  legendary: { attack: 24, defense: 22, hp: 32, speed: 21 },
-  mythical: { attack: 30, defense: 28, hp: 39, speed: 26 },
+  common: { attack: 10, magic: 10, defense: 10, hp: 14, speed: 9 },
+  uncommon: { attack: 12, magic: 12, defense: 12, hp: 17, speed: 11 },
+  rare: { attack: 15, magic: 15, defense: 14, hp: 21, speed: 14 },
+  epic: { attack: 19, magic: 19, defense: 18, hp: 26, speed: 17 },
+  legendary: { attack: 24, magic: 24, defense: 22, hp: 32, speed: 21 },
+  mythical: { attack: 30, magic: 30, defense: 28, hp: 39, speed: 26 },
 };
 
 function parsePokemonIdFromUrl(url) {
@@ -48,10 +48,17 @@ function deriveBaseStats({ rarity, evolutionStage }) {
 
   return {
     base_attack: Math.ceil(raritySeed.attack * stageMultiplier),
+    base_magic: Math.ceil((raritySeed.magic || raritySeed.attack) * stageMultiplier),
     base_defense: Math.ceil(raritySeed.defense * stageMultiplier),
     base_hp: Math.ceil(raritySeed.hp * stageMultiplier),
     base_speed: Math.ceil(raritySeed.speed * stageMultiplier),
   };
+}
+
+function getPokemonStatValue(pokemon, statName, fallback = null) {
+  const entry = (pokemon?.stats || []).find((item) => item?.stat?.name === statName);
+  const value = Number(entry?.base_stat);
+  return Number.isFinite(value) && value > 0 ? Math.round(value) : fallback;
 }
 
 async function fetchSpeciesList(limit = null) {
@@ -133,6 +140,7 @@ async function fetchSpeciesPayload(entry, species, evolutionLookup) {
     evolutionStage,
     isBaby: species.is_baby,
   });
+  const derivedBaseStats = deriveBaseStats({ rarity, evolutionStage });
 
   return {
     id: entry.id,
@@ -152,7 +160,12 @@ async function fetchSpeciesPayload(entry, species, evolutionLookup) {
         .sort((a, b) => (a.slot || 0) - (b.slot || 0))
         .map((typeEntry) => typeEntry.type?.name),
     ),
-    ...deriveBaseStats({ rarity, evolutionStage }),
+    ...derivedBaseStats,
+    // PokeAPI não possui um atributo "magic" nativo; usamos "special-attack" como base oficial mais próxima.
+    base_magic:
+      getPokemonStatValue(pokemon, "special-attack", null) ||
+      getPokemonStatValue(pokemon, "attack", null) ||
+      derivedBaseStats.base_magic,
   };
 }
 

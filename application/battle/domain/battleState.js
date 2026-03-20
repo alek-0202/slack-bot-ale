@@ -28,7 +28,11 @@ function createPlayerState(userId) {
     stats: null,
     battleHp: null,
     potionsUsed: 0,
-    magicCooldown: 0,
+    magicCooldown: {
+      blockedOwnTurnsRemaining: 0,
+      lastAppliedAtRound: null,
+      lastMagicName: null,
+    },
     magicSlots: [],
   };
 }
@@ -97,6 +101,7 @@ function assignSelectedPokemon(battle, userId, pokemon) {
   playerState.magicSlots = Array.isArray(pokemon.magicSlots) ? pokemon.magicSlots : [];
   playerState.stats = {
     attack: Number(pokemon.attack) || 1,
+    magic: Number(pokemon.magic) || Number(pokemon.attack) || 1,
     defense: Number(pokemon.defense) || 0,
     hp: Number(pokemon.hp) || 1,
     speed: Number(pokemon.speed) || 1,
@@ -144,6 +149,16 @@ function getOpponentId(battle, actorId) {
 }
 
 function passTurn(battle, actorUserId = battle.currentTurnUserId, options = {}) {
+  const playerState = battle.players[actorUserId];
+  if (
+    playerState?.magicCooldown?.blockedOwnTurnsRemaining > 0 &&
+    playerState?.magicCooldown?.lastAppliedAtRound !== battle.round
+  ) {
+    playerState.magicCooldown.blockedOwnTurnsRemaining = Math.max(
+      0,
+      Number(playerState.magicCooldown.blockedOwnTurnsRemaining || 0) - 1,
+    );
+  }
   const initiativeResult = resolveNextTurnBySpeed({ battle, actorUserId, energyPenalty: options.energyPenalty });
   battle.currentTurnUserId = initiativeResult.nextActorUserId;
   battle.round += 1;

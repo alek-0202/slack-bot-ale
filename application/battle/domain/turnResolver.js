@@ -21,7 +21,24 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     const attacker = battle.players[actorUserId];
     const defenderId = getOpponentId(battle, actorUserId);
     const defender = battle.players[defenderId];
+    const blockedOwnTurnsRemaining = Math.max(0, Number(attacker?.magicCooldown?.blockedOwnTurnsRemaining) || 0);
     const magicEntry = (attacker.magicSlots || []).find((entry) => Number(entry.slot) === Number(actionPayload.magicSlot));
+
+    if (blockedOwnTurnsRemaining > 0) {
+      return {
+        battle,
+        actionType,
+        outcome: {
+          ok: false,
+          reason: "magic_on_cooldown",
+          type: "magic",
+          blockedOwnTurnsRemaining,
+          magicName: attacker?.magicCooldown?.lastMagicName || null,
+        },
+        finished: false,
+        shouldPassTurn: false,
+      };
+    }
 
     if (!magicEntry) {
       return {
@@ -38,6 +55,11 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     }
 
     const result = resolveMagicTurn({ attacker, defender, magicEntry });
+    attacker.magicCooldown = {
+      blockedOwnTurnsRemaining: 2,
+      lastAppliedAtRound: battle.round,
+      lastMagicName: magicEntry.name || null,
+    };
 
     if (defender.battleHp.current <= 0) {
       const finalized = finishBattle(battle, actorUserId);

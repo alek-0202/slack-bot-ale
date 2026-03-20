@@ -325,6 +325,20 @@ async function showMagicOptions({ event, say }) {
     return;
   }
 
+  if ((player.magicCooldown?.blockedOwnTurnsRemaining || 0) > 0) {
+    logger.info("Tentativa de abrir magia durante cooldown", {
+      playerId: event.user,
+      battleId: battle.id,
+      channelId: battle.channelId,
+      blockedOwnTurnsRemaining: player.magicCooldown.blockedOwnTurnsRemaining,
+      lastMagicName: player.magicCooldown?.lastMagicName || null,
+    });
+    await say(
+      `⏳ Sua magia está em cooldown por mais *${player.magicCooldown.blockedOwnTurnsRemaining}* rodada(s) sua(s).`,
+    );
+    return;
+  }
+
   await say(renderMagicOptions({ battle, actorUserId: event.user, magicSlots: player.magicSlots }));
 }
 
@@ -345,15 +359,35 @@ async function castMagic({ event, say, magicSlot }) {
     return;
   }
 
+  if (!result.ok && result.reason === "magic_on_cooldown") {
+    logger.info("Tentativa de magia bloqueada por cooldown", {
+      playerId: event.user,
+      battleId: battle.id,
+      channelId: battle.channelId,
+      blockedOwnTurnsRemaining: result.blockedOwnTurnsRemaining,
+      magicName: result.magicName,
+    });
+    await say(
+      `⏳ Você ainda não pode usar magia. Faltam *${result.blockedOwnTurnsRemaining}* rodada(s) sua(s) antes de liberar novamente.`,
+    );
+    return;
+  }
+
   logger.info("Ação de magia", {
     pokemonId: battle.players[event.user]?.selectedPokemon?.id,
+    battleId: battle.id,
     channelId: battle.channelId,
     actorUserId: event.user,
     magicName: result.magicEntry?.name,
     magicElement: result.magicEntry?.element,
     targetUserId: result.defenderId,
-    dieSides: result.rollSides,
-    dieResult: result.rollValue,
+    cooldownApplied: battle.players[event.user]?.magicCooldown?.blockedOwnTurnsRemaining || 0,
+    baseStatUsed: result.baseStatUsed,
+    magicStat: result.magicStat,
+    attackStat: result.attackStat,
+    d12Roll: result.primaryRollValue,
+    d6Roll: result.bonusRollValue,
+    attackBonusBase: result.attackBonusBase,
     critical: result.isCritical,
     elementalRelation: result.elemental?.relation,
     advantageAgainst: result.elemental?.advantageAgainst,
@@ -373,7 +407,8 @@ async function castMagic({ event, say, magicSlot }) {
 
   await say(
     `✨ <@${event.user}> lançou *${result.magicEntry.name}* ${result.magicEntry.icon} em <@${result.defenderId}>!\n` +
-    `🎲 d${result.rollSides}: ${result.rollValue}\n` +
+    `🎲 d12: ${result.primaryRollValue} | d6 bônus: ${result.bonusRollValue}\n` +
+    `🧠 Base: *${result.baseStatUsed.toUpperCase()}* (${result.magicStat}) | bônus ataque 15%: *${result.attackBonusBase}*\n` +
     `${result.isCritical ? "💥 CRÍTICO MÁGICO GARANTIDO!\n" : ""}` +
     relationMessage +
     `Multiplicador: *x${result.multiplier}* | Energia consumida: *${result.energyConsumed}*\n` +

@@ -8,23 +8,26 @@ const MAX_STARS = 5;
 const DEFAULT_BASE_STAT = 10;
 const LEVEL_GROWTH_RATES = Object.freeze({
   attack: 0.18,
+  magic: 0.19,
   defense: 0.18,
   hp: 0.24,
   speed: 0.10,
 });
 const MILESTONE_GROWTH_RATES = Object.freeze({
   attack: 0.25,
+  magic: 0.26,
   defense: 0.25,
   hp: 0.35,
   speed: 0.15,
 });
 const LEVEL_FIFTY_FLAT_BONUS = Object.freeze({
   attack: 5,
+  magic: 6,
   defense: 5,
   hp: 15,
   speed: 5,
 });
-const STAT_FIELDS = ["attack", "defense", "hp", "speed"];
+const STAT_FIELDS = ["attack", "magic", "defense", "hp", "speed"];
 
 function toPositiveInteger(value, fallback = 0) {
   const parsed = Number(value);

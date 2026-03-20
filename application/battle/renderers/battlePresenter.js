@@ -31,11 +31,13 @@ function buildPlayerViewModel(userId, playerState, initiative) {
     hpCurrent: playerState.battleHp?.current ?? null,
     hpMax: playerState.battleHp?.max ?? null,
     attack: playerState.stats?.attack ?? null,
+    magic: playerState.stats?.magic ?? playerState.stats?.attack ?? null,
     defense: playerState.stats?.defense ?? null,
     speed: playerState.stats?.speed ?? null,
     initiativeGauge: initiative?.gauges?.[userId] ?? null,
     initiativeThreshold: initiative?.threshold ?? null,
     potionsRemaining: Math.max(0, MAX_POTIONS_PER_BATTLE - (playerState.potionsUsed || 0)),
+    magicCooldownRemaining: Math.max(0, playerState.magicCooldown?.blockedOwnTurnsRemaining || 0),
     magicSlots: Array.isArray(playerState.magicSlots) ? playerState.magicSlots : [],
   };
 }
