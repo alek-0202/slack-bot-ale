@@ -7,6 +7,7 @@ const { MAX_LEVEL, calculateTotalUpgradeCost, upgradePokemonBatch } = require(".
 const { buildSellPreview, sellPokemon } = require("./sellService");
 const { formatGold, isGoldGte } = require("../utils/gold");
 const { getPokemonProgressionSnapshot } = require("./pokemonStatsService");
+const { assertPokemonAvailableForAction } = require("./healingStationService");
 
 const logger = createLogger("slack-pokemon-actions");
 
@@ -49,6 +50,8 @@ async function buildEvolvePreview({ slackUserId, pokemonId }) {
   if (!pokemon) {
     return { ok: false, reason: "pokemon_not_owned" };
   }
+  const availability = await assertPokemonAvailableForAction({ slackUserId, pokemonId, action: "evolve_preview" });
+  if (!availability.ok) return { ok: false, reason: availability.reason };
 
   const nextSpeciesId = pokemon.pokemon_species?.evolves_to;
   if (!nextSpeciesId) {
@@ -113,6 +116,8 @@ async function buildUpgradeBatchPreview({ slackUserId, pokemonId, targetLevel })
   if (!pokemon) {
     return { ok: false, reason: "pokemon_not_owned" };
   }
+  const availability = await assertPokemonAvailableForAction({ slackUserId, pokemonId, action: "upgrade_preview" });
+  if (!availability.ok) return { ok: false, reason: availability.reason };
 
   const user = await getUser(slackUserId);
   if (!user) {
