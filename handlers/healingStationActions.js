@@ -5,6 +5,8 @@ const {
   getHealingEligibilityList,
   addPokemonToHealingStation,
   removePokemonFromHealingStation,
+  upgradeHealingStation,
+  formatHealingRate,
 } = require('../services/healingStationService');
 const {
   HEALSTATION_ADD_ACTION_ID,
@@ -12,8 +14,11 @@ const {
   HEALSTATION_PICK_ADD_ACTION_ID,
   HEALSTATION_PICK_REMOVE_ACTION_ID,
   HEALSTATION_CANCEL_ACTION_ID,
+  UPSTATION_CONFIRM_ACTION_ID,
+  UPSTATION_CANCEL_ACTION_ID,
   renderHealingStation,
   renderHealingSelection,
+  renderHealingStationUpgradePreview,
 } = require('../adapters/slack/renderers/healingStationRenderer');
 
 const logger = createLogger('handler:healing-station-actions');
@@ -83,6 +88,43 @@ function registerHealingStationActions(app) {
     if (actorUserId !== payload?.slackUserId) return respond(buildUnauthorizedActionMessage(payload?.slackUserId));
     const view = await getHealingStationView(actorUserId);
     await client.chat.update({ channel: body.channel.id, ts: body.message.ts, ...renderHealingStation(view, actorUserId) });
+  });
+
+  app.action(UPSTATION_CONFIRM_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const payload = parsePokemonActionValue(action?.value);
+    const actorUserId = body.user?.id;
+    if (actorUserId !== payload?.slackUserId) return respond(buildUnauthorizedActionMessage(payload?.slackUserId));
+
+    try {
+      const result = await upgradeHealingStation(actorUserId);
+      if (!result.ok) {
+        const map = {
+          user_not_started: 'Você ainda não começou. Use `!poke start`.',
+          max_level_reached: 'Sua estação de cura já está no nível máximo (10/10).',
+          insufficient_gold: `Gold insuficiente para subir sua estação. Custo: *${result.cost}* | Seu gold: *${result.currentGold}*.`,
+        };
+        await respond({ response_type: 'ephemeral', text: map[result.reason] || 'Não consegui concluir o upgrade da estação agora 😵' });
+        return;
+      }
+
+      const updated = buildSimpleMessage(
+        `⬆️ *Estação evoluída!*\n\n<@${actorUserId}>\nNível: *${result.previousLevel}* → *${result.newLevel}*\nRegen: *${formatHealingRate(result.previousRatePerMinute)}* → *${formatHealingRate(result.newRatePerMinute)}* HP/min por slot\n💸 Custo: *${result.cost}* gold\n💰 Gold restante: *${result.remainingGold}*`,
+      );
+      await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+    } catch (error) {
+      logger.error('Erro ao confirmar !upstation', { actorUserId, error });
+      await respond({ response_type: 'ephemeral', text: 'Não consegui concluir o upgrade da estação agora 😵' });
+    }
+  });
+
+  app.action(UPSTATION_CANCEL_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const payload = parsePokemonActionValue(action?.value);
+    const actorUserId = body.user?.id;
+    if (actorUserId !== payload?.slackUserId) return respond(buildUnauthorizedActionMessage(payload?.slackUserId));
+    const updated = buildSimpleMessage(`🛑 Upgrade da estação cancelado por <@${actorUserId}>.`);
+    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
   });
 }
 

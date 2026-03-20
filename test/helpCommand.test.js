@@ -30,6 +30,10 @@ test("!help pokemon concentra comandos Pokémon e magicregister", async () => {
   assert.match(text, /!pokeid <id>/);
   assert.match(text, /!pokeplayer @player <nomepokemon>/);
   assert.match(text, /!magicregister <pokeid>/);
+  assert.match(text, /!healstation/);
+  assert.match(text, /!healpoke add <id>/);
+  assert.match(text, /!healpoke remove <id>/);
+  assert.match(text, /!upstation/);
   assert.doesNotMatch(text, /!ataque/);
 });
 

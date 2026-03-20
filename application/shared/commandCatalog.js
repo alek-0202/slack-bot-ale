@@ -104,6 +104,20 @@ const sharedCommandCatalog = {
     slackUsage: '`!market` / `!market buy <slot>`',
     discordDescription: 'Mostra o mercado diário ou compra um slot',
   },
+  healstation: {
+    name: 'healstation',
+    category: 'pokemon',
+    summary: 'Abre o HUD da estação de cura',
+    slackUsage: '`!healstation`',
+    discordDescription: 'Abre a estação de cura',
+  },
+  upstation: {
+    name: 'upstation',
+    category: 'pokemon',
+    summary: 'Mostra a confirmação para subir a estação de cura',
+    slackUsage: '`!upstation`',
+    discordDescription: 'Sobe a estação de cura',
+  },
 
   magicregister: {
     name: 'magicregister',

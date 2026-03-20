@@ -1,8 +1,11 @@
+const { formatHealingRate } = require('../../../services/healingStationService');
 const HEALSTATION_ADD_ACTION_ID = 'healstation_add';
 const HEALSTATION_REMOVE_ACTION_ID = 'healstation_remove';
 const HEALSTATION_PICK_ADD_ACTION_ID = 'healstation_pick_add';
 const HEALSTATION_PICK_REMOVE_ACTION_ID = 'healstation_pick_remove';
 const HEALSTATION_CANCEL_ACTION_ID = 'healstation_cancel';
+const UPSTATION_CONFIRM_ACTION_ID = 'upstation_confirm';
+const UPSTATION_CANCEL_ACTION_ID = 'upstation_cancel';
 
 function actionValue(payload) {
   return JSON.stringify(payload);
@@ -17,10 +20,10 @@ function renderHealingStation(view, slackUserId) {
     text: `Estação de cura de ${slackUserId}`,
     blocks: [
       { type: 'header', text: { type: 'plain_text', text: '🩺 Estação de cura', emoji: true } },
-      { type: 'section', text: { type: 'mrkdwn', text: `*Treinador:* <@${slackUserId}>\n*Nível:* ${view.station.level}/10\n*Regen:* +${view.ratePerMinute} HP/min por slot\n*Slots:* ${view.slots.length}/${view.maxSlots}` } },
+      { type: 'section', text: { type: 'mrkdwn', text: `*Treinador:* <@${slackUserId}>\n*Nível:* ${view.station.level}/10\n*Regen:* +${formatHealingRate(view.ratePerMinute)} HP/min por slot\n*Slots:* ${view.slots.length}/${view.maxSlots}` } },
       { type: 'section', text: { type: 'mrkdwn', text: slotsText } },
       { type: 'actions', elements: [
-        { type: 'button', text: { type: 'plain_text', text: 'Adicionar', emoji: true }, action_id: HEALSTATION_ADD_ACTION_ID, value: actionValue({ slackUserId }) , style: 'primary' },
+        { type: 'button', text: { type: 'plain_text', text: 'Adicionar', emoji: true }, action_id: HEALSTATION_ADD_ACTION_ID, value: actionValue({ slackUserId }), style: 'primary' },
         { type: 'button', text: { type: 'plain_text', text: 'Remover', emoji: true }, action_id: HEALSTATION_REMOVE_ACTION_ID, value: actionValue({ slackUserId }) },
       ] },
     ],
@@ -49,12 +52,59 @@ function renderHealingSelection({ mode, slackUserId, pokemons = [] }) {
   };
 }
 
+function renderHealingStationUpgradePreview({ slackUserId, preview }) {
+  return {
+    text: `Confirmação de upgrade da estação de ${slackUserId}`,
+    blocks: [
+      { type: 'header', text: { type: 'plain_text', text: '⬆️ Confirmar upgrade da estação', emoji: true } },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text:
+            `*Treinador:* <@${slackUserId}>\n` +
+            `*Nível atual:* ${preview.currentLevel}\n` +
+            `*Próximo nível:* ${preview.nextLevel}\n` +
+            `*Custo:* ${preview.cost} gold\n` +
+            `*Regen:* ${formatHealingRate(preview.currentRatePerMinute)} → ${formatHealingRate(preview.nextRatePerMinute)} HP/min por slot\n` +
+            `${preview.canAfford ? `*Gold atual:* ${preview.currentGold}` : `⚠️ *Gold atual:* ${preview.currentGold} (insuficiente)`}`,
+        },
+      },
+      {
+        type: 'context',
+        elements: [{ type: 'mrkdwn', text: `Somente <@${slackUserId}> pode confirmar este upgrade.` }],
+      },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: 'Confirmar', emoji: true },
+            action_id: UPSTATION_CONFIRM_ACTION_ID,
+            style: 'primary',
+            value: actionValue({ slackUserId, currentLevel: preview.currentLevel, nextLevel: preview.nextLevel, cost: preview.cost }),
+          },
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: 'Cancelar', emoji: true },
+            action_id: UPSTATION_CANCEL_ACTION_ID,
+            value: actionValue({ slackUserId, currentLevel: preview.currentLevel, nextLevel: preview.nextLevel }),
+          },
+        ],
+      },
+    ],
+  };
+}
+
 module.exports = {
   HEALSTATION_ADD_ACTION_ID,
   HEALSTATION_REMOVE_ACTION_ID,
   HEALSTATION_PICK_ADD_ACTION_ID,
   HEALSTATION_PICK_REMOVE_ACTION_ID,
   HEALSTATION_CANCEL_ACTION_ID,
+  UPSTATION_CONFIRM_ACTION_ID,
+  UPSTATION_CANCEL_ACTION_ID,
   renderHealingStation,
   renderHealingSelection,
+  renderHealingStationUpgradePreview,
 };
