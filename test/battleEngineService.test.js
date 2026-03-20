@@ -42,29 +42,32 @@ test("calculateDamage aplica crítico e arredondamento", () => {
 test("calculateMagicDamage aplica vantagem elemental com crítico garantido", () => {
   const result = calculateMagicDamage({
     attackerAttack: 10,
+    attackerMagic: 14,
     magicElement: "electric",
     defenderElements: ["water"],
-    d10Roll: 7,
+    d12Roll: 7,
+    d6Roll: 2,
   });
 
   assert.equal(result.isCritical, true);
-  assert.equal(result.rollSides, 10);
+  assert.equal(result.baseStatUsed, "magic");
   assert.equal(result.multiplier, 2.0);
-  assert.equal(result.finalDamage, 34);
+  assert.equal(result.finalDamage, 50);
 });
 
-test("calculateMagicDamage aplica desvantagem elemental com d6", () => {
+test("calculateMagicDamage aplica fallback para attack e desvantagem elemental", () => {
   const result = calculateMagicDamage({
     attackerAttack: 10,
     magicElement: "fire",
     defenderElements: ["water"],
+    d12Roll: 6,
     d6Roll: 4,
   });
 
   assert.equal(result.isCritical, false);
-  assert.equal(result.rollSides, 6);
+  assert.equal(result.baseStatUsed, "attack");
   assert.equal(result.multiplier, 0.7);
-  assert.equal(result.finalDamage, 10);
+  assert.equal(result.finalDamage, 15);
 });
 
 test("calculateDamage permite bloqueio total quando defesa excede 2x dano", () => {
@@ -187,7 +190,54 @@ test("turn resolver executa magia com slot registrado", () => {
   assert.equal(resolution.outcome.type, "magic");
   assert.equal(resolution.outcome.magicEntry.name, "Magia de Electric");
   assert.equal(resolution.outcome.energyConsumed, MAGIC_ENERGY_COST);
+  assert.equal(battle.players.U1.magicCooldown.blockedOwnTurnsRemaining, 2);
   assert.equal(resolution.shouldPassTurn, true);
+});
+
+test("cooldown de magia bloqueia as próximas duas ações do próprio jogador", () => {
+  const battle = createReadyBattle();
+  battle.currentTurnUserId = "U1";
+
+  const firstMagic = resolveBattleTurn({
+    battle,
+    actorUserId: "U1",
+    actionType: BATTLE_ACTION.MAGIC,
+    actionPayload: { magicSlot: 1 },
+  });
+  assert.equal(firstMagic.outcome.ok, true);
+
+  const blockedNow = resolveBattleTurn({
+    battle,
+    actorUserId: "U1",
+    actionType: BATTLE_ACTION.MAGIC,
+    actionPayload: { magicSlot: 1 },
+  });
+  assert.equal(blockedNow.outcome.reason, "magic_on_cooldown");
+  assert.equal(blockedNow.outcome.blockedOwnTurnsRemaining, 2);
+
+  resolveBattleTurn({ battle, actorUserId: battle.currentTurnUserId, actionType: BATTLE_ACTION.ATTACK });
+  battle.currentTurnUserId = "U1";
+  resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+
+  const blockedSecondOwnTurn = resolveBattleTurn({
+    battle,
+    actorUserId: "U1",
+    actionType: BATTLE_ACTION.MAGIC,
+    actionPayload: { magicSlot: 1 },
+  });
+  assert.equal(blockedSecondOwnTurn.outcome.reason, "magic_on_cooldown");
+  assert.equal(blockedSecondOwnTurn.outcome.blockedOwnTurnsRemaining, 1);
+
+  resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+  battle.currentTurnUserId = "U1";
+
+  const availableAgain = resolveBattleTurn({
+    battle,
+    actorUserId: "U1",
+    actionType: BATTLE_ACTION.MAGIC,
+    actionPayload: { magicSlot: 1 },
+  });
+  assert.equal(availableAgain.outcome.ok, true);
 });
 
 test("turn resolver mantém defesa como placeholder sem passar turno", () => {
@@ -213,6 +263,7 @@ function mockPokemon({ id, speciesId, name, speed = 12, elementTypes = ["electri
     level: 10,
     hp: 20,
     attack: 8,
+    magic: 11,
     defense: 4,
     speed,
     magicSlots: [{ slot: 1, name: `Magia de ${elementTypes[0][0].toUpperCase()}${elementTypes[0].slice(1)}`, element: elementTypes[0], icon: "✦" }],

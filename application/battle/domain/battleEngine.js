@@ -44,13 +44,22 @@ function calculateDamage({ attackerAttack, defenderDefense, d6Roll, d20Roll }) {
   };
 }
 
-function calculateMagicDamage({ attackerAttack, magicElement, defenderElements = [], d10Roll, d6Roll }) {
+function calculateMagicDamage({
+  attackerAttack,
+  attackerMagic,
+  magicElement,
+  defenderElements = [],
+  d12Roll,
+  d6Roll,
+}) {
   const attack = Math.max(1, Number(attackerAttack) || 1);
+  const magic = Math.max(1, Number(attackerMagic) || attack);
+  const baseStatUsed = Number(attackerMagic) > 0 ? "magic" : "attack";
   const elemental = resolveElementalRelation({ attackElement: magicElement, defenderElements });
-  const useDisadvantageDie = elemental.hasDisadvantage && !elemental.hasAdvantage;
-  const rollSides = useDisadvantageDie ? 6 : 10;
-  const rolledValue = useDisadvantageDie ? (d6Roll || rollDie(6)) : (d10Roll || rollDie(10));
-  const normalDamage = attack + rolledValue;
+  const primaryRoll = d12Roll || rollDie(12);
+  const bonusRoll = d6Roll || rollDie(6);
+  const attackBonusBase = Math.max(1, Math.round(attack * 0.15));
+  const normalDamage = magic + primaryRoll + attackBonusBase + bonusRoll;
 
   let finalDamage = normalDamage;
   let isCritical = false;
@@ -66,8 +75,14 @@ function calculateMagicDamage({ attackerAttack, magicElement, defenderElements =
   }
 
   return {
-    rollSides,
-    rollValue: rolledValue,
+    baseStatUsed,
+    magicStat: magic,
+    attackStat: attack,
+    primaryRollSides: 12,
+    primaryRollValue: primaryRoll,
+    bonusRollSides: 6,
+    bonusRollValue: bonusRoll,
+    attackBonusBase,
     normalDamage: Math.round(normalDamage),
     multiplier,
     finalDamage: Math.max(0, Math.round(finalDamage)),
@@ -93,6 +108,7 @@ function resolveAttackTurn({ attacker, defender }) {
 function resolveMagicTurn({ attacker, defender, magicEntry }) {
   const result = calculateMagicDamage({
     attackerAttack: attacker.stats.attack,
+    attackerMagic: attacker.stats.magic,
     magicElement: magicEntry?.element,
     defenderElements: defender.selectedPokemon?.elementTypes || [],
   });

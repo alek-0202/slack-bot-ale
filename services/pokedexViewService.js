@@ -88,7 +88,8 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
 
   const attributesText = isAttributesMode
     ? `\n\n*📊 Atributos*\n` +
-      `⚔️ ATK: *${entry.attack || 0}* | 🛡️ DEF: *${entry.defense || 0}*\n` +
+      `⚔️ ATK: *${entry.attack || 0}* | ✨ MAG: *${entry.magic ?? entry.attack ?? 0}*\n` +
+      `🛡️ DEF: *${entry.defense || 0}*\n` +
       `❤️ HP: *${entry.hp || 0}* | 💨 SPD: *${entry.speed || 0}*\n` +
       `💸 Venda atual: *${sellPrice}* gold`
     : `\n💸 Venda atual: *${sellPrice}* gold`;

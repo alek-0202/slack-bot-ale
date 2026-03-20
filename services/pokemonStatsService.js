@@ -14,7 +14,7 @@ const {
 
 const logger = createLogger("pokemon-stats-service");
 
-const SPECIES_STAT_FIELDS = ["base_attack", "base_defense", "base_hp", "base_speed"];
+const SPECIES_STAT_FIELDS = ["base_attack", "base_magic", "base_defense", "base_hp", "base_speed"];
 const MIN_EVOLUTION_GROWTH = 1.35;
 
 function hasCompleteBaseStats(species = {}) {
@@ -25,6 +25,7 @@ function getSpeciesBaseStats(species = {}, options = {}) {
   const fallbackStats = options.fallbackStats || {};
   const safeFallback = {
     attack: toPositiveInteger(fallbackStats.attack, 10),
+    magic: toPositiveInteger(fallbackStats.magic, toPositiveInteger(fallbackStats.attack, 10)),
     defense: toPositiveInteger(fallbackStats.defense, 10),
     hp: toPositiveInteger(fallbackStats.hp, 10),
     speed: toPositiveInteger(fallbackStats.speed, 10),
@@ -32,6 +33,7 @@ function getSpeciesBaseStats(species = {}, options = {}) {
 
   const baseStats = {
     attack: toPositiveInteger(species.base_attack, safeFallback.attack),
+    magic: toPositiveInteger(species.base_magic, safeFallback.magic),
     defense: toPositiveInteger(species.base_defense, safeFallback.defense),
     hp: toPositiveInteger(species.base_hp, safeFallback.hp),
     speed: toPositiveInteger(species.base_speed, safeFallback.speed),
@@ -51,7 +53,7 @@ function getSpeciesBaseStats(species = {}, options = {}) {
 function getLevelStatMultiplier(level = 1) {
   const safeLevel = normalizeLevel(level);
   const result = calculateProgressedStats({
-    baseStats: { attack: 100, defense: 100, hp: 100, speed: 100 },
+    baseStats: { attack: 100, magic: 100, defense: 100, hp: 100, speed: 100 },
     level: safeLevel,
   });
 

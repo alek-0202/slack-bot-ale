@@ -1,6 +1,9 @@
 const { getSupabaseClient } = require("../database/supabase");
 const { getUser } = require("./userService");
 const { formatGold, isGoldGte, toDatabaseGold, toGoldBigInt } = require("../utils/gold");
+const { createLogger } = require("../utils/logger");
+
+const logger = createLogger("trade-service");
 
 function isTradeParticipant(trade, slackUserId) {
   return trade.initiator_user_id === slackUserId || trade.target_user_id === slackUserId;
@@ -51,6 +54,13 @@ async function createTrade({ channelId, initiatorUserId, targetUserId }) {
   });
 
   if (error) {
+    logger.error("Falha ao criar trade via RPC", {
+      channelId,
+      initiatorUserId,
+      targetUserId,
+      rpc: "create_trade",
+      error,
+    });
     if ((error.message || "").includes("Já existe um trade pendente")) {
       return { ok: false, reason: "existing_pending_trade" };
     }
