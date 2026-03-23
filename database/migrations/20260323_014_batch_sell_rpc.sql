@@ -1,6 +1,7 @@
 create or replace function public.sell_user_pokemons_batch(
   p_slack_user_id text,
-  p_pokemon_ids bigint[]
+  p_pokemon_ids bigint[],
+  p_expected_sale_price bigint default null
 )
 returns table (
   ok boolean,
@@ -13,7 +14,9 @@ returns table (
 language plpgsql
 as $$
 declare
+  v_pokemon record;
   v_requested_ids bigint[];
+  v_locked_ids bigint[] := '{}'::bigint[];
   v_found_count integer;
   v_locked_count integer;
   v_sale_price bigint := 0;
@@ -30,12 +33,23 @@ begin
     return;
   end if;
 
-  select count(*)
-    into v_found_count
-  from public.user_pokemons up
-  where up.slack_user_id = p_slack_user_id
-    and up.id = any(v_requested_ids)
-  for update;
+  for v_pokemon in
+    select up.id, up.level, coalesce(up.upgrade_spent_gold, 0) as upgrade_spent_gold, ps.rarity
+    from public.user_pokemons up
+    join public.pokemon_species ps on ps.id = up.species_id
+    where up.slack_user_id = p_slack_user_id
+      and up.id = any(v_requested_ids)
+    for update of up
+  loop
+    v_locked_ids := array_append(v_locked_ids, v_pokemon.id);
+    v_sale_price := v_sale_price + public.calculate_pokemon_sell_price(
+      v_pokemon.rarity,
+      v_pokemon.level,
+      v_pokemon.upgrade_spent_gold
+    );
+  end loop;
+
+  v_found_count := coalesce(array_length(v_locked_ids, 1), 0);
 
   if v_found_count <> array_length(v_requested_ids, 1) then
     return query select false, 'pokemon_not_owned', null::bigint, null::bigint, 0, 0;
@@ -46,7 +60,7 @@ begin
     into v_locked_count
   from public.trade_items ti
   join public.trades t on t.id = ti.trade_id
-  where ti.user_pokemon_id = any(v_requested_ids)
+  where ti.user_pokemon_id = any(v_locked_ids)
     and t.status = 'pending';
 
   if v_locked_count > 0 then
@@ -54,22 +68,20 @@ begin
     return;
   end if;
 
-  select coalesce(sum(public.calculate_pokemon_sell_price(ps.rarity, up.level, coalesce(up.upgrade_spent_gold, 0))), 0)
-    into v_sale_price
-  from public.user_pokemons up
-  join public.pokemon_species ps on ps.id = up.species_id
-  where up.slack_user_id = p_slack_user_id
-    and up.id = any(v_requested_ids);
+  if p_expected_sale_price is not null and v_sale_price <> p_expected_sale_price then
+    return query select false, 'sale_price_changed', v_sale_price, null::bigint, 0, 0;
+    return;
+  end if;
 
-  delete from public.trade_items where user_pokemon_id = any(v_requested_ids);
+  delete from public.trade_items where user_pokemon_id = any(v_locked_ids);
   get diagnostics v_trade_items = row_count;
 
-  delete from public.market_purchases where user_pokemon_id = any(v_requested_ids);
+  delete from public.market_purchases where user_pokemon_id = any(v_locked_ids);
   get diagnostics v_market_purchases = row_count;
 
   delete from public.user_pokemons
   where slack_user_id = p_slack_user_id
-    and id = any(v_requested_ids);
+    and id = any(v_locked_ids);
 
   update public.users
   set gold = gold + v_sale_price

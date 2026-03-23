@@ -107,6 +107,7 @@ async function sellPokemonBatch({ slackUserId, pokemonIds }) {
   const { data, error } = await supabase.rpc("sell_user_pokemons_batch", {
     p_slack_user_id: slackUserId,
     p_pokemon_ids: preview.pokemonIds,
+    p_expected_sale_price: Number.parseInt(preview.totalSellPrice, 10),
   });
 
   if (error) throw error;
@@ -121,6 +122,7 @@ async function sellPokemonBatch({ slackUserId, pokemonIds }) {
       slackUserId,
       pokemonIds: preview.pokemonIds,
       sellValue: preview.totalSellPrice,
+      actualSellValue: result.sale_price ?? null,
       reason: result.reason,
     });
     return { ok: false, reason: result.reason, pokemons: preview.pokemons, pokemonIds: preview.pokemonIds };

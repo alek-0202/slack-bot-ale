@@ -228,6 +228,7 @@ function registerPokemonActions(app) {
         const map = {
           pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
           pokemon_locked_in_trade: "Um dos Pokémons está preso em um trade pendente e não pode ser vendido agora.",
+          sale_price_changed: "O valor da venda mudou desde a confirmação. Abra o !sell novamente para revisar o total atualizado.",
         };
         await respond({ response_type: "ephemeral", text: map[result.reason] || "Não consegui vender esse Pokémon agora 😵" });
         return;
