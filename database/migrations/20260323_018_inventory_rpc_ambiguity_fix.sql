@@ -1,3 +1,7 @@
+drop function if exists public.upsert_user_item(text, text, text, text, bigint, jsonb);
+
+drop function if exists public.consume_user_item(text, text, bigint);
+
 create or replace function public.upsert_user_item(
   p_slack_user_id text,
   p_item_key text,
