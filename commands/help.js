@@ -45,7 +45,7 @@ function buildPokemonHelp() {
     "`!balance` → mostra seu gold atual",
     "`!daily` → resgata recompensa diária (1x por dia)",
     "`!dhelp` → explica o !daily e mostra as chances",
-    ...linesFrom(["profile"], sharedPokemonCommands),
+    ...linesFrom(["profile", "dungeon", "mochila"], sharedPokemonCommands),
     "",
     "⚡ *Captura, coleção e consulta*",
     ...linesFrom(["capture", "pokedex", "pa"], sharedPokemonCommands),

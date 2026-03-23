@@ -1,5 +1,6 @@
 const { createUserIfMissing, getUser } = require('../../../services/userService');
 const { getProfileStats } = require('../../../services/pokemonService');
+const { getAccountLevelSnapshot, renderProgressBar } = require('../../../services/accountProgressionService');
 
 async function getProfileSummary({ userId, createIfMissing = false }) {
   let user = await getUser(userId);
@@ -17,6 +18,8 @@ async function getProfileSummary({ userId, createIfMissing = false }) {
 
   const stats = await getProfileStats(userId);
 
+  const progression = getAccountLevelSnapshot(user.account_xp || 0);
+
   return {
     ok: true,
     profile: {
@@ -24,6 +27,11 @@ async function getProfileSummary({ userId, createIfMissing = false }) {
       gold: user.gold,
       totalCaptured: stats.totalCaptured,
       uniqueCount: stats.uniqueCount,
+      accountLevel: progression.level,
+      accountXp: progression.currentLevelXp,
+      accountXpTotal: progression.totalXp,
+      accountXpToNextLevel: progression.xpToNextLevel,
+      accountXpBar: renderProgressBar(progression.currentLevelXp, progression.xpToNextLevel),
     },
   };
 }

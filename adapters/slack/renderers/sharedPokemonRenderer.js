@@ -5,6 +5,8 @@ function renderSlackProfileSummary({ slackUserId, profile }) {
   return (
     `📋 Perfil de <@${slackUserId}>\n` +
     `💰 Gold: *${profile.gold}*\n` +
+    `🧭 Nível da conta: *${profile.accountLevel || 1}*\n` +
+    `✨ XP: *${profile.accountXp || 0} / ${profile.accountXpToNextLevel || 100}* ${profile.accountXpBar || ''}\n` +
     `🎯 Total capturado: *${profile.totalCaptured}*\n` +
     `📘 Pokédex descoberta: *${profile.uniqueCount}*`
   );
@@ -40,7 +42,8 @@ function renderSlackCaptureResult({ slackUserId, result }) {
     `🎉 <@${slackUserId}> capturou *${result.species.name}* ${shinyTag}\n` +
     `⭐ Raridade: *${result.species.rarity}* | Lv ${result.captured.level}${buildPokemonTypesLabel(result.species.element_types) ? `\n🧪 ${buildPokemonTypesLabel(result.species.element_types)}` : ""}\n` +
     `🆔 ID da captura: *${result.captured.id}*\n` +
-    `💰 Recompensa: +${result.goldReward} gold`;
+    `💰 Recompensa: +${result.goldReward} gold\n` +
+    `✨ XP da conta: +${result.accountXpReward || 0}`;
 
   const message = {
     text,
@@ -102,14 +105,10 @@ function renderSlackUpgradeResult({ result, slackUserId, maxLevel, getNextUpgrad
     result.newLevel >= maxLevel ? 'MAX' : `${getNextUpgradeCost(result.newLevel)} gold`;
 
   return (
-    `🛠️ *${speciesName}* (#${result.pokemon.id}) melhorado com sucesso!
-` +
-    `📈 Nível: *${result.previousLevel}* → *${result.newLevel}* ${stars !== '-' ? `(${stars})` : ''}
-` +
-    `💸 Custo pago: *${result.cost}* gold
-` +
-    `💰 Gold restante: *${result.remainingGold}*
-` +
+    `🛠️ *${speciesName}* (#${result.pokemon.id}) melhorado com sucesso!\n` +
+    `📈 Nível: *${result.previousLevel}* → *${result.newLevel}* ${stars !== '-' ? `(${stars})` : ''}\n` +
+    `💸 Custo pago: *${result.cost}* gold\n` +
+    `💰 Gold restante: *${result.remainingGold}*\n` +
     `🔜 Próximo upgrade: *${nextUpgradeCost}*`
   );
 }
