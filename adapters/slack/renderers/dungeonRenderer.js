@@ -140,11 +140,16 @@ function renderDungeonError({ slackUserId, text }) {
 }
 
 function renderDungeonBattleState(battle) {
+  const playerUserId = battle.metadata?.slackUserId || battle.challengerId;
   const payload = renderBattleState(battle, {
     title: '🏰 *Batalha de Dungeon*',
     stateTextPrefix: '🏰 Dungeon em andamento',
     battleContextText: buildDungeonBattleContextText(battle),
     turnActionIdBuilder: buildDungeonTurnActionId,
+    shouldShowActions: ({ battle: currentBattle }) => currentBattle.status === 'active' && currentBattle.currentTurnUserId === playerUserId,
+    waitingTextBuilder: ({ battle: currentBattle }) => currentBattle.status === 'active' && currentBattle.currentTurnUserId !== playerUserId
+      ? '⏳ Turno automático do inimigo em resolução. Os botões voltam quando a vez retornar para você.'
+      : null,
   });
 
   return payload;

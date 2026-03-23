@@ -74,6 +74,13 @@ function renderBattleState(battle, options = {}) {
   const [challenger, challenged] = view.players;
   const title = options.title || "⚔️ *Batalha Pokémon PvP*";
   const stateTextPrefix = options.stateTextPrefix || "⚔️ Batalha em andamento";
+  const shouldShowActions = options.shouldShowActions
+    ? options.shouldShowActions({ battle, view })
+    : battle.status === "active";
+  const waitingText = options.waitingTextBuilder
+    ? options.waitingTextBuilder({ battle, view })
+    : null;
+  const logBlock = buildBattleLogBlock(battle, options);
 
   return {
     text:
@@ -118,8 +125,29 @@ function renderBattleState(battle, options = {}) {
           },
         ],
       },
-      buildBattleActionBlock(battle, options),
+      logBlock,
+      !shouldShowActions && waitingText ? {
+        type: "context",
+        elements: [{ type: "mrkdwn", text: waitingText }],
+      } : null,
+      shouldShowActions ? buildBattleActionBlock(battle, options) : null,
     ].filter(Boolean),
+  };
+}
+
+function buildBattleLogBlock(battle, options = {}) {
+  const lines = Array.isArray(options.logLinesBuilder ? options.logLinesBuilder(battle) : battle?.metadata?.turnLog)
+    ? (options.logLinesBuilder ? options.logLinesBuilder(battle) : battle?.metadata?.turnLog)
+    : [];
+
+  if (!lines.length) return null;
+
+  return {
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `*📜 Log de combate*\n${lines.map((line) => `• ${line}`).join("\n")}`.slice(0, 2900),
+    },
   };
 }
 

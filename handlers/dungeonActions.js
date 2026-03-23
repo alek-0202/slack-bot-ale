@@ -169,7 +169,7 @@ async function handleDungeonStartDailyAction({ body, action, client, respond }) 
   }
 }
 
-async function handleDungeonBattleTurnAction({ body, action, client }) {
+async function handleDungeonBattleTurnAction({ body, action, client, respond }) {
   const payload = parsePokemonActionValue(action?.value) || {};
   const actorUserId = body.user?.id;
   const actionName = String(payload.action || '').toLowerCase();
@@ -189,6 +189,18 @@ async function handleDungeonBattleTurnAction({ body, action, client }) {
     if (!battle) {
       return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('battle_not_found') }));
     }
+    if (battle.currentTurnUserId !== actorUserId) {
+      logger.warn('Clique fora do turno válido na dungeon (abertura de magia)', {
+        file: 'handlers/dungeonActions.js',
+        handler: 'handleDungeonBattleTurnAction',
+        actionId: action?.action_id,
+        slackUserId: actorUserId,
+        sessionId: channelId,
+        currentTurnUserId: battle.currentTurnUserId,
+      });
+      if (respond) await respond({ response_type: 'ephemeral', text: '⏳ Aguarde: o turno automático do inimigo ainda está sendo resolvido.' });
+      return updateMessage(client, body, renderDungeonBattleState(battle));
+    }
     return updateMessage(client, body, renderDungeonMagicOptions({
       battle,
       actorUserId,
@@ -204,6 +216,19 @@ async function handleDungeonBattleTurnAction({ body, action, client }) {
   const result = await processDungeonTurn({ channelId, actorUserId, actionType: actionTypeMap[actionName] });
 
   if (!result.ok) {
+    if (result.reason === 'not_actor_turn') {
+      logger.warn('Clique fora do turno válido na dungeon', {
+        file: 'handlers/dungeonActions.js',
+        handler: 'handleDungeonBattleTurnAction',
+        actionId: action?.action_id,
+        slackUserId: actorUserId,
+        sessionId: channelId,
+        currentTurnUserId: result.validation?.currentTurnUserId || result.battle?.currentTurnUserId || null,
+        attemptedAction: actionName,
+      });
+      if (respond) await respond({ response_type: 'ephemeral', text: '⏳ Ainda não é o seu turno. O inimigo age automaticamente quando for a vez dele.' });
+      if (result.battle) return updateMessage(client, body, renderDungeonBattleState(result.battle));
+    }
     logger.warn('Falha controlada ao processar turno da dungeon', {
       file: 'handlers/dungeonActions.js',
       handler: 'handleDungeonBattleTurnAction',
@@ -222,7 +247,7 @@ async function handleDungeonBattleTurnAction({ body, action, client }) {
   return updateMessage(client, body, renderDungeonBattleState(result.battle));
 }
 
-async function handleDungeonBattleMagicAction({ body, action, client }) {
+async function handleDungeonBattleMagicAction({ body, action, client, respond }) {
   const payload = parsePokemonActionValue(action?.value) || {};
   const actorUserId = body.user?.id;
   const channelId = payload.channelId;
@@ -244,6 +269,19 @@ async function handleDungeonBattleMagicAction({ body, action, client }) {
   });
 
   if (!result.ok) {
+    if (result.reason === 'not_actor_turn') {
+      logger.warn('Clique fora do turno válido na dungeon (magia)', {
+        file: 'handlers/dungeonActions.js',
+        handler: 'handleDungeonBattleMagicAction',
+        actionId: action?.action_id,
+        slackUserId: actorUserId,
+        sessionId: channelId,
+        currentTurnUserId: result.validation?.currentTurnUserId || result.battle?.currentTurnUserId || null,
+        magicSlot: payload.magicSlot,
+      });
+      if (respond) await respond({ response_type: 'ephemeral', text: '⏳ Ainda não é o seu turno para usar magia.' });
+      if (result.battle) return updateMessage(client, body, renderDungeonBattleState(result.battle));
+    }
     return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason(result.reason) }));
   }
 
@@ -295,14 +333,14 @@ function registerDungeonActions(app) {
     await handleDungeonStartDailyAction({ body, action, client, respond });
   });
 
-  app.action(DUNGEON_BATTLE_TURN_ACTION_PATTERN, async ({ ack, body, action, client }) => {
+  app.action(DUNGEON_BATTLE_TURN_ACTION_PATTERN, async ({ ack, body, action, client, respond }) => {
     await ack();
-    await handleDungeonBattleTurnAction({ body, action, client });
+    await handleDungeonBattleTurnAction({ body, action, client, respond });
   });
 
-  app.action(DUNGEON_BATTLE_MAGIC_ACTION_PATTERN, async ({ ack, body, action, client }) => {
+  app.action(DUNGEON_BATTLE_MAGIC_ACTION_PATTERN, async ({ ack, body, action, client, respond }) => {
     await ack();
-    await handleDungeonBattleMagicAction({ body, action, client });
+    await handleDungeonBattleMagicAction({ body, action, client, respond });
   });
 
   app.action(DUNGEON_BATTLE_MAGIC_CANCEL_ACTION_ID, async ({ ack, body, action, client }) => {
