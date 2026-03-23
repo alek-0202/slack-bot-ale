@@ -19,6 +19,15 @@ function getItemDefinition(itemKey) {
   };
 }
 
+function normalizeItemRpcRow(row) {
+  if (!row) return row;
+  if (row.slack_user_id || !row.item_slack_user_id) return row;
+  return {
+    ...row,
+    slack_user_id: row.item_slack_user_id,
+  };
+}
+
 async function addItem(slackUserId, itemKey, quantity, overrides = {}) {
   await createUserIfMissing(slackUserId);
   const supabase = getSupabaseClient();
@@ -32,7 +41,7 @@ async function addItem(slackUserId, itemKey, quantity, overrides = {}) {
     p_extra_data: item.extraData || {},
   });
   if (error) throw error;
-  return Array.isArray(data) ? data[0] : data;
+  return normalizeItemRpcRow(Array.isArray(data) ? data[0] : data);
 }
 
 async function removeItem(slackUserId, itemKey, quantity) {
@@ -51,7 +60,7 @@ async function removeItem(slackUserId, itemKey, quantity) {
     }
     throw error;
   }
-  return { ok: true, item: Array.isArray(data) ? data[0] : data };
+  return { ok: true, item: normalizeItemRpcRow(Array.isArray(data) ? data[0] : data) };
 }
 
 async function getUserItems(slackUserId) {
