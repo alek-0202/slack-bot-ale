@@ -1,6 +1,6 @@
 const { getSupabaseClient } = require("../database/supabase");
 const { getUserPokemonById, getUserPokemonsByIds } = require("./pokemonService");
-const { getBaseGoldByRarity, getLevelBonus } = require("./economyService");
+const { getBaseGoldByRarity } = require("./economyService");
 const { createLogger } = require("../utils/logger");
 const { formatGold, toGoldBigInt } = require("../utils/gold");
 
@@ -10,19 +10,24 @@ function getBaseSellPriceByRarity(rarity) {
   return BigInt(getBaseGoldByRarity(rarity));
 }
 
-function calculatePokemonSellPrice({ rarity, level, upgradeSpentGold = 0 }) {
-  const safeLevel = Math.max(1, Number(level) || 1);
-  const basePrice = getBaseSellPriceByRarity(rarity);
-  const levelBonus = BigInt(getLevelBonus(safeLevel));
+function resolveBaseSellPrice({ baseValue, rarity }) {
+  const explicitBaseValue = Number(baseValue);
+  if (Number.isFinite(explicitBaseValue) && explicitBaseValue >= 0) {
+    return BigInt(Math.trunc(explicitBaseValue));
+  }
+
+  return getBaseSellPriceByRarity(rarity);
+}
+
+function calculatePokemonSellPrice({ baseValue, rarity, upgradeSpentGold = 0 }) {
+  const basePrice = resolveBaseSellPrice({ baseValue, rarity });
   const investedGold = toGoldBigInt(upgradeSpentGold);
-  const upgradeReturn = investedGold / 5n;
-  const finalPrice = basePrice + levelBonus + upgradeReturn;
+  const finalPrice = basePrice + investedGold;
 
   return {
     basePrice: formatGold(basePrice),
-    levelBonus: formatGold(levelBonus),
     totalUpgradeCost: formatGold(investedGold),
-    upgradeReturn: formatGold(upgradeReturn),
+    upgradeReturn: formatGold(investedGold),
     finalPrice: formatGold(finalPrice >= 0n ? finalPrice : 0n),
   };
 }
@@ -51,8 +56,8 @@ async function buildSellPreviewBatch({ slackUserId, pokemonIds }) {
   const items = requestedIds.map((pokemonId) => {
     const pokemon = pokemonById.get(pokemonId);
     const priceBreakdown = calculatePokemonSellPrice({
+      baseValue: pokemon.pokemon_species?.base_value,
       rarity: pokemon.pokemon_species?.rarity,
-      level: pokemon.level,
       upgradeSpentGold: pokemon.upgrade_spent_gold,
     });
 

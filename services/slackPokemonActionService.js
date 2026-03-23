@@ -382,7 +382,7 @@ function buildSellPreviewMessage({ slackUserId, preview }) {
         `*Pokémon:* ${pokemonName} (#${preview.pokemon.id})`,
         `*Nível:* ${preview.pokemon.level}`,
         `*Valor da venda:* ${price} gold`,
-        `*Retorno dos upgrades:* ${preview.priceBreakdown?.upgradeReturn || "0"} gold`,
+        `*Investimento em upgrades:* ${preview.priceBreakdown?.totalUpgradeCost || "0"} gold`,
       ];
 
   return {
@@ -403,12 +403,12 @@ function buildSellPreviewMessage({ slackUserId, preview }) {
         ? []
         : [{
             type: "context",
-            elements: [{ type: "mrkdwn", text: `Retorno dos upgrades: *${preview.priceBreakdown?.upgradeReturn || "0"}* gold.` }],
+            elements: [{ type: "mrkdwn", text: `Investimento em upgrades: *${preview.priceBreakdown?.totalUpgradeCost || "0"}* gold.` }],
           }]),
       ...(isBatch
         ? [{
             type: "context",
-            elements: [{ type: "mrkdwn", text: `Retorno total dos upgrades: *${preview.totalUpgradeReturn || "0"}* gold.` }],
+            elements: [{ type: "mrkdwn", text: `Investimento total em upgrades: *${preview.totalUpgradeReturn || "0"}* gold.` }],
           }]
         : []),
       {
