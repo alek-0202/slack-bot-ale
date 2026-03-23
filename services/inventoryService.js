@@ -11,9 +11,10 @@ const ITEM_CATALOG = {
 };
 
 function getItemDefinition(itemKey) {
-  return ITEM_CATALOG[itemKey] || {
-    itemKey,
-    itemName: itemKey,
+  const normalizedItemKey = String(itemKey || '').trim().toLowerCase();
+  return ITEM_CATALOG[normalizedItemKey] || {
+    itemKey: normalizedItemKey,
+    itemName: normalizedItemKey,
     description: null,
     extraData: {},
   };
@@ -34,7 +35,7 @@ async function addItem(slackUserId, itemKey, quantity, overrides = {}) {
   const item = { ...getItemDefinition(itemKey), ...overrides };
   const { data, error } = await supabase.rpc('upsert_user_item', {
     p_slack_user_id: slackUserId,
-    p_item_key: item.itemKey,
+    p_item_key: String(item.itemKey || '').trim().toLowerCase(),
     p_item_name: item.itemName,
     p_description: item.description,
     p_quantity: Math.max(1, Number(quantity) || 1),
@@ -48,7 +49,7 @@ async function removeItem(slackUserId, itemKey, quantity) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.rpc('consume_user_item', {
     p_slack_user_id: slackUserId,
-    p_item_key: itemKey,
+    p_item_key: String(itemKey || '').trim().toLowerCase(),
     p_quantity: Math.max(1, Number(quantity) || 1),
   });
   if (error) {

@@ -10,7 +10,7 @@ const { createUserIfMissing } = require('./userService');
 const { pickByRarity } = require('../pokemon/rarity');
 const { addItem } = require('./inventoryService');
 const { grantAccountXp } = require('./accountProgressionService');
-const { addGold, assertNonNegativeGold, toDatabaseGold, toGoldBigInt, formatGold } = require('../utils/gold');
+const { formatGold } = require('../utils/gold');
 
 const FARM_LEVELS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
 const DUNGEON_ENEMY_USER_ID = '__dungeon_enemy__';
@@ -142,13 +142,12 @@ async function persistPlayerBattleHp(slackUserId, playerState) {
 async function grantDungeonRewards({ slackUserId, reward, transactionType, capturedSpecies = null, enemyLevel = null }) {
   await createUserIfMissing(slackUserId);
   const supabase = getSupabaseClient();
-  const { data: user, error } = await supabase.from('users').select('gold').eq('slack_user_id', slackUserId).single();
-  if (error) throw error;
-  const nextGold = assertNonNegativeGold(addGold(toGoldBigInt(user.gold), toGoldBigInt(reward.gold)));
-  const { error: updateError } = await supabase.from('users').update({ gold: toDatabaseGold(nextGold) }).eq('slack_user_id', slackUserId);
-  if (updateError) throw updateError;
-  const { error: trxError } = await supabase.from('transactions').insert({ slack_user_id: slackUserId, type: transactionType, amount: toDatabaseGold(reward.gold) });
-  if (trxError) throw trxError;
+  const { error: goldError } = await supabase.rpc('apply_gold_transaction', {
+    p_slack_user_id: slackUserId,
+    p_amount: Number(reward.gold) || 0,
+    p_transaction_type: transactionType,
+  });
+  if (goldError) throw goldError;
   const xpResult = await grantAccountXp(slackUserId, reward.accountXp, transactionType);
   const items = [];
   if (reward.ancientBookQty) {
