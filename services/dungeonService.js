@@ -92,13 +92,30 @@ function weightedPickByConfiguredChances(speciesList, chances) {
   return pool[pool.length - 1] || null;
 }
 
-function applyEnemyStatNerf(stats) {
-  const relevantStats = ['attack', 'magic', 'defense', 'hp', 'speed'];
-  return Object.fromEntries(Object.entries(stats).map(([key, value]) => {
-    if (!relevantStats.includes(key)) return [key, value];
-    const numericValue = Number(value) || 0;
-    return [key, Math.max(1, Math.floor(numericValue * 0.9))];
-  }));
+const DUNGEON_PVE_RELEVANT_STATS = ['attack', 'magic', 'defense', 'hp', 'speed'];
+const DUNGEON_RARITY_STAT_MODIFIER = {
+  common: 1.2,
+  uncommon: 1.2,
+  rare: 1,
+  epic: 1,
+};
+
+function getDungeonEnemyStatModifier(rarity) {
+  return DUNGEON_RARITY_STAT_MODIFIER[String(rarity || '').toLowerCase()] || 1;
+}
+
+function balanceDungeonEnemyStats(stats, rarity) {
+  const modifier = getDungeonEnemyStatModifier(rarity);
+  return {
+    modifier,
+    baseStats: { ...stats },
+    relevantStats: [...DUNGEON_PVE_RELEVANT_STATS],
+    stats: Object.fromEntries(Object.entries(stats).map(([key, value]) => {
+      if (!DUNGEON_PVE_RELEVANT_STATS.includes(key)) return [key, value];
+      const numericValue = Number(value) || 0;
+      return [key, Math.max(1, Math.floor(numericValue * modifier))];
+    })),
+  };
 }
 
 function filterDungeonEnemySpecies(speciesList = []) {
@@ -113,7 +130,8 @@ function pickDungeonEnemySpecies(speciesList = []) {
 
 function buildEnemyPokemon(species, level) {
   const baseStats = calculatePokemonStats({ species, level });
-  const stats = applyEnemyStatNerf(baseStats);
+  const balance = balanceDungeonEnemyStats(baseStats, species?.rarity);
+  const stats = balance.stats;
 
   return {
     id: `enemy-${species.id}-${level}-${Math.random().toString(36).slice(2, 7)}`,
@@ -127,6 +145,7 @@ function buildEnemyPokemon(species, level) {
     speed: stats.speed,
     pokemon_species: species,
     magicSlots: buildMagicEntriesFromElements(species.element_types || []),
+    pveBalance: balance,
   };
 }
 
@@ -378,6 +397,9 @@ async function startFarmDungeon({ slackUserId, pokemonId, level }) {
     enemyRarity: enemySpecies?.rarity,
     enemyLevel: enemy.level,
     enemyStats: { attack: enemy.attack, magic: enemy.magic, defense: enemy.defense, hp: enemy.hp, speed: enemy.speed },
+    enemyStatModifier: enemy.pveBalance?.modifier,
+    affectedStats: enemy.pveBalance?.relevantStats,
+    baseStats: enemy.pveBalance?.baseStats,
   });
 
   const reward = getFarmReward(level);
@@ -431,6 +453,9 @@ async function startDailyDungeon({ slackUserId, pokemonId, mode }) {
     enemyRarity: enemySpecies?.rarity,
     enemyLevel: enemy.level,
     enemyStats: { attack: enemy.attack, magic: enemy.magic, defense: enemy.defense, hp: enemy.hp, speed: enemy.speed },
+    enemyStatModifier: enemy.pveBalance?.modifier,
+    affectedStats: enemy.pveBalance?.relevantStats,
+    baseStats: enemy.pveBalance?.baseStats,
   });
 
   const battle = createDungeonBattle({
@@ -468,12 +493,95 @@ function getDungeonBattle(channelId) {
   return battle;
 }
 
+function getBattleActorLabel(battle, actorUserId) {
+  const actorState = battle.players?.[actorUserId];
+  const actorName = actorState?.selectedPokemon?.name || 'Pokémon';
+  if (actorUserId === DUNGEON_ENEMY_USER_ID) return `👾 ${actorName}`;
+  return `🧑‍💻 ${actorName}`;
+}
+
+function formatDungeonTurnLogEntry({ battle, actionType, outcome, actorUserId, phase = 'turn' }) {
+  const actorLabel = getBattleActorLabel(battle, actorUserId);
+  const targetState = battle.players?.[outcome?.defenderId];
+  const targetLabel = outcome?.defenderId ? getBattleActorLabel(battle, outcome.defenderId) : null;
+  const hpSuffix = targetState && outcome?.defenderRemainingHp != null
+    ? ` (HP ${outcome.defenderRemainingHp}/${targetState.battleHp?.max || '?'})`
+    : '';
+
+  if (!outcome?.ok) {
+    if (outcome?.reason === 'magic_on_cooldown') return `⏳ ${actorLabel} tentou usar magia, mas ainda está em cooldown.`;
+    if (outcome?.reason === 'magic_not_found') return `⚠️ ${actorLabel} tentou usar uma magia inválida.`;
+    if (outcome?.reason === 'limit') return `⚠️ ${actorLabel} tentou usar poção, mas já atingiu o limite.`;
+    if (outcome?.reason === 'full_hp') return `💚 ${actorLabel} tentou usar poção com HP cheio.`;
+    return `⚠️ ${actorLabel} falhou ao agir (${actionType}).`;
+  }
+
+  if (actionType === BATTLE_ACTION.ATTACK) {
+    return `${phase === 'turn' ? '⚔️' : '🤖'} ${actorLabel} atacou ${targetLabel} e causou *${outcome.finalDamage}* de dano${outcome.isCritical ? ' — CRÍTICO!' : ''}${hpSuffix}`;
+  }
+
+  if (actionType === BATTLE_ACTION.MAGIC) {
+    const relationMessage = outcome.elemental?.hasAdvantage
+      ? ' com vantagem elemental'
+      : outcome.elemental?.hasDisadvantage
+        ? ' com desvantagem elemental'
+        : '';
+    return `✨ ${actorLabel} usou *${outcome.magicEntry?.name || 'Magia'}* em ${targetLabel} e causou *${outcome.finalDamage}* de dano${relationMessage}${hpSuffix}`;
+  }
+
+  if (actionType === BATTLE_ACTION.POTION) {
+    return `🧪 ${actorLabel} usou poção e recuperou *${outcome.healAmount}* HP (agora ${outcome.currentHp}/${battle.players?.[actorUserId]?.battleHp?.max || '?'})`;
+  }
+
+  return `🎯 ${actorLabel} executou ${actionType}.`;
+}
+
+function buildDungeonTurnLog({ battle, playerTurn, enemyTurn }) {
+  const log = [];
+  log.push(`🔁 Rodada ${battle.round} — início da resolução`);
+
+  if (playerTurn?.outcome) {
+    log.push(formatDungeonTurnLogEntry({ battle, actionType: playerTurn.actionType, outcome: playerTurn.outcome, actorUserId: playerTurn.actorUserId, phase: 'turn' }));
+    if (playerTurn.outcome?.defenderRemainingHp === 0) log.push(`💀 ${getBattleActorLabel(battle, playerTurn.outcome.defenderId)} foi derrotado.`);
+  }
+
+  if (enemyTurn?.resolution?.outcome) {
+    log.push('🤖 Turno automático do inimigo');
+    log.push(formatDungeonTurnLogEntry({ battle, actionType: enemyTurn.action.actionType, outcome: enemyTurn.resolution.outcome, actorUserId: DUNGEON_ENEMY_USER_ID, phase: 'auto' }));
+    if (enemyTurn.resolution.outcome?.defenderRemainingHp === 0) log.push(`💀 ${getBattleActorLabel(battle, enemyTurn.resolution.outcome.defenderId)} foi derrotado.`);
+  }
+
+  if (battle.status === 'finished') {
+    const winnerId = battle.metadata?.lastResolution?.finalized?.winnerId;
+    log.push(`🏁 Batalha encerrada. Vencedor: ${getBattleActorLabel(battle, winnerId)}.`);
+  } else {
+    log.push(`🎯 Próximo turno: ${getBattleActorLabel(battle, battle.currentTurnUserId)}.`);
+    log.push(`✅ Rodada ${battle.round} — fim da resolução`);
+  }
+
+  return log.slice(-8);
+}
+
 function resolveDungeonAiTurn(battle) {
   const actorUserId = battle.currentTurnUserId;
   if (actorUserId !== DUNGEON_ENEMY_USER_ID) return null;
 
   const enemyState = battle.players[DUNGEON_ENEMY_USER_ID];
+  const playerState = battle.players[battle.metadata?.slackUserId || battle.challengerId];
   const action = decideAiAction(enemyState);
+
+  logger.info('Decisão da IA da dungeon definida', {
+    file: 'services/dungeonService.js',
+    method: 'resolveDungeonAiTurn',
+    battleId: battle.id,
+    sessionId: battle.channelId,
+    slackUserId: battle.metadata?.slackUserId,
+    currentTurnUserId: battle.currentTurnUserId,
+    enemyPokemon: enemyState?.selectedPokemon?.name,
+    playerPokemon: playerState?.selectedPokemon?.name,
+    chosenActionType: action.actionType,
+    chosenActionPayload: action.actionPayload,
+  });
   const resolution = resolveBattleTurn({
     battle,
     actorUserId: DUNGEON_ENEMY_USER_ID,
@@ -568,7 +676,7 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
   const validation = validateTurnAction({ battle, actorUserId, actionType });
   if (!validation.ok) return { ok: false, reason: validation.reason, battle, validation };
 
-  logger.info('Resolvendo turno do jogador na dungeon', {
+  logger.info('Ação recebida do player na dungeon', {
     file: 'services/dungeonService.js',
     method: 'processDungeonTurn',
     battleId: battle.id,
@@ -578,8 +686,11 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
     dungeonMode: battle.metadata?.dungeonType,
     dailyMode: battle.metadata?.dailyMode || null,
     actionType,
+    actionPayload,
+    enemyPokemon: battle.players[DUNGEON_ENEMY_USER_ID]?.selectedPokemon?.name,
   });
 
+  const roundBeforeResolution = battle.round;
   const playerResolution = resolveBattleTurn({ battle, actorUserId, actionType, actionPayload });
   if (!playerResolution?.outcome?.ok) {
     if (playerResolution?.outcome?.reason === 'not_implemented' && playerResolution?.outcome?.type === 'defense') {
@@ -588,17 +699,58 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
     return { ok: false, reason: playerResolution.outcome.reason || 'unsupported_action', battle };
   }
   battle.metadata.lastResolution = playerResolution;
+  logger.info('Ação do player resolvida na dungeon', {
+    file: 'services/dungeonService.js',
+    method: 'processDungeonTurn',
+    battleId: battle.id,
+    sessionId: battle.channelId,
+    slackUserId: actorUserId,
+    currentTurnUserId: battle.currentTurnUserId,
+    roundBeforeResolution,
+    roundAfterPlayerResolution: battle.round,
+    outcomeType: playerResolution.outcome?.type,
+    result: playerResolution.outcome,
+    nextTurnUserId: battle.currentTurnUserId,
+    finished: playerResolution.finished,
+  });
 
   const turnLog = [{ actorUserId, actionType, outcome: playerResolution.outcome }];
   let enemyTurn = null;
 
   if (!playerResolution.finished && battle.currentTurnUserId === DUNGEON_ENEMY_USER_ID) {
+    logger.info('Troca de turno player -> bot detectada na dungeon', {
+      file: 'services/dungeonService.js',
+      method: 'processDungeonTurn',
+      battleId: battle.id,
+      sessionId: battle.channelId,
+      slackUserId: actorUserId,
+      previousActorUserId: actorUserId,
+      currentTurnUserId: battle.currentTurnUserId,
+    });
     enemyTurn = resolveDungeonAiTurn(battle);
     if (enemyTurn) {
       battle.metadata.lastResolution = enemyTurn.resolution;
       turnLog.push({ actorUserId: DUNGEON_ENEMY_USER_ID, actionType: enemyTurn.action.actionType, outcome: enemyTurn.resolution.outcome });
     }
   }
+
+  battle.metadata.turnLog = buildDungeonTurnLog({
+    battle,
+    playerTurn: { actorUserId, actionType, outcome: playerResolution.outcome },
+    enemyTurn,
+  });
+
+  logger.info('Renderização pós-resolução da dungeon preparada', {
+    file: 'services/dungeonService.js',
+    method: 'processDungeonTurn',
+    battleId: battle.id,
+    sessionId: battle.channelId,
+    slackUserId: actorUserId,
+    currentTurnUserId: battle.currentTurnUserId,
+    battleStatus: battle.status,
+    playerControlsVisible: battle.status === 'active' && battle.currentTurnUserId === actorUserId,
+    turnLog: battle.metadata.turnLog,
+  });
 
   battleStore.setBattle(battle.channelId, battle);
 
@@ -622,6 +774,8 @@ module.exports = {
   FARM_LEVELS,
   DAILY_CHANCES,
   DUNGEON_ENEMY_USER_ID,
+  getDungeonEnemyStatModifier,
+  balanceDungeonEnemyStats,
   getDungeonFarmList,
   getFarmReward,
   decideAiAction,
