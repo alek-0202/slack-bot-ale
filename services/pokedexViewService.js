@@ -80,7 +80,7 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
 
   const species = entry.pokemon_species || {};
   const visual = buildPokemonVisualSummary({ species, level: entry.level });
-  const sellPrice = calculatePokemonSellPrice({ rarity: species.rarity, level: entry.level, upgradeSpentGold: entry.upgrade_spent_gold }).finalPrice;
+  const sellPrice = calculatePokemonSellPrice({ baseValue: species.base_value, rarity: species.rarity, upgradeSpentGold: entry.upgrade_spent_gold }).finalPrice;
   const positionText = `${index + 1}/${total}`;
   const shinyTag = entry.shiny ? "\n✨ *Shiny*" : "";
   const quantitySuffix = entry.quantity > 1 ? ` (x${entry.quantity})` : "";

@@ -4,7 +4,7 @@ const { getUser } = require("./userService");
 const { getSpeciesById } = require("./pokemonLookupService");
 const { getEvolutionCost, evolvePokemon } = require("./evolutionService");
 const { MAX_LEVEL, calculateTotalUpgradeCost, upgradePokemonBatch } = require("./upgradeService");
-const { buildSellPreview, sellPokemon } = require("./sellService");
+const { buildSellPreview, buildSellPreviewBatch, sellPokemon, sellPokemonBatch } = require("./sellService");
 const { formatGold, isGoldGte } = require("../utils/gold");
 const { getPokemonProgressionSnapshot } = require("./pokemonStatsService");
 const { assertPokemonAvailableForAction } = require("./healingStationService");
@@ -365,30 +365,52 @@ function buildUpgradeBatchPreviewMessage({ slackUserId, preview }) {
 }
 
 
-async function buildSellPreviewCard({ slackUserId, pokemonId }) {
+async function buildSellPreviewCard({ slackUserId, pokemonId, pokemonIds }) {
+  if (Array.isArray(pokemonIds)) {
+    return buildSellPreviewBatch({ slackUserId, pokemonIds });
+  }
   return buildSellPreview({ slackUserId, pokemonId });
 }
 
 function buildSellPreviewMessage({ slackUserId, preview }) {
+  const isBatch = Array.isArray(preview.items) && preview.items.length > 1;
   const pokemonName = preview.pokemon?.pokemon_species?.name || "Pokémon";
   const price = preview.priceBreakdown?.finalPrice || "0";
+  const previewLines = isBatch
+    ? preview.items.map((item) => `• *${item.pokemon?.pokemon_species?.name || "Pokémon"}* (#${item.pokemon.id}) — ${item.priceBreakdown?.finalPrice || "0"} gold`)
+    : [
+        `*Pokémon:* ${pokemonName} (#${preview.pokemon.id})`,
+        `*Nível:* ${preview.pokemon.level}`,
+        `*Valor da venda:* ${price} gold`,
+        `*Investimento em upgrades:* ${preview.priceBreakdown?.totalUpgradeCost || "0"} gold`,
+      ];
 
   return {
-    text: `Confirmação de venda para ${pokemonName}`,
+    text: isBatch ? `Confirmação de venda para ${preview.totalCount} Pokémons` : `Confirmação de venda para ${pokemonName}`,
     blocks: [
       { type: "header", text: { type: "plain_text", text: "Confirmar venda", emoji: true } },
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text:
-            `*Pokémon:* ${pokemonName} (#${preview.pokemon.id})\n` +
-            `*Nível:* ${preview.pokemon.level}\n` +
-            `*Valor da venda:* ${price} gold\n` +
-            `*Retorno dos upgrades:* ${preview.priceBreakdown?.upgradeReturn || "0"} gold`,
+          text: isBatch
+            ? [`*Pokémons selecionados (${preview.totalCount}):*`, ...previewLines, "", `*Valor total da venda:* ${preview.totalSellPrice || "0"} gold`].join("\n")
+            : previewLines.join("\n"),
         },
-        accessory: buildAccessoryImage(preview.pokemon?.pokemon_species),
+        accessory: isBatch ? undefined : buildAccessoryImage(preview.pokemon?.pokemon_species),
       },
+      ...(isBatch
+        ? []
+        : [{
+            type: "context",
+            elements: [{ type: "mrkdwn", text: `Investimento em upgrades: *${preview.priceBreakdown?.totalUpgradeCost || "0"}* gold.` }],
+          }]),
+      ...(isBatch
+        ? [{
+            type: "context",
+            elements: [{ type: "mrkdwn", text: `Investimento total em upgrades: *${preview.totalUpgradeReturn || "0"}* gold.` }],
+          }]
+        : []),
       {
         type: "context",
         elements: [{ type: "mrkdwn", text: `Somente <@${slackUserId}> pode confirmar esta venda.` }],
@@ -401,13 +423,13 @@ function buildSellPreviewMessage({ slackUserId, preview }) {
             action_id: SELL_CONFIRM_ACTION_ID,
             text: { type: "plain_text", text: "Confirmar venda", emoji: true },
             style: "danger",
-            value: buildActionValue({ type: "sell", slackUserId, pokemonId: preview.pokemon.id }),
+            value: buildActionValue({ type: "sell", slackUserId, pokemonIds: preview.pokemonIds || [preview.pokemon.id] }),
           },
           {
             type: "button",
             action_id: SELL_CANCEL_ACTION_ID,
             text: { type: "plain_text", text: "Cancelar", emoji: true },
-            value: buildActionValue({ type: "sell_cancel", slackUserId, pokemonId: preview.pokemon.id }),
+            value: buildActionValue({ type: "sell_cancel", slackUserId, pokemonIds: preview.pokemonIds || [preview.pokemon.id] }),
           },
         ],
       },
@@ -441,5 +463,6 @@ module.exports = {
   calculateTotalUpgradeCost,
   upgradePokemonToLevel,
   sellPokemon,
+  sellPokemonBatch,
   evolvePokemon,
 };
