@@ -1,7 +1,15 @@
+const {
+  renderBattleState,
+  renderMagicOptions,
+} = require('./battleRenderer');
+
 const DUNGEON_SELECT_POKEMON_ACTION_ID = 'dungeon_select_pokemon';
 const DUNGEON_SELECT_MODE_ACTION_ID = 'dungeon_select_mode';
 const DUNGEON_START_FARM_ACTION_ID = 'dungeon_start_farm';
 const DUNGEON_START_DAILY_ACTION_ID = 'dungeon_start_daily';
+const DUNGEON_BATTLE_TURN_ACTION_ID = 'dungeon_battle_turn_action';
+const DUNGEON_BATTLE_MAGIC_ACTION_ID = 'dungeon_battle_magic_action';
+const DUNGEON_BATTLE_MAGIC_CANCEL_ACTION_ID = 'dungeon_battle_magic_cancel';
 
 function buildIndexedActionId(baseActionId, suffix) {
   return `${baseActionId}_${suffix}`;
@@ -26,6 +34,23 @@ function buildPokemonLabel(pokemon) {
   const maxHp = Number(pokemon.hp) || 0;
   const shiny = pokemon.shiny ? '✨ ' : '';
   return `${shiny}#${pokemon.id} ${speciesName} Lv${level} HP ${hp}/${maxHp}`.slice(0, 75);
+}
+
+function buildDungeonTurnActionId(action) {
+  return `${DUNGEON_BATTLE_TURN_ACTION_ID}_${action}`;
+}
+
+function buildDungeonMagicActionId(slot) {
+  return `${DUNGEON_BATTLE_MAGIC_ACTION_ID}_${slot}`;
+}
+
+function buildDungeonBattleContextText(battle) {
+  const metadata = battle.metadata || {};
+  const modeLabel = metadata.dungeonType === 'daily'
+    ? `Diária ${metadata.dailyMode === 'hard' ? 'Difícil' : 'Normal'}`
+    : `Farm Lv ${metadata.dungeonLevel}`;
+  const enemy = battle.players[battle.challengedId]?.selectedPokemon;
+  return `🏰 *Dungeon ${modeLabel}*\n👾 Inimigo: *${enemy?.name || 'Inimigo'}* (Lv ${enemy?.level || 1})\n🎯 Você joga com os mesmos turnos, magias e cooldowns do PvP.`;
 }
 
 function renderDungeonPokemonSelection({ slackUserId, pokemons = [] }) {
@@ -114,16 +139,106 @@ function renderDungeonError({ slackUserId, text }) {
   };
 }
 
+function renderDungeonBattleState(battle) {
+  const payload = renderBattleState(battle, {
+    title: '🏰 *Batalha de Dungeon*',
+    stateTextPrefix: '🏰 Dungeon em andamento',
+    battleContextText: buildDungeonBattleContextText(battle),
+    turnActionIdBuilder: buildDungeonTurnActionId,
+  });
+
+  return payload;
+}
+
+function renderDungeonMagicOptions({ battle, actorUserId, magicSlots = [] }) {
+  const payload = renderMagicOptions({
+    battle,
+    actorUserId,
+    magicSlots,
+    options: {
+      title: '🏰 *Escolha uma magia da dungeon*',
+      magicActionIdBuilder: buildDungeonMagicActionId,
+      battleContextText: buildDungeonBattleContextText(battle),
+    },
+  });
+
+  payload.blocks.push({
+    type: 'actions',
+    elements: [
+      {
+        type: 'button',
+        action_id: DUNGEON_BATTLE_MAGIC_CANCEL_ACTION_ID,
+        text: { type: 'plain_text', text: '⬅️ Voltar' },
+        value: buildActionValue({ channelId: battle.channelId }),
+      },
+    ],
+  });
+
+  return payload;
+}
+
+function buildRewardLines(result) {
+  const lines = [];
+  if (result?.rewards?.goldReward) lines.push(`💰 Gold: +${result.rewards.goldReward}`);
+  if (result?.rewards?.xpResult?.grantedXp != null) lines.push(`✨ XP da conta: +${result.rewards.xpResult.grantedXp}`);
+  if (result?.rewards?.items?.length) {
+    for (const item of result.rewards.items) {
+      lines.push(`📚 ${item.itemName || item.item_name || 'Item'}: +${item.quantity || 0}`);
+    }
+  }
+  const speciesName = result?.capturedSpecies?.name || result?.rewards?.captured?.pokemon_species?.name;
+  if (speciesName) lines.push(`🎁 Pokémon recebido: *${speciesName}*`);
+  if (result?.rewards?.xpResult?.leveledUp) {
+    const currentLevel = result.rewards.xpResult.current?.level || result.rewards.xpResult.current_level;
+    lines.push(`🆙 Level up! Agora você está no nível *${currentLevel}*.`);
+  }
+  return lines;
+}
+
+function renderDungeonBattleFinished({ battle, completion }) {
+  const playerId = battle.metadata?.slackUserId || battle.challengerId;
+  const modeLabel = battle.metadata?.dungeonType === 'daily'
+    ? `Dungeon Diária ${battle.metadata?.dailyMode === 'hard' ? 'Difícil' : 'Normal'}`
+    : `Dungeon Farm Lv ${battle.metadata?.dungeonLevel}`;
+
+  if (completion?.outcome === 'victory') {
+    const lines = [`🏆 <@${playerId}> venceu a *${modeLabel}*!`, ...buildRewardLines(completion)];
+    return {
+      text: `🏆 <@${playerId}> venceu a dungeon!`,
+      blocks: [
+        { type: 'header', text: { type: 'plain_text', text: '🏆 Dungeon concluída', emoji: true } },
+        { type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } },
+      ],
+    };
+  }
+
+  return {
+    text: `💀 <@${playerId}> foi derrotado na dungeon.`,
+    blocks: [
+      { type: 'header', text: { type: 'plain_text', text: '💀 Dungeon encerrada', emoji: true } },
+      { type: 'section', text: { type: 'mrkdwn', text: `💀 <@${playerId}> foi derrotado na *${modeLabel}*.\nSeu HP persistido já foi salvo.` } },
+    ],
+  };
+}
+
 module.exports = {
   DUNGEON_SELECT_POKEMON_ACTION_ID,
   DUNGEON_SELECT_MODE_ACTION_ID,
   DUNGEON_START_FARM_ACTION_ID,
   DUNGEON_START_DAILY_ACTION_ID,
+  DUNGEON_BATTLE_TURN_ACTION_ID,
+  DUNGEON_BATTLE_MAGIC_ACTION_ID,
+  DUNGEON_BATTLE_MAGIC_CANCEL_ACTION_ID,
   buildActionValue,
   buildIndexedActionId,
+  buildDungeonTurnActionId,
+  buildDungeonMagicActionId,
   renderDungeonPokemonSelection,
   renderDungeonModeSelection,
   renderDungeonFarmSelection,
   renderDungeonDailySelection,
   renderDungeonError,
+  renderDungeonBattleState,
+  renderDungeonMagicOptions,
+  renderDungeonBattleFinished,
 };
