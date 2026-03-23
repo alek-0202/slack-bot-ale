@@ -57,7 +57,7 @@ function renderBattleInvite({ challengerId, challengedId, channelId }) {
           },
         ],
       },
-    ],
+    ].filter(Boolean),
   };
 }
 
@@ -69,13 +69,15 @@ function renderSelectionPrompt({ challengerId, challengedId }) {
   );
 }
 
-function renderBattleState(battle) {
+function renderBattleState(battle, options = {}) {
   const view = buildBattleViewModel(battle);
   const [challenger, challenged] = view.players;
+  const title = options.title || "⚔️ *Batalha Pokémon PvP*";
+  const stateTextPrefix = options.stateTextPrefix || "⚔️ Batalha em andamento";
 
   return {
     text:
-      "⚔️ Batalha em andamento\n" +
+      `${stateTextPrefix}\n` +
       `${renderPokemonLine(challenger)}\n` +
       `${renderPokemonLine(challenged)}\n` +
       `🎯 Turno: <@${view.currentTurnUserId}> | Rodada: ${view.round}`,
@@ -84,9 +86,16 @@ function renderBattleState(battle) {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "⚔️ *Batalha Pokémon PvP*",
+          text: title,
         },
       },
+      options.battleContextText ? {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: options.battleContextText,
+        },
+      } : null,
       {
         type: "section",
         fields: [
@@ -109,12 +118,12 @@ function renderBattleState(battle) {
           },
         ],
       },
-      buildBattleActionBlock(battle),
+      buildBattleActionBlock(battle, options),
     ].filter(Boolean),
   };
 }
 
-function buildBattleActionBlock(battle) {
+function buildBattleActionBlock(battle, options = {}) {
   if (battle.status !== "active") return null;
   const currentPlayer = battle.players[battle.currentTurnUserId];
   const magicOnCooldown = (currentPlayer?.magicCooldown?.blockedOwnTurnsRemaining || 0) > 0;
@@ -122,8 +131,8 @@ function buildBattleActionBlock(battle) {
   return {
     type: "actions",
     elements: [
-      buildTurnButton({ battle, label: "⚔️ Ataque", action: "attack", style: "primary" }),
-      buildTurnButton({ battle, label: "🛡️ Defesa", action: "defense" }),
+      buildTurnButton({ battle, label: "⚔️ Ataque", action: "attack", style: "primary", actionIdBuilder: options.turnActionIdBuilder }),
+      buildTurnButton({ battle, label: "🛡️ Defesa", action: "defense", actionIdBuilder: options.turnActionIdBuilder }),
       buildTurnButton({
         battle,
         label: magicOnCooldown
@@ -131,16 +140,17 @@ function buildBattleActionBlock(battle) {
           : "✨ Magia",
         action: "magic",
         disabled: magicOnCooldown,
+        actionIdBuilder: options.turnActionIdBuilder,
       }),
-      buildTurnButton({ battle, label: "🧪 Poção", action: "potion" }),
+      buildTurnButton({ battle, label: "🧪 Poção", action: "potion", actionIdBuilder: options.turnActionIdBuilder }),
     ],
   };
 }
 
-function buildTurnButton({ battle, label, action, style, disabled = false }) {
+function buildTurnButton({ battle, label, action, style, disabled = false, actionIdBuilder = buildBattleTurnActionId }) {
   const button = {
     type: "button",
-    action_id: buildBattleTurnActionId(action),
+    action_id: actionIdBuilder(action),
     text: { type: "plain_text", text: label },
     value: JSON.stringify({ channelId: battle.channelId, action }),
   };
@@ -158,7 +168,7 @@ function buildTurnButton({ battle, label, action, style, disabled = false }) {
   return button;
 }
 
-function renderMagicOptions({ battle, actorUserId, magicSlots = [] }) {
+function renderMagicOptions({ battle, actorUserId, magicSlots = [], options = {} }) {
   if (!magicSlots.length) {
     return {
       text: "Seu Pokémon não possui magias registradas.",
@@ -174,6 +184,8 @@ function renderMagicOptions({ battle, actorUserId, magicSlots = [] }) {
     };
   }
 
+  const magicActionIdBuilder = options.magicActionIdBuilder || buildBattleMagicActionId;
+
   return {
     text: "Escolha uma magia",
     blocks: [
@@ -181,19 +193,26 @@ function renderMagicOptions({ battle, actorUserId, magicSlots = [] }) {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `✨ *Escolha a magia de <@${actorUserId}>*`,
+          text: options.title || `✨ *Escolha a magia de <@${actorUserId}>*`,
         },
       },
+      options.battleContextText ? {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: options.battleContextText,
+        },
+      } : null,
       {
         type: "actions",
         elements: magicSlots.map((magic) => ({
           type: "button",
-          action_id: buildBattleMagicActionId(magic.slot),
+          action_id: magicActionIdBuilder(magic.slot),
           text: { type: "plain_text", text: `${magic.slot}: ${magic.icon} ${magic.name}`.slice(0, 75) },
           value: JSON.stringify({ channelId: battle.channelId, magicSlot: magic.slot }),
         })),
       },
-    ],
+    ].filter(Boolean),
   };
 }
 
@@ -225,7 +244,7 @@ function renderMagicRegisterElementPrompt({ pokemon, elements, maxSlots }) {
           value: JSON.stringify({ pokemonId: pokemon.id, removeElement: element }),
         })),
       },
-    ],
+    ].filter(Boolean),
   };
 }
 

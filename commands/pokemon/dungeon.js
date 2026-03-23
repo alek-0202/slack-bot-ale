@@ -1,5 +1,6 @@
-const { getDungeonFarmList, getFarmReward, startFarmDungeon, startDailyDungeon } = require('../../services/dungeonService');
+const { getDungeonFarmList, getFarmReward, startFarmDungeon, startDailyDungeon, mapDungeonFailureReason } = require('../../services/dungeonService');
 const { handleDungeonCommand } = require('../../handlers/dungeonActions');
+const { renderDungeonBattleState } = require('../../adapters/slack/renderers/dungeonRenderer');
 
 function buildMenu() {
   const farmLines = getDungeonFarmList().map((level) => {
@@ -13,7 +14,7 @@ function buildMenu() {
     '1. `!dungeon`',
     '2. Escolha o Pokémon nos botões',
     '3. Escolha Farm ou Diária',
-    '4. Escolha a sala/dificuldade e a dungeon começa automaticamente',
+    '4. Escolha a sala/dificuldade e a batalha começa de verdade no mesmo fluxo do PvP',
     '',
     '*Compatibilidade legada*',
     '• `!dungeon farm <nível> <pokemon_id>`',
@@ -42,17 +43,10 @@ module.exports = {
       const pokemonId = Number(parts[2]);
       const result = await startFarmDungeon({ slackUserId: event.user, level, pokemonId });
       if (!result.ok) {
-        await say(`❌ Não foi possível iniciar a dungeon farm. Motivo: *${result.reason}*.`);
+        await say(`❌ Não foi possível iniciar a dungeon farm. Motivo: *${mapDungeonFailureReason(result.reason)}*.`);
         return;
       }
-      const text = [
-        `🏆 <@${event.user}> concluiu a *Dungeon Farm Lv ${result.level}*!`,
-        `💰 Gold: +${result.rewards.goldReward}`,
-        `✨ XP da conta: +${result.rewards.xpResult.grantedXp}`,
-        `📚 Livro Ancião: +${result.rewards.items[0]?.quantity || getFarmReward(result.level).ancientBookQty}`,
-        result.rewards.xpResult.leveledUp ? `🆙 Level up! Agora você está no nível *${result.rewards.xpResult.current.level}*.` : null,
-      ].filter(Boolean).join('\n');
-      await say(text);
+      await say(renderDungeonBattleState(result.battle));
       return;
     }
 
@@ -61,18 +55,10 @@ module.exports = {
       const pokemonId = Number(parts[2]);
       const result = await startDailyDungeon({ slackUserId: event.user, mode, pokemonId });
       if (!result.ok) {
-        await say(`❌ Não foi possível concluir a daily dungeon. Motivo: *${result.reason}*.`);
+        await say(`❌ Não foi possível iniciar a daily dungeon. Motivo: *${mapDungeonFailureReason(result.reason)}*.`);
         return;
       }
-      const speciesName = result.capturedSpecies?.name || 'Pokémon';
-      const text = [
-        `🏆 <@${event.user}> venceu a *Dungeon Diária ${result.mode === 'hard' ? 'Difícil' : 'Normal'}*!`,
-        `💰 Gold: +${result.rewards.goldReward}`,
-        `✨ XP da conta: +${result.rewards.xpResult.grantedXp}`,
-        `🎁 Pokémon recebido: *${speciesName}*`,
-        result.rewards.xpResult.leveledUp ? `🆙 Level up! Agora você está no nível *${result.rewards.xpResult.current.level}*.` : null,
-      ].filter(Boolean).join('\n');
-      await say(text);
+      await say(renderDungeonBattleState(result.battle));
       return;
     }
 

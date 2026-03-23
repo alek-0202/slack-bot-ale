@@ -7,17 +7,26 @@ const {
   startFarmDungeon,
   startDailyDungeon,
   mapDungeonFailureReason,
+  processDungeonTurn,
+  getDungeonBattle,
 } = require('../services/dungeonService');
+const { BATTLE_ACTION } = require('../application/battle/domain/actionResolver');
 const {
   DUNGEON_SELECT_POKEMON_ACTION_ID,
   DUNGEON_SELECT_MODE_ACTION_ID,
   DUNGEON_START_FARM_ACTION_ID,
   DUNGEON_START_DAILY_ACTION_ID,
+  DUNGEON_BATTLE_TURN_ACTION_ID,
+  DUNGEON_BATTLE_MAGIC_ACTION_ID,
+  DUNGEON_BATTLE_MAGIC_CANCEL_ACTION_ID,
   renderDungeonPokemonSelection,
   renderDungeonModeSelection,
   renderDungeonFarmSelection,
   renderDungeonDailySelection,
   renderDungeonError,
+  renderDungeonBattleState,
+  renderDungeonMagicOptions,
+  renderDungeonBattleFinished,
 } = require('../adapters/slack/renderers/dungeonRenderer');
 
 const logger = createLogger('handler:dungeon-actions');
@@ -26,39 +35,21 @@ const DUNGEON_SELECT_POKEMON_ACTION_PATTERN = new RegExp(`^${DUNGEON_SELECT_POKE
 const DUNGEON_SELECT_MODE_ACTION_PATTERN = new RegExp(`^${DUNGEON_SELECT_MODE_ACTION_ID}_.+$`);
 const DUNGEON_START_FARM_ACTION_PATTERN = new RegExp(`^${DUNGEON_START_FARM_ACTION_ID}_.+$`);
 const DUNGEON_START_DAILY_ACTION_PATTERN = new RegExp(`^${DUNGEON_START_DAILY_ACTION_ID}_.+$`);
-
-function buildDungeonSuccessMessage(actorUserId, result) {
-  if (result.mode === 'farm') {
-    return {
-      text: `🏆 <@${actorUserId}> concluiu a Dungeon Farm Lv ${result.level}!`,
-      blocks: [{ type: 'section', text: { type: 'mrkdwn', text: [
-        `🏆 <@${actorUserId}> concluiu a *Dungeon Farm Lv ${result.level}*!`,
-        `💰 Gold: +${result.rewards.goldReward}`,
-        `✨ XP da conta: +${result.rewards.xpResult.grantedXp}`,
-        `📚 Livro Ancião: +${result.level >= 25 ? 2 : 1}`,
-        result.rewards.xpResult.leveledUp ? `🆙 Level up! Agora você está no nível *${result.rewards.xpResult.current.level}*.` : null,
-      ].filter(Boolean).join('\n') } }],
-    };
-  }
-
-  const speciesName = result.capturedSpecies?.name || result.rewards.captured?.pokemon_species?.name || 'Pokémon';
-  return {
-    text: `🏆 <@${actorUserId}> venceu a Dungeon Diária!`,
-    blocks: [{ type: 'section', text: { type: 'mrkdwn', text: [
-      `🏆 <@${actorUserId}> venceu a *Dungeon Diária ${result.mode === 'hard' ? 'Difícil' : 'Normal'}*!`,
-      `💰 Gold: +${result.rewards.goldReward}`,
-      `✨ XP da conta: +${result.rewards.xpResult.grantedXp}`,
-      `🎁 Pokémon recebido: *${speciesName}*`,
-      result.rewards.xpResult.leveledUp ? `🆙 Level up! Agora você está no nível *${result.rewards.xpResult.current.level}*.` : null,
-    ].filter(Boolean).join('\n') } }],
-  };
-}
+const DUNGEON_BATTLE_TURN_ACTION_PATTERN = new RegExp(`^${DUNGEON_BATTLE_TURN_ACTION_ID}_.+$`);
+const DUNGEON_BATTLE_MAGIC_ACTION_PATTERN = new RegExp(`^${DUNGEON_BATTLE_MAGIC_ACTION_ID}_.+$`);
 
 async function updateMessage(client, body, payload) {
   await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: payload.text, blocks: payload.blocks });
 }
 
 async function handleDungeonCommand({ event, say }) {
+  logger.info('Entrada do comando !dungeon', {
+    file: 'handlers/dungeonActions.js',
+    handler: 'handleDungeonCommand',
+    slackUserId: event.user,
+    channelId: event.channel,
+  });
+
   const pokemons = await getEligibleDungeonPokemons(event.user);
   const payload = pokemons.length
     ? renderDungeonPokemonSelection({ slackUserId: event.user, pokemons })
@@ -69,7 +60,7 @@ async function handleDungeonCommand({ event, say }) {
 async function handleDungeonSelectPokemonAction({ body, action, client, respond }) {
   const payload = parsePokemonActionValue(action?.value);
   const actorUserId = body.user?.id;
-  logger.info('Dungeon block action recebida', {
+  logger.info('Seleção de Pokémon da dungeon recebida', {
     file: 'handlers/dungeonActions.js',
     handler: 'handleDungeonSelectPokemonAction',
     actionId: action?.action_id,
@@ -89,7 +80,7 @@ async function handleDungeonSelectPokemonAction({ body, action, client, respond 
 async function handleDungeonSelectModeAction({ body, action, client, respond }) {
   const payload = parsePokemonActionValue(action?.value);
   const actorUserId = body.user?.id;
-  logger.info('Dungeon block action recebida', {
+  logger.info('Seleção de modo da dungeon recebida', {
     file: 'handlers/dungeonActions.js',
     handler: 'handleDungeonSelectModeAction',
     actionId: action?.action_id,
@@ -113,45 +104,31 @@ async function handleDungeonSelectModeAction({ body, action, client, respond }) 
 async function handleDungeonStartFarmAction({ body, action, client, respond }) {
   const payload = parsePokemonActionValue(action?.value);
   const actorUserId = body.user?.id;
-  logger.info('Dungeon block action recebida', {
+  logger.info('Início de dungeon farm solicitado', {
     file: 'handlers/dungeonActions.js',
     handler: 'handleDungeonStartFarmAction',
     actionId: action?.action_id,
-    actorUserId,
-    payload,
+    slackUserId: actorUserId,
+    pokemonId: payload?.pokemonId,
+    level: payload?.level,
   });
   if (actorUserId !== payload?.slackUserId) return respond(buildUnauthorizedActionMessage(payload?.slackUserId));
+
   try {
     const result = await startFarmDungeon({ slackUserId: actorUserId, pokemonId: payload.pokemonId, level: payload.level });
     if (!result.ok) {
-      logger.warn('Dungeon farm retornou falha controlada', {
-        file: 'handlers/dungeonActions.js',
-        handler: 'handleDungeonStartFarmAction',
-        actionId: action?.action_id,
-        actorUserId,
-        payload,
-        reason: result.reason,
-      });
       return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason(result.reason) }));
     }
 
-    logger.info('Dungeon farm iniciada via botão', {
-      file: 'handlers/dungeonActions.js',
-      handler: 'handleDungeonStartFarmAction',
-      actionId: action?.action_id,
-      actorUserId,
-      pokemonId: payload.pokemonId,
-      level: payload.level,
-      rewards: result.rewards,
-    });
-    return updateMessage(client, body, buildDungeonSuccessMessage(actorUserId, result));
+    return updateMessage(client, body, renderDungeonBattleState(result.battle));
   } catch (error) {
     logger.error('Falha ao iniciar dungeon farm via block action', {
       file: 'handlers/dungeonActions.js',
       handler: 'handleDungeonStartFarmAction',
       actionId: action?.action_id,
-      actorUserId,
-      payload,
+      slackUserId: actorUserId,
+      pokemonId: payload?.pokemonId,
+      level: payload?.level,
       error,
     });
     return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: 'Erro interno ao iniciar a dungeon farm.' }));
@@ -161,49 +138,140 @@ async function handleDungeonStartFarmAction({ body, action, client, respond }) {
 async function handleDungeonStartDailyAction({ body, action, client, respond }) {
   const payload = parsePokemonActionValue(action?.value);
   const actorUserId = body.user?.id;
-  logger.info('Dungeon block action recebida', {
+  logger.info('Início de dungeon daily solicitado', {
     file: 'handlers/dungeonActions.js',
     handler: 'handleDungeonStartDailyAction',
     actionId: action?.action_id,
-    actorUserId,
-    payload,
+    slackUserId: actorUserId,
+    pokemonId: payload?.pokemonId,
+    difficulty: payload?.difficulty,
   });
   if (actorUserId !== payload?.slackUserId) return respond(buildUnauthorizedActionMessage(payload?.slackUserId));
+
   try {
     const result = await startDailyDungeon({ slackUserId: actorUserId, pokemonId: payload.pokemonId, mode: payload.difficulty });
     if (!result.ok) {
-      logger.warn('Dungeon daily retornou falha controlada', {
-        file: 'handlers/dungeonActions.js',
-        handler: 'handleDungeonStartDailyAction',
-        actionId: action?.action_id,
-        actorUserId,
-        payload,
-        reason: result.reason,
-      });
       return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason(result.reason) }));
     }
 
-    logger.info('Dungeon diária iniciada via botão', {
-      file: 'handlers/dungeonActions.js',
-      handler: 'handleDungeonStartDailyAction',
-      actionId: action?.action_id,
-      actorUserId,
-      pokemonId: payload.pokemonId,
-      difficulty: payload.difficulty,
-      rewards: result.rewards,
-    });
-    return updateMessage(client, body, buildDungeonSuccessMessage(actorUserId, result));
+    return updateMessage(client, body, renderDungeonBattleState(result.battle));
   } catch (error) {
     logger.error('Falha ao iniciar dungeon daily via block action', {
       file: 'handlers/dungeonActions.js',
       handler: 'handleDungeonStartDailyAction',
       actionId: action?.action_id,
-      actorUserId,
-      payload,
+      slackUserId: actorUserId,
+      pokemonId: payload?.pokemonId,
+      difficulty: payload?.difficulty,
       error,
     });
     return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: 'Erro interno ao iniciar a dungeon diária.' }));
   }
+}
+
+async function handleDungeonBattleTurnAction({ body, action, client }) {
+  const payload = parsePokemonActionValue(action?.value) || {};
+  const actorUserId = body.user?.id;
+  const actionName = String(payload.action || '').toLowerCase();
+  const channelId = payload.channelId;
+
+  logger.info('Ação de turno da dungeon recebida', {
+    file: 'handlers/dungeonActions.js',
+    handler: 'handleDungeonBattleTurnAction',
+    actionId: action?.action_id,
+    slackUserId: actorUserId,
+    sessionId: channelId,
+    actionName,
+  });
+
+  if (actionName === 'magic') {
+    const battle = getDungeonBattle(channelId);
+    if (!battle) {
+      return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('battle_not_found') }));
+    }
+    return updateMessage(client, body, renderDungeonMagicOptions({
+      battle,
+      actorUserId,
+      magicSlots: battle.players[actorUserId]?.magicSlots || [],
+    }));
+  }
+
+  const actionTypeMap = {
+    attack: BATTLE_ACTION.ATTACK,
+    potion: BATTLE_ACTION.POTION,
+    defense: BATTLE_ACTION.DEFENSE,
+  };
+  const result = await processDungeonTurn({ channelId, actorUserId, actionType: actionTypeMap[actionName] });
+
+  if (!result.ok) {
+    logger.warn('Falha controlada ao processar turno da dungeon', {
+      file: 'handlers/dungeonActions.js',
+      handler: 'handleDungeonBattleTurnAction',
+      actionId: action?.action_id,
+      slackUserId: actorUserId,
+      sessionId: channelId,
+      reason: result.reason,
+    });
+    return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason(result.reason) }));
+  }
+
+  if (result.completion) {
+    return updateMessage(client, body, renderDungeonBattleFinished({ battle: result.battle, completion: result.completion }));
+  }
+
+  return updateMessage(client, body, renderDungeonBattleState(result.battle));
+}
+
+async function handleDungeonBattleMagicAction({ body, action, client }) {
+  const payload = parsePokemonActionValue(action?.value) || {};
+  const actorUserId = body.user?.id;
+  const channelId = payload.channelId;
+
+  logger.info('Ação de magia da dungeon recebida', {
+    file: 'handlers/dungeonActions.js',
+    handler: 'handleDungeonBattleMagicAction',
+    actionId: action?.action_id,
+    slackUserId: actorUserId,
+    sessionId: channelId,
+    magicSlot: payload.magicSlot,
+  });
+
+  const result = await processDungeonTurn({
+    channelId,
+    actorUserId,
+    actionType: BATTLE_ACTION.MAGIC,
+    actionPayload: { magicSlot: payload.magicSlot },
+  });
+
+  if (!result.ok) {
+    return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason(result.reason) }));
+  }
+
+  if (result.completion) {
+    return updateMessage(client, body, renderDungeonBattleFinished({ battle: result.battle, completion: result.completion }));
+  }
+
+  return updateMessage(client, body, renderDungeonBattleState(result.battle));
+}
+
+async function handleDungeonBattleMagicCancelAction({ body, action, client }) {
+  const payload = parsePokemonActionValue(action?.value) || {};
+  const actorUserId = body.user?.id;
+  const battle = getDungeonBattle(payload.channelId);
+
+  logger.info('Retorno da seleção de magia da dungeon', {
+    file: 'handlers/dungeonActions.js',
+    handler: 'handleDungeonBattleMagicCancelAction',
+    actionId: action?.action_id,
+    slackUserId: actorUserId,
+    sessionId: payload.channelId,
+  });
+
+  if (!battle) {
+    return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('battle_not_found') }));
+  }
+
+  return updateMessage(client, body, renderDungeonBattleState(battle));
 }
 
 function registerDungeonActions(app) {
@@ -226,6 +294,21 @@ function registerDungeonActions(app) {
     await ack();
     await handleDungeonStartDailyAction({ body, action, client, respond });
   });
+
+  app.action(DUNGEON_BATTLE_TURN_ACTION_PATTERN, async ({ ack, body, action, client }) => {
+    await ack();
+    await handleDungeonBattleTurnAction({ body, action, client });
+  });
+
+  app.action(DUNGEON_BATTLE_MAGIC_ACTION_PATTERN, async ({ ack, body, action, client }) => {
+    await ack();
+    await handleDungeonBattleMagicAction({ body, action, client });
+  });
+
+  app.action(DUNGEON_BATTLE_MAGIC_CANCEL_ACTION_ID, async ({ ack, body, action, client }) => {
+    await ack();
+    await handleDungeonBattleMagicCancelAction({ body, action, client });
+  });
 }
 
 module.exports = {
@@ -235,4 +318,6 @@ module.exports = {
   handleDungeonSelectModeAction,
   handleDungeonStartFarmAction,
   handleDungeonStartDailyAction,
+  handleDungeonBattleTurnAction,
+  handleDungeonBattleMagicAction,
 };
