@@ -3,6 +3,10 @@ const DUNGEON_SELECT_MODE_ACTION_ID = 'dungeon_select_mode';
 const DUNGEON_START_FARM_ACTION_ID = 'dungeon_start_farm';
 const DUNGEON_START_DAILY_ACTION_ID = 'dungeon_start_daily';
 
+function buildIndexedActionId(baseActionId, suffix) {
+  return `${baseActionId}_${suffix}`;
+}
+
 function buildActionValue(payload) {
   return JSON.stringify(payload);
 }
@@ -32,7 +36,7 @@ function renderDungeonPokemonSelection({ slackUserId, pokemons = [] }) {
   const buttons = pokemons.slice(0, 25).map((pokemon) => ({
     type: 'button',
     text: { type: 'plain_text', text: buildPokemonLabel(pokemon), emoji: true },
-    action_id: DUNGEON_SELECT_POKEMON_ACTION_ID,
+    action_id: buildIndexedActionId(DUNGEON_SELECT_POKEMON_ACTION_ID, pokemon.id),
     value: buildActionValue({ slackUserId, pokemonId: pokemon.id }),
   }));
 
@@ -57,8 +61,8 @@ function renderDungeonModeSelection({ slackUserId, pokemon }) {
       {
         type: 'actions',
         elements: [
-          { type: 'button', text: { type: 'plain_text', text: 'Farm', emoji: true }, action_id: DUNGEON_SELECT_MODE_ACTION_ID, style: 'primary', value: buildActionValue({ slackUserId, pokemonId: pokemon.id, mode: 'farm' }) },
-          { type: 'button', text: { type: 'plain_text', text: 'Diária', emoji: true }, action_id: DUNGEON_SELECT_MODE_ACTION_ID, value: buildActionValue({ slackUserId, pokemonId: pokemon.id, mode: 'daily' }) },
+          { type: 'button', text: { type: 'plain_text', text: 'Farm', emoji: true }, action_id: buildIndexedActionId(DUNGEON_SELECT_MODE_ACTION_ID, 'farm'), style: 'primary', value: buildActionValue({ slackUserId, pokemonId: pokemon.id, mode: 'farm' }) },
+          { type: 'button', text: { type: 'plain_text', text: 'Diária', emoji: true }, action_id: buildIndexedActionId(DUNGEON_SELECT_MODE_ACTION_ID, 'daily'), value: buildActionValue({ slackUserId, pokemonId: pokemon.id, mode: 'daily' }) },
         ],
       },
     ],
@@ -69,7 +73,7 @@ function renderDungeonFarmSelection({ slackUserId, pokemon, farmLevels = [] }) {
   const buttons = farmLevels.map((level) => ({
     type: 'button',
     text: { type: 'plain_text', text: `Nível ${level}`, emoji: true },
-    action_id: DUNGEON_START_FARM_ACTION_ID,
+    action_id: buildIndexedActionId(DUNGEON_START_FARM_ACTION_ID, level),
     value: buildActionValue({ slackUserId, pokemonId: pokemon.id, level }),
   }));
 
@@ -92,8 +96,8 @@ function renderDungeonDailySelection({ slackUserId, pokemon }) {
       {
         type: 'actions',
         elements: [
-          { type: 'button', text: { type: 'plain_text', text: 'Normal', emoji: true }, action_id: DUNGEON_START_DAILY_ACTION_ID, style: 'primary', value: buildActionValue({ slackUserId, pokemonId: pokemon.id, difficulty: 'normal' }) },
-          { type: 'button', text: { type: 'plain_text', text: 'Difícil', emoji: true }, action_id: DUNGEON_START_DAILY_ACTION_ID, value: buildActionValue({ slackUserId, pokemonId: pokemon.id, difficulty: 'hard' }) },
+          { type: 'button', text: { type: 'plain_text', text: 'Normal', emoji: true }, action_id: buildIndexedActionId(DUNGEON_START_DAILY_ACTION_ID, 'normal'), style: 'primary', value: buildActionValue({ slackUserId, pokemonId: pokemon.id, difficulty: 'normal' }) },
+          { type: 'button', text: { type: 'plain_text', text: 'Difícil', emoji: true }, action_id: buildIndexedActionId(DUNGEON_START_DAILY_ACTION_ID, 'hard'), value: buildActionValue({ slackUserId, pokemonId: pokemon.id, difficulty: 'hard' }) },
         ],
       },
     ],
@@ -116,6 +120,7 @@ module.exports = {
   DUNGEON_START_FARM_ACTION_ID,
   DUNGEON_START_DAILY_ACTION_ID,
   buildActionValue,
+  buildIndexedActionId,
   renderDungeonPokemonSelection,
   renderDungeonModeSelection,
   renderDungeonFarmSelection,

@@ -22,6 +22,11 @@ const {
 
 const logger = createLogger('handler:dungeon-actions');
 
+const DUNGEON_SELECT_POKEMON_ACTION_PATTERN = new RegExp(`^${DUNGEON_SELECT_POKEMON_ACTION_ID}_.+$`);
+const DUNGEON_SELECT_MODE_ACTION_PATTERN = new RegExp(`^${DUNGEON_SELECT_MODE_ACTION_ID}_.+$`);
+const DUNGEON_START_FARM_ACTION_PATTERN = new RegExp(`^${DUNGEON_START_FARM_ACTION_ID}_.+$`);
+const DUNGEON_START_DAILY_ACTION_PATTERN = new RegExp(`^${DUNGEON_START_DAILY_ACTION_ID}_.+$`);
+
 function buildDungeonSuccessMessage(actorUserId, result) {
   if (result.mode === 'farm') {
     return {
@@ -120,22 +125,22 @@ async function handleDungeonStartDailyAction({ body, action, client, respond }) 
 }
 
 function registerDungeonActions(app) {
-  app.action(DUNGEON_SELECT_POKEMON_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+  app.action(DUNGEON_SELECT_POKEMON_ACTION_PATTERN, async ({ ack, body, action, client, respond }) => {
     await ack();
     await handleDungeonSelectPokemonAction({ body, action, client, respond });
   });
 
-  app.action(DUNGEON_SELECT_MODE_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+  app.action(DUNGEON_SELECT_MODE_ACTION_PATTERN, async ({ ack, body, action, client, respond }) => {
     await ack();
     await handleDungeonSelectModeAction({ body, action, client, respond });
   });
 
-  app.action(DUNGEON_START_FARM_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+  app.action(DUNGEON_START_FARM_ACTION_PATTERN, async ({ ack, body, action, client, respond }) => {
     await ack();
     await handleDungeonStartFarmAction({ body, action, client, respond });
   });
 
-  app.action(DUNGEON_START_DAILY_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+  app.action(DUNGEON_START_DAILY_ACTION_PATTERN, async ({ ack, body, action, client, respond }) => {
     await ack();
     await handleDungeonStartDailyAction({ body, action, client, respond });
   });
