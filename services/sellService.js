@@ -96,6 +96,62 @@ async function buildSellPreview({ slackUserId, pokemonId }) {
   };
 }
 
+function isMissingBatchSellRpcError(error) {
+  const message = error?.message || "";
+  return message.includes("sell_user_pokemons_batch") && message.includes("schema cache");
+}
+
+async function sellPokemonBatchLegacy({ supabase, slackUserId, preview }) {
+  let currentGold = null;
+  let goldReceived = 0n;
+
+  for (const pokemonId of preview.pokemonIds) {
+    const { data, error } = await supabase.rpc("sell_user_pokemon", {
+      p_slack_user_id: slackUserId,
+      p_pokemon_id: pokemonId,
+    });
+
+    if (error) throw error;
+
+    const result = data?.[0];
+    if (!result) {
+      return { ok: false, reason: "unknown" };
+    }
+
+    if (!result.ok) {
+      logger.warn("Venda em lote via fallback recusada", {
+        slackUserId,
+        pokemonId,
+        reason: result.reason,
+      });
+      return { ok: false, reason: result.reason, pokemons: preview.pokemons, pokemonIds: preview.pokemonIds };
+    }
+
+    currentGold = result.remaining_gold;
+    goldReceived += toGoldBigInt(result.sale_price);
+  }
+
+  logger.warn("Venda em lote concluída via fallback legado", {
+    slackUserId,
+    pokemonIds: preview.pokemonIds,
+    goldReceived,
+  });
+
+  return {
+    ok: true,
+    pokemon: preview.pokemon,
+    pokemons: preview.pokemons,
+    items: preview.items,
+    pokemonIds: preview.pokemonIds,
+    goldReceived: formatGold(goldReceived),
+    currentGold: formatGold(currentGold ?? 0),
+    totalSellPrice: preview.totalSellPrice,
+    totalUpgradeReturn: preview.totalUpgradeReturn,
+    priceBreakdown: preview.priceBreakdown,
+    usedLegacyFallback: true,
+  };
+}
+
 async function sellPokemonBatch({ slackUserId, pokemonIds }) {
   const supabase = getSupabaseClient();
   const preview = await buildSellPreviewBatch({ slackUserId, pokemonIds });
@@ -110,7 +166,17 @@ async function sellPokemonBatch({ slackUserId, pokemonIds }) {
     p_expected_sale_price: Number.parseInt(preview.totalSellPrice, 10),
   });
 
-  if (error) throw error;
+  if (error) {
+    if (preview.pokemonIds.length > 1 && isMissingBatchSellRpcError(error)) {
+      logger.warn("RPC de venda em lote indisponível; usando fallback legado", {
+        slackUserId,
+        pokemonIds: preview.pokemonIds,
+        error,
+      });
+      return sellPokemonBatchLegacy({ supabase, slackUserId, preview });
+    }
+    throw error;
+  }
 
   const result = data?.[0];
   if (!result) {
