@@ -106,6 +106,23 @@ async function getUserPokemonById(slackUserId, pokemonId) {
   return data;
 }
 
+async function getUserPokemonsByIds(slackUserId, pokemonIds) {
+  const safeIds = [...new Set((pokemonIds || []).map((id) => Number.parseInt(id, 10)).filter((id) => Number.isInteger(id) && id > 0))];
+  if (!safeIds.length) return [];
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("user_pokemons")
+    .select(
+      "id, slack_user_id, species_id, level, shiny, attack, magic, defense, hp, current_hp, speed, upgrade_spent_gold, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
+    )
+    .eq("slack_user_id", slackUserId)
+    .in("id", safeIds);
+
+  if (error) throw error;
+  return data || [];
+}
+
 async function getUserPokemons(slackUserId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -166,6 +183,7 @@ module.exports = {
   getProfileStats,
   getUserPokemonPage,
   getUserPokemonById,
+  getUserPokemonsByIds,
   getUserPokemons,
   buildPokedexDisplayEntries,
 };

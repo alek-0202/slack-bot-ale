@@ -1,4 +1,4 @@
-const { parsePositiveInt } = require("../../utils/number");
+const { parsePositiveIntList } = require("../../utils/number");
 const { buildSellPreviewCard, buildSellPreviewMessage } = require("../../services/slackPokemonActionService");
 const { createLogger } = require("../../utils/logger");
 
@@ -8,29 +8,30 @@ module.exports = {
   name: "sell",
   async execute({ event, args, say }) {
     try {
-      const pokemonId = parsePositiveInt(args);
-      if (!pokemonId) {
-        await say("Use `!sell <pokemon_id>`. Ex.: `!sell 25`.");
+      const pokemonIds = parsePositiveIntList(args);
+      if (!pokemonIds.length) {
+        await say("Use `!sell <pokemon_id[,pokemon_id,...]>`. Ex.: `!sell 25` ou `!sell 23,45,534`.");
         return;
       }
 
-      const preview = await buildSellPreviewCard({ slackUserId: event.user, pokemonId });
+      const preview = await buildSellPreviewCard({ slackUserId: event.user, pokemonIds });
 
       logger.info("Resultado do preview de !sell", {
         slackUserId: event.user,
-        pokemonId,
+        pokemonIds,
         ok: preview.ok,
         reason: preview.reason || null,
-        sellValue: preview.priceBreakdown?.finalPrice || null,
+        sellValue: preview.totalSellPrice || preview.priceBreakdown?.finalPrice || null,
       });
 
       if (!preview.ok) {
         if (preview.reason === "pokemon_not_owned") {
-          await say("Você só pode vender Pokémons que pertencem a você.");
+          const invalidIds = preview.missingIds?.length ? ` IDs: ${preview.missingIds.join(", ")}.` : "";
+          await say(`Você só pode vender Pokémons que pertencem a você.${invalidIds}`);
           return;
         }
 
-        await say("Não consegui preparar a venda desse Pokémon agora 😵");
+        await say("Não consegui preparar a venda desse(s) Pokémon(s) agora 😵");
         return;
       }
 

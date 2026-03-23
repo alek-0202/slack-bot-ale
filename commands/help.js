@@ -54,7 +54,7 @@ function buildPokemonHelp() {
     "",
     "⬆️ *Progressão*",
     ...linesFrom(["upgrade", "up", "evolve"], sharedPokemonCommands),
-    "`!sell <pokemon_id>` → abre confirmação para vender um Pokémon da sua coleção",
+    "`!sell <pokemon_id[,pokemon_id,...]>` → abre confirmação para vender um ou mais Pokémons da sua coleção",
     "`!resetpokeid <pokemon_id>` → reseta upgrades e devolve o gold investido",
     ...linesFrom(["market"], sharedPokemonCommands),
     "`!magicregister <pokeid>` → registra ou atualiza as magias do Pokémon",

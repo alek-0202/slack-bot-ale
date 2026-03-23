@@ -11,6 +11,7 @@ const {
   evolvePokemon,
   upgradePokemonToLevel,
   sellPokemon,
+  sellPokemonBatch,
 } = require("../services/slackPokemonActionService");
 
 const logger = createLogger("handler:pokemon-actions");
@@ -204,10 +205,12 @@ function registerPokemonActions(app) {
     logger.info("Clique de confirmação de venda recebido", {
       actorUserId,
       ownerSlackUserId: payload?.slackUserId,
-      pokemonId: payload?.pokemonId,
+      pokemonIds: payload?.pokemonIds || (payload?.pokemonId ? [payload.pokemonId] : null),
     });
 
-    if (!payload?.slackUserId || !payload?.pokemonId) {
+    const pokemonIds = Array.isArray(payload?.pokemonIds) ? payload.pokemonIds : (payload?.pokemonId ? [payload.pokemonId] : []);
+
+    if (!payload?.slackUserId || !pokemonIds.length) {
       await respond({ response_type: "ephemeral", text: "Não consegui validar essa confirmação de venda 😵" });
       return;
     }
@@ -218,30 +221,34 @@ function registerPokemonActions(app) {
     }
 
     try {
-      const result = await sellPokemon({ slackUserId: actorUserId, pokemonId: payload.pokemonId });
+      const result = pokemonIds.length > 1
+        ? await sellPokemonBatch({ slackUserId: actorUserId, pokemonIds })
+        : await sellPokemon({ slackUserId: actorUserId, pokemonId: pokemonIds[0] });
       if (!result.ok) {
         const map = {
           pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
-          pokemon_locked_in_trade: "Esse Pokémon está preso em um trade pendente e não pode ser vendido agora.",
+          pokemon_locked_in_trade: "Um dos Pokémons está preso em um trade pendente e não pode ser vendido agora.",
         };
         await respond({ response_type: "ephemeral", text: map[result.reason] || "Não consegui vender esse Pokémon agora 😵" });
         return;
       }
 
-      const pokemonName = result.pokemon?.pokemon_species?.name || "Pokémon";
+      const pokemonSummary = (result.pokemons || [result.pokemon])
+        .map((pokemon, index) => `• *${pokemon?.pokemon_species?.name || "Pokémon"}* (#${pokemon.id})${result.items?.[index] ? ` — *${result.items[index].priceBreakdown?.finalPrice || "0"}* gold` : ""}`)
+        .join("\n");
       const updated = buildUpdatedMessage(
-        `💸 *Pokémon vendido!*
+        `💸 *Venda concluída!*
 
-*${pokemonName}* (#${payload.pokemonId})
-Nível: *${result.pokemon.level}*
+${pokemonSummary}
+
 💰 Valor recebido: *${result.goldReceived}* gold
 💳 Gold atual: *${result.currentGold}*`,
       );
       await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
 
-      logger.info("Venda confirmada com sucesso", { actorUserId, pokemonId: payload.pokemonId, sellValue: result.goldReceived });
+      logger.info("Venda confirmada com sucesso", { actorUserId, pokemonIds, sellValue: result.goldReceived });
     } catch (error) {
-      logger.error("Falha ao confirmar venda", { actorUserId, pokemonId: payload?.pokemonId, error });
+      logger.error("Falha ao confirmar venda", { actorUserId, pokemonIds, error });
       await respond({ response_type: "ephemeral", text: "Não consegui vender esse Pokémon agora 😵‍💫" });
     }
   });
@@ -256,7 +263,8 @@ Nível: *${result.pokemon.level}*
       return;
     }
 
-    const updated = buildUpdatedMessage(`🛑 Venda cancelada por <@${actorUserId}> para o Pokémon ID *${payload.pokemonId}*.`);
+    const pokemonIds = Array.isArray(payload?.pokemonIds) ? payload.pokemonIds : (payload?.pokemonId ? [payload.pokemonId] : []);
+    const updated = buildUpdatedMessage(`🛑 Venda cancelada por <@${actorUserId}> para o(s) Pokémon(s) ID *${pokemonIds.join(", ")}*.`);
     await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
   });
 
