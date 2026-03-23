@@ -144,19 +144,23 @@ async function persistPlayerBattleHp(slackUserId, playerState) {
 async function grantDungeonRewards({ slackUserId, reward, transactionType, capturedSpecies = null, enemyLevel = null }) {
   await createUserIfMissing(slackUserId);
   const supabase = getSupabaseClient();
-  logger.info('Chamando RPC de recompensa da dungeon', {
-    file: 'services/dungeonService.js',
-    method: 'grantDungeonRewards',
-    rpcName: 'apply_gold_transaction',
-    slackUserId,
-    transactionType,
-    reward,
-  });
-  const { error: goldError } = await supabase.rpc('apply_gold_transaction', {
+  const goldPayload = {
     p_slack_user_id: slackUserId,
     p_amount: Number(reward.gold) || 0,
     p_transaction_type: transactionType,
+  };
+
+  logger.info('Iniciando pipeline de recompensa da dungeon', {
+    file: 'services/dungeonService.js',
+    method: 'grantDungeonRewards',
+    slackUserId,
+    transactionType,
+    reward,
+    rpcName: 'apply_gold_transaction',
+    rpcPayload: goldPayload,
   });
+
+  const { data: goldData, error: goldError } = await supabase.rpc('apply_gold_transaction', goldPayload);
   if (goldError) {
     logger.error('Erro na RPC de recompensa apply_gold_transaction', {
       file: 'services/dungeonService.js',
@@ -164,18 +168,41 @@ async function grantDungeonRewards({ slackUserId, reward, transactionType, captu
       rpcName: 'apply_gold_transaction',
       slackUserId,
       transactionType,
+      reward,
+      rpcPayload: goldPayload,
+      postgresMessage: goldError.message,
+      postgresDetails: goldError.details,
+      postgresHint: goldError.hint,
+      postgresCode: goldError.code,
       error: goldError,
     });
     throw goldError;
   }
+
   logger.info('RPC apply_gold_transaction concluída', {
     file: 'services/dungeonService.js',
     method: 'grantDungeonRewards',
     rpcName: 'apply_gold_transaction',
     slackUserId,
     transactionType,
+    reward,
+    rpcPayload: goldPayload,
+    rpcResult: goldData,
+    grantStatus: 'gold_granted',
   });
+
   const xpResult = await grantAccountXp(slackUserId, reward.accountXp, transactionType);
+  logger.info('RPC grant_account_xp concluída no pipeline da dungeon', {
+    file: 'services/dungeonService.js',
+    method: 'grantDungeonRewards',
+    rpcName: 'grant_account_xp',
+    slackUserId,
+    transactionType,
+    grantedXp: reward.accountXp,
+    rpcResult: xpResult,
+    grantStatus: 'account_xp_granted',
+  });
+
   const items = [];
   if (reward.ancientBookQty) {
     logger.info('Adicionando item de recompensa da dungeon', {
@@ -186,14 +213,37 @@ async function grantDungeonRewards({ slackUserId, reward, transactionType, captu
       itemKey: 'ancient_book',
       quantity: reward.ancientBookQty,
     });
-    items.push(await addItem(slackUserId, 'ancient_book', reward.ancientBookQty));
+    const itemResult = await addItem(slackUserId, 'ancient_book', reward.ancientBookQty);
+    items.push(itemResult);
+    logger.info('RPC upsert_user_item concluída no pipeline da dungeon', {
+      file: 'services/dungeonService.js',
+      method: 'grantDungeonRewards',
+      rpcName: 'upsert_user_item',
+      slackUserId,
+      itemKey: 'ancient_book',
+      quantity: reward.ancientBookQty,
+      rpcResult: itemResult,
+      grantStatus: 'item_granted',
+    });
   }
+
   let captured = null;
   if (capturedSpecies) {
     const stats = calculatePokemonStats({ species: capturedSpecies, level: enemyLevel || 1 });
     captured = await insertUserPokemon({ slackUserId, speciesId: capturedSpecies.id, level: enemyLevel || 1, shiny: false, stats, source: transactionType });
+    logger.info('Pokémon de recompensa da dungeon persistido', {
+      file: 'services/dungeonService.js',
+      method: 'grantDungeonRewards',
+      slackUserId,
+      transactionType,
+      capturedSpeciesId: capturedSpecies.id,
+      enemyLevel: enemyLevel || 1,
+      capturedPokemonId: captured?.id || null,
+      grantStatus: 'captured_reward_granted',
+    });
   }
-  return { goldReward: formatGold(reward.gold), xpResult, items, captured };
+
+  return { goldReward: formatGold(reward.gold), xpResult, items, captured, goldTransaction: Array.isArray(goldData) ? goldData[0] : goldData };
 }
 async function ensureDailyEntry(slackUserId, mode, metadata = {}) {
   const supabase = getSupabaseClient();
