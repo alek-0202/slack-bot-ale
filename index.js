@@ -55,6 +55,7 @@ const { registerBattleActions } = require("./handlers/battleActions");
 const { registerMarketActions } = require("./handlers/marketActions");
 const { registerPokemonActions } = require("./handlers/pokemonActions");
 const { registerHealingStationActions } = require("./handlers/healingStationActions");
+const { registerDungeonActions } = require("./handlers/dungeonActions");
 
 
 const logger = createLogger("slack-bot");
@@ -71,6 +72,7 @@ registerBattleActions(app);
 registerMarketActions(app);
 registerPokemonActions(app);
 registerHealingStationActions(app);
+registerDungeonActions(app);
 
 const mentionReplies = [
   "Fala comigo não, tô de férias 😴",

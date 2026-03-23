@@ -1,4 +1,5 @@
 const { getDungeonFarmList, getFarmReward, startFarmDungeon, startDailyDungeon } = require('../../services/dungeonService');
+const { handleDungeonCommand } = require('../../handlers/dungeonActions');
 
 function buildMenu() {
   const farmLines = getDungeonFarmList().map((level) => {
@@ -8,9 +9,15 @@ function buildMenu() {
   return [
     '🏰 *Dungeon*',
     '',
-    '*Menu*',
-    '1. Farm → `!dungeon farm <nível> <pokemon_id>`',
-    '2. Diária → `!dungeon daily normal|hard <pokemon_id>`',
+    '*Fluxo interativo*',
+    '1. `!dungeon`',
+    '2. Escolha o Pokémon nos botões',
+    '3. Escolha Farm ou Diária',
+    '4. Escolha a sala/dificuldade e a dungeon começa automaticamente',
+    '',
+    '*Compatibilidade legada*',
+    '• `!dungeon farm <nível> <pokemon_id>`',
+    '• `!dungeon daily normal|hard <pokemon_id>`',
     '',
     '*Farm disponíveis*',
     ...farmLines,
@@ -26,8 +33,7 @@ module.exports = {
   async execute({ event, say, args }) {
     const parts = String(args || '').trim().split(/\s+/).filter(Boolean);
     if (!parts.length) {
-      const text = buildMenu();
-      await say({ text, blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] });
+      await handleDungeonCommand({ event, say });
       return;
     }
 
