@@ -2,9 +2,9 @@ const { createBattle, assignSelectedPokemon, startBattle, finishBattle } = requi
 const { resolveBattleTurn } = require('../application/battle/domain/turnResolver');
 const { BATTLE_ACTION } = require('../application/battle/domain/actionResolver');
 const { calculatePokemonStats } = require('./pokemonStatsService');
-const { getAllSpecies, getUserPokemonById, insertUserPokemon } = require('./pokemonService');
+const { getAllSpecies, getUserPokemonById, getUserPokemons, insertUserPokemon } = require('./pokemonService');
 const { getPokemonMagicLoadout, buildMagicEntriesFromElements } = require('./pokemonMagicService');
-const { assertPokemonAvailableForAction, persistBattleHp } = require('./healingStationService');
+const { assertPokemonAvailableForAction, persistBattleHp, isPokemonInActiveBattle } = require('./healingStationService');
 const { getSupabaseClient } = require('../database/supabase');
 const { createUserIfMissing } = require('./userService');
 const { pickByRarity } = require('../pokemon/rarity');
@@ -24,6 +24,45 @@ const DAILY_CHANCES = {
 };
 
 function getDungeonFarmList() { return [...FARM_LEVELS]; }
+
+function mapDungeonFailureReason(reason) {
+  return {
+    invalid_dungeon_level: 'Sala de Farm inválida.',
+    invalid_daily_mode: 'Modo diário inválido.',
+    pokemon_not_owned: 'Esse Pokémon não pertence a você.',
+    pokemon_in_healing_station: 'Pokémon na heal station não pode entrar em dungeons.',
+    pokemon_fainted: 'Esse Pokémon está com HP zerado.',
+    pokemon_in_active_battle: 'Esse Pokémon já está em outra batalha ou sessão.',
+    already_used_today: 'Você já usou essa dungeon diária hoje.',
+    defeat: 'Seu Pokémon foi derrotado na dungeon.',
+  }[reason] || 'Não foi possível iniciar a dungeon agora.';
+}
+
+async function validateDungeonPokemonSelection({ slackUserId, pokemonId }) {
+  const pokemon = await getUserPokemonById(slackUserId, pokemonId);
+  if (!pokemon) return { ok: false, reason: 'pokemon_not_owned' };
+
+  const availability = await assertPokemonAvailableForAction({ slackUserId, pokemonId, action: 'dungeon' });
+  if (!availability.ok) return { ok: false, reason: availability.reason || 'pokemon_in_healing_station' };
+
+  if (Number(pokemon.current_hp) <= 0) return { ok: false, reason: 'pokemon_fainted', pokemon };
+  if (isPokemonInActiveBattle({ slackUserId, pokemonId })) return { ok: false, reason: 'pokemon_in_active_battle', pokemon };
+
+  return { ok: true, pokemon };
+}
+
+async function getEligibleDungeonPokemons(slackUserId) {
+  const pokemons = await getUserPokemons(slackUserId);
+  const eligible = [];
+
+  for (const pokemon of pokemons) {
+    const validation = await validateDungeonPokemonSelection({ slackUserId, pokemonId: pokemon.id });
+    if (validation.ok) eligible.push(validation.pokemon);
+    if (eligible.length >= 25) break;
+  }
+
+  return eligible;
+}
 function getFarmReward(level) {
   const safe = Number(level);
   return { gold: 300 * safe, accountXp: 100 * safe, ancientBookQty: safe >= 25 ? 2 : 1 };
@@ -139,10 +178,9 @@ async function ensureDailyEntry(slackUserId, mode, metadata = {}) {
 }
 async function startFarmDungeon({ slackUserId, pokemonId, level }) {
   if (!FARM_LEVELS.includes(Number(level))) return { ok: false, reason: 'invalid_dungeon_level' };
-  const playerPokemon = await getUserPokemonById(slackUserId, pokemonId);
-  if (!playerPokemon) return { ok: false, reason: 'pokemon_not_owned' };
-  const availability = await assertPokemonAvailableForAction({ slackUserId, pokemonId, action: 'dungeon' });
-  if (!availability.ok) return { ok: false, reason: 'pokemon_in_healing_station' };
+  const validation = await validateDungeonPokemonSelection({ slackUserId, pokemonId });
+  if (!validation.ok) return validation;
+  const playerPokemon = validation.pokemon;
   const loadout = await getPokemonMagicLoadout(pokemonId);
   playerPokemon.magicSlots = loadout?.spells || [];
   const speciesList = await getAllSpecies();
@@ -168,10 +206,9 @@ async function startFarmDungeon({ slackUserId, pokemonId, level }) {
 async function startDailyDungeon({ slackUserId, pokemonId, mode }) {
   const normalizedMode = String(mode || '').toLowerCase();
   if (!['normal', 'hard'].includes(normalizedMode)) return { ok: false, reason: 'invalid_daily_mode' };
-  const playerPokemon = await getUserPokemonById(slackUserId, pokemonId);
-  if (!playerPokemon) return { ok: false, reason: 'pokemon_not_owned' };
-  const availability = await assertPokemonAvailableForAction({ slackUserId, pokemonId, action: 'dungeon' });
-  if (!availability.ok) return { ok: false, reason: 'pokemon_in_healing_station' };
+  const validation = await validateDungeonPokemonSelection({ slackUserId, pokemonId });
+  if (!validation.ok) return validation;
+  const playerPokemon = validation.pokemon;
   const claim = await ensureDailyEntry(slackUserId, normalizedMode, { pokemonId });
   if (!claim.ok) return claim;
   const loadout = await getPokemonMagicLoadout(pokemonId);
@@ -194,6 +231,9 @@ module.exports = {
   getDungeonFarmList,
   getFarmReward,
   decideAiAction,
+  getEligibleDungeonPokemons,
+  validateDungeonPokemonSelection,
+  mapDungeonFailureReason,
   startFarmDungeon,
   startDailyDungeon,
 };
