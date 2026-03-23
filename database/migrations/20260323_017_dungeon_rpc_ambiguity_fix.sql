@@ -1,3 +1,5 @@
+drop function if exists public.claim_daily_dungeon_entry(text, text, jsonb);
+
 create or replace function public.claim_daily_dungeon_entry(
   p_slack_user_id text,
   p_mode text,
