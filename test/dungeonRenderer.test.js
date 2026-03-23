@@ -6,6 +6,7 @@ const {
   DUNGEON_SELECT_MODE_ACTION_ID,
   DUNGEON_START_FARM_ACTION_ID,
   DUNGEON_START_DAILY_ACTION_ID,
+  buildIndexedActionId,
   renderDungeonPokemonSelection,
   renderDungeonModeSelection,
   renderDungeonFarmSelection,
@@ -21,7 +22,7 @@ test('renderDungeonPokemonSelection cria botões de seleção do Pokémon', () =
 
   const actionBlocks = payload.blocks.filter((block) => block.type === 'actions');
   assert.equal(actionBlocks.length, 1);
-  assert.equal(actionBlocks[0].elements[0].action_id, DUNGEON_SELECT_POKEMON_ACTION_ID);
+  assert.equal(actionBlocks[0].elements[0].action_id, buildIndexedActionId(DUNGEON_SELECT_POKEMON_ACTION_ID, 99));
   assert.match(actionBlocks[0].elements[0].text.text, /Pikachu/);
 });
 
@@ -32,7 +33,10 @@ test('renderDungeonModeSelection cria botões de Farm e Diária', () => {
   });
 
   const actionIds = payload.blocks.find((block) => block.type === 'actions').elements.map((element) => element.action_id);
-  assert.deepEqual(actionIds, [DUNGEON_SELECT_MODE_ACTION_ID, DUNGEON_SELECT_MODE_ACTION_ID]);
+  assert.deepEqual(actionIds, [
+    buildIndexedActionId(DUNGEON_SELECT_MODE_ACTION_ID, 'farm'),
+    buildIndexedActionId(DUNGEON_SELECT_MODE_ACTION_ID, 'daily'),
+  ]);
 });
 
 test('renderDungeonFarmSelection cria salas até nível 50', () => {
@@ -44,7 +48,7 @@ test('renderDungeonFarmSelection cria salas até nível 50', () => {
 
   const actionIds = payload.blocks.filter((block) => block.type === 'actions').flatMap((block) => block.elements.map((element) => element.action_id));
   assert.equal(actionIds.length, 10);
-  assert.ok(actionIds.every((actionId) => actionId === DUNGEON_START_FARM_ACTION_ID));
+  assert.deepEqual(actionIds, [5, 10, 15, 20, 25, 30, 35, 40, 45, 50].map((level) => buildIndexedActionId(DUNGEON_START_FARM_ACTION_ID, level)));
 });
 
 test('renderDungeonDailySelection cria dificuldades normal e hard', () => {
@@ -54,7 +58,10 @@ test('renderDungeonDailySelection cria dificuldades normal e hard', () => {
   });
 
   const actionIds = payload.blocks.find((block) => block.type === 'actions').elements.map((element) => element.action_id);
-  assert.deepEqual(actionIds, [DUNGEON_START_DAILY_ACTION_ID, DUNGEON_START_DAILY_ACTION_ID]);
+  assert.deepEqual(actionIds, [
+    buildIndexedActionId(DUNGEON_START_DAILY_ACTION_ID, 'normal'),
+    buildIndexedActionId(DUNGEON_START_DAILY_ACTION_ID, 'hard'),
+  ]);
 });
 
 test('renderDungeonError mostra mensagem de indisponibilidade', () => {
