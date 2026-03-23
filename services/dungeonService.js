@@ -11,6 +11,7 @@ const { pickByRarity } = require('../pokemon/rarity');
 const { addItem } = require('./inventoryService');
 const { grantAccountXp } = require('./accountProgressionService');
 const { formatGold } = require('../utils/gold');
+const { createLogger } = require('../utils/logger');
 
 const FARM_LEVELS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
 const DUNGEON_ENEMY_USER_ID = '__dungeon_enemy__';
@@ -22,6 +23,7 @@ const DAILY_CHANCES = {
   normal: { common: 70, uncommon: 15, rare: 10, epic: 5 },
   hard: { common: 30, uncommon: 40, rare: 20, epic: 7, legendary: 2, mythical: 1 },
 };
+const logger = createLogger('service:dungeon');
 
 function getDungeonFarmList() { return [...FARM_LEVELS]; }
 
@@ -142,15 +144,48 @@ async function persistPlayerBattleHp(slackUserId, playerState) {
 async function grantDungeonRewards({ slackUserId, reward, transactionType, capturedSpecies = null, enemyLevel = null }) {
   await createUserIfMissing(slackUserId);
   const supabase = getSupabaseClient();
+  logger.info('Chamando RPC de recompensa da dungeon', {
+    file: 'services/dungeonService.js',
+    method: 'grantDungeonRewards',
+    rpcName: 'apply_gold_transaction',
+    slackUserId,
+    transactionType,
+    reward,
+  });
   const { error: goldError } = await supabase.rpc('apply_gold_transaction', {
     p_slack_user_id: slackUserId,
     p_amount: Number(reward.gold) || 0,
     p_transaction_type: transactionType,
   });
-  if (goldError) throw goldError;
+  if (goldError) {
+    logger.error('Erro na RPC de recompensa apply_gold_transaction', {
+      file: 'services/dungeonService.js',
+      method: 'grantDungeonRewards',
+      rpcName: 'apply_gold_transaction',
+      slackUserId,
+      transactionType,
+      error: goldError,
+    });
+    throw goldError;
+  }
+  logger.info('RPC apply_gold_transaction concluída', {
+    file: 'services/dungeonService.js',
+    method: 'grantDungeonRewards',
+    rpcName: 'apply_gold_transaction',
+    slackUserId,
+    transactionType,
+  });
   const xpResult = await grantAccountXp(slackUserId, reward.accountXp, transactionType);
   const items = [];
   if (reward.ancientBookQty) {
+    logger.info('Adicionando item de recompensa da dungeon', {
+      file: 'services/dungeonService.js',
+      method: 'grantDungeonRewards',
+      rpcName: 'upsert_user_item',
+      slackUserId,
+      itemKey: 'ancient_book',
+      quantity: reward.ancientBookQty,
+    });
     items.push(await addItem(slackUserId, 'ancient_book', reward.ancientBookQty));
   }
   let captured = null;
@@ -162,20 +197,52 @@ async function grantDungeonRewards({ slackUserId, reward, transactionType, captu
 }
 async function ensureDailyEntry(slackUserId, mode, metadata = {}) {
   const supabase = getSupabaseClient();
+  logger.info('Chamando RPC de entrada diária da dungeon', {
+    file: 'services/dungeonService.js',
+    method: 'ensureDailyEntry',
+    rpcName: 'claim_daily_dungeon_entry',
+    slackUserId,
+    mode,
+    metadata,
+  });
   const { data, error } = await supabase.rpc('claim_daily_dungeon_entry', {
     p_slack_user_id: slackUserId,
     p_mode: mode,
     p_metadata: metadata,
   });
   if (error) {
+    logger.error('Erro na RPC claim_daily_dungeon_entry', {
+      file: 'services/dungeonService.js',
+      method: 'ensureDailyEntry',
+      rpcName: 'claim_daily_dungeon_entry',
+      slackUserId,
+      mode,
+      metadata,
+      error,
+    });
     if (String(error.message || '').includes('já usada hoje')) {
       return { ok: false, reason: 'already_used_today' };
     }
     throw error;
   }
+  logger.info('RPC claim_daily_dungeon_entry concluída', {
+    file: 'services/dungeonService.js',
+    method: 'ensureDailyEntry',
+    rpcName: 'claim_daily_dungeon_entry',
+    slackUserId,
+    mode,
+    rowCount: Array.isArray(data) ? data.length : (data ? 1 : 0),
+  });
   return { ok: true, entry: Array.isArray(data) ? data[0] : data };
 }
 async function startFarmDungeon({ slackUserId, pokemonId, level }) {
+  logger.info('Iniciando fluxo de dungeon farm', {
+    file: 'services/dungeonService.js',
+    method: 'startFarmDungeon',
+    slackUserId,
+    pokemonId,
+    level,
+  });
   if (!FARM_LEVELS.includes(Number(level))) return { ok: false, reason: 'invalid_dungeon_level' };
   const validation = await validateDungeonPokemonSelection({ slackUserId, pokemonId });
   if (!validation.ok) return validation;
@@ -200,10 +267,26 @@ async function startFarmDungeon({ slackUserId, pokemonId, level }) {
   await persistPlayerBattleHp(slackUserId, latestPlayerState);
   const reward = getFarmReward(level);
   const rewards = await grantDungeonRewards({ slackUserId, reward, transactionType: 'dungeon_farm_reward' });
+  logger.info('Fluxo de dungeon farm concluído', {
+    file: 'services/dungeonService.js',
+    method: 'startFarmDungeon',
+    slackUserId,
+    pokemonId,
+    level,
+    reward,
+  });
   return { ok: true, mode: 'farm', level, runs, rewards };
 }
 async function startDailyDungeon({ slackUserId, pokemonId, mode }) {
   const normalizedMode = String(mode || '').toLowerCase();
+  logger.info('Iniciando fluxo de dungeon daily', {
+    file: 'services/dungeonService.js',
+    method: 'startDailyDungeon',
+    slackUserId,
+    pokemonId,
+    mode,
+    normalizedMode,
+  });
   if (!['normal', 'hard'].includes(normalizedMode)) return { ok: false, reason: 'invalid_daily_mode' };
   const validation = await validateDungeonPokemonSelection({ slackUserId, pokemonId });
   if (!validation.ok) return validation;
@@ -221,6 +304,15 @@ async function startDailyDungeon({ slackUserId, pokemonId, mode }) {
   if (result.winnerId !== slackUserId) return { ok: false, reason: 'defeat', mode: normalizedMode, log: result.log };
   const capturedSpecies = weightedPickByConfiguredChances(speciesList, DAILY_CHANCES[normalizedMode]);
   const rewards = await grantDungeonRewards({ slackUserId, reward: DUNGEON_REWARDS[`daily_${normalizedMode}`], transactionType: `dungeon_daily_${normalizedMode}_reward`, capturedSpecies, enemyLevel });
+  logger.info('Fluxo de dungeon daily concluído', {
+    file: 'services/dungeonService.js',
+    method: 'startDailyDungeon',
+    slackUserId,
+    pokemonId,
+    normalizedMode,
+    enemyLevel,
+    capturedSpeciesId: capturedSpecies?.id,
+  });
   return { ok: true, mode: normalizedMode, enemyLevel, rewards, battleLog: result.log, capturedSpecies };
 }
 

@@ -1,5 +1,8 @@
 const { getSupabaseClient } = require('../database/supabase');
 const { createUserIfMissing } = require('./userService');
+const { createLogger } = require('../utils/logger');
+
+const logger = createLogger('service:inventory');
 
 const ITEM_CATALOG = {
   ancient_book: {
@@ -33,6 +36,14 @@ async function addItem(slackUserId, itemKey, quantity, overrides = {}) {
   await createUserIfMissing(slackUserId);
   const supabase = getSupabaseClient();
   const item = { ...getItemDefinition(itemKey), ...overrides };
+  logger.info('Chamando RPC de inventário', {
+    file: 'services/inventoryService.js',
+    method: 'addItem',
+    rpcName: 'upsert_user_item',
+    slackUserId,
+    itemKey: item.itemKey,
+    quantity,
+  });
   const { data, error } = await supabase.rpc('upsert_user_item', {
     p_slack_user_id: slackUserId,
     p_item_key: String(item.itemKey || '').trim().toLowerCase(),
@@ -41,7 +52,26 @@ async function addItem(slackUserId, itemKey, quantity, overrides = {}) {
     p_quantity: Math.max(1, Number(quantity) || 1),
     p_extra_data: item.extraData || {},
   });
-  if (error) throw error;
+  if (error) {
+    logger.error('Erro na RPC upsert_user_item', {
+      file: 'services/inventoryService.js',
+      method: 'addItem',
+      rpcName: 'upsert_user_item',
+      slackUserId,
+      itemKey: item.itemKey,
+      quantity,
+      error,
+    });
+    throw error;
+  }
+  logger.info('RPC upsert_user_item concluída', {
+    file: 'services/inventoryService.js',
+    method: 'addItem',
+    rpcName: 'upsert_user_item',
+    slackUserId,
+    itemKey: item.itemKey,
+    rowCount: Array.isArray(data) ? data.length : (data ? 1 : 0),
+  });
   return normalizeItemRpcRow(Array.isArray(data) ? data[0] : data);
 }
 

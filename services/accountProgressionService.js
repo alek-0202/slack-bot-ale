@@ -1,4 +1,7 @@
 const { getSupabaseClient } = require('../database/supabase');
+const { createLogger } = require('../utils/logger');
+
+const logger = createLogger('service:account-progression');
 
 const CAPTURE_ACCOUNT_XP = {
   common: 15,
@@ -44,12 +47,40 @@ function renderProgressBar(current, total, size = 10) {
 async function grantAccountXp(slackUserId, xpAmount, reason = 'system') {
   const supabase = getSupabaseClient();
   const grantedXp = Math.max(0, Number(xpAmount) || 0);
+  logger.info('Chamando RPC de progressão da conta', {
+    file: 'services/accountProgressionService.js',
+    method: 'grantAccountXp',
+    rpcName: 'grant_account_xp',
+    slackUserId,
+    grantedXp,
+    reason,
+  });
   const { data, error } = await supabase.rpc('grant_account_xp', {
     p_slack_user_id: slackUserId,
     p_xp_amount: grantedXp,
     p_reason: reason,
   });
-  if (error) throw error;
+  if (error) {
+    logger.error('Erro na RPC grant_account_xp', {
+      file: 'services/accountProgressionService.js',
+      method: 'grantAccountXp',
+      rpcName: 'grant_account_xp',
+      slackUserId,
+      grantedXp,
+      reason,
+      error,
+    });
+    throw error;
+  }
+  logger.info('RPC grant_account_xp concluída', {
+    file: 'services/accountProgressionService.js',
+    method: 'grantAccountXp',
+    rpcName: 'grant_account_xp',
+    slackUserId,
+    grantedXp,
+    reason,
+    rowCount: Array.isArray(data) ? data.length : (data ? 1 : 0),
+  });
 
   const row = Array.isArray(data) ? data[0] : data;
   const previousSnapshot = getAccountLevelSnapshot(row?.previous_total_xp || 0);

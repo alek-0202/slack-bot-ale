@@ -22,6 +22,13 @@ function serializeError(error) {
   return {
     name: error.name,
     message: error.message,
+    code: error.code,
+    details: error.details,
+    hint: error.hint,
+    schema: error.schema,
+    table: error.table,
+    constraint: error.constraint,
+    routine: error.routine,
     stack: error.stack,
   };
 }
