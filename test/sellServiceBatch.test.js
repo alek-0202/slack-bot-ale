@@ -65,13 +65,13 @@ test("sellPokemonBatch envia o total esperado para a RPC e mantém o valor receb
       id: 23,
       level: 1,
       upgrade_spent_gold: 0,
-      pokemon_species: { name: "Pikachu", rarity: "common" },
+      pokemon_species: { name: "Pikachu", rarity: "common", base_value: 300 },
     },
     {
       id: 45,
       level: 4,
       upgrade_spent_gold: 1050,
-      pokemon_species: { name: "Charmander", rarity: "common" },
+      pokemon_species: { name: "Charmander", rarity: "common", base_value: 300 },
     },
   ];
 
@@ -80,7 +80,7 @@ test("sellPokemonBatch envia o total esperado para a RPC e mantém o valor receb
     rpcResult: {
       ok: true,
       reason: null,
-      sale_price: 840,
+      sale_price: 1650,
       remaining_gold: 1840,
       deleted_trade_items: 0,
       deleted_market_purchases: 0,
@@ -94,15 +94,15 @@ test("sellPokemonBatch envia o total esperado para a RPC e mantém o valor receb
     });
 
     assert.equal(result.ok, true);
-    assert.equal(result.totalSellPrice, "840");
-    assert.equal(result.goldReceived, "840");
+    assert.equal(result.totalSellPrice, "1650");
+    assert.equal(result.goldReceived, "1650");
     assert.deepEqual(context.rpcCalls, [
       {
         name: "sell_user_pokemons_batch",
         payload: {
           p_slack_user_id: "U123",
           p_pokemon_ids: [23, 45],
-          p_expected_sale_price: 840,
+          p_expected_sale_price: 1650,
         },
       },
     ]);
@@ -119,13 +119,13 @@ test("sellPokemonBatch faz fallback para a RPC legada quando a RPC em lote não 
       id: 23,
       level: 1,
       upgrade_spent_gold: 0,
-      pokemon_species: { name: "Pikachu", rarity: "common" },
+      pokemon_species: { name: "Pikachu", rarity: "common", base_value: 300 },
     },
     {
       id: 45,
       level: 4,
       upgrade_spent_gold: 1050,
-      pokemon_species: { name: "Charmander", rarity: "common" },
+      pokemon_species: { name: "Charmander", rarity: "common", base_value: 300 },
     },
   ];
 
@@ -133,7 +133,7 @@ test("sellPokemonBatch faz fallback para a RPC legada quando a RPC em lote não 
     23: {
       ok: true,
       reason: null,
-      sale_price: 210,
+      sale_price: 300,
       remaining_gold: 1210,
       deleted_trade_items: 0,
       deleted_market_purchases: 0,
@@ -141,7 +141,7 @@ test("sellPokemonBatch faz fallback para a RPC legada quando a RPC em lote não 
     45: {
       ok: true,
       reason: null,
-      sale_price: 630,
+      sale_price: 1350,
       remaining_gold: 1840,
       deleted_trade_items: 0,
       deleted_market_purchases: 0,
@@ -171,8 +171,8 @@ test("sellPokemonBatch faz fallback para a RPC legada quando a RPC em lote não 
     });
 
     assert.equal(result.ok, true);
-    assert.equal(result.totalSellPrice, "840");
-    assert.equal(result.goldReceived, "840");
+    assert.equal(result.totalSellPrice, "1650");
+    assert.equal(result.goldReceived, "1650");
     assert.equal(result.currentGold, "1840");
     assert.equal(result.usedLegacyFallback, true);
     assert.deepEqual(context.rpcCalls, [
@@ -181,7 +181,7 @@ test("sellPokemonBatch faz fallback para a RPC legada quando a RPC em lote não 
         payload: {
           p_slack_user_id: "U123",
           p_pokemon_ids: [23, 45],
-          p_expected_sale_price: 840,
+          p_expected_sale_price: 1650,
         },
       },
       {
