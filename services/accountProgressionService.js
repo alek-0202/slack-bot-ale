@@ -43,32 +43,26 @@ function renderProgressBar(current, total, size = 10) {
 
 async function grantAccountXp(slackUserId, xpAmount, reason = 'system') {
   const supabase = getSupabaseClient();
-  const { data: user, error } = await supabase
-    .from('users')
-    .select('slack_user_id, account_xp, account_level')
-    .eq('slack_user_id', slackUserId)
-    .single();
+  const grantedXp = Math.max(0, Number(xpAmount) || 0);
+  const { data, error } = await supabase.rpc('grant_account_xp', {
+    p_slack_user_id: slackUserId,
+    p_xp_amount: grantedXp,
+    p_reason: reason,
+  });
   if (error) throw error;
 
-  const previousTotalXp = Number(user.account_xp) || 0;
-  const nextTotalXp = previousTotalXp + Math.max(0, Number(xpAmount) || 0);
-  const previousSnapshot = getAccountLevelSnapshot(previousTotalXp);
-  const nextSnapshot = getAccountLevelSnapshot(nextTotalXp);
-
-  const { error: updateError } = await supabase
-    .from('users')
-    .update({ account_xp: nextTotalXp, account_level: nextSnapshot.level })
-    .eq('slack_user_id', slackUserId);
-  if (updateError) throw updateError;
+  const row = Array.isArray(data) ? data[0] : data;
+  const previousSnapshot = getAccountLevelSnapshot(row?.previous_total_xp || 0);
+  const nextSnapshot = getAccountLevelSnapshot(row?.current_total_xp || 0);
 
   return {
     ok: true,
     reason,
-    grantedXp: Math.max(0, Number(xpAmount) || 0),
+    grantedXp,
     previous: previousSnapshot,
     current: nextSnapshot,
-    leveledUp: nextSnapshot.level > previousSnapshot.level,
-    levelsGained: nextSnapshot.level - previousSnapshot.level,
+    leveledUp: Boolean(row?.leveled_up),
+    levelsGained: Number(row?.levels_gained) || 0,
   };
 }
 
