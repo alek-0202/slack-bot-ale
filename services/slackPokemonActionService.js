@@ -25,6 +25,9 @@ const UP_CANCEL_ACTION_ID = "pokemon_up_cancel";
 const SELL_CONFIRM_ACTION_ID = "pokemon_sell_confirm";
 const SELL_CANCEL_ACTION_ID = "pokemon_sell_cancel";
 const APPLY_ITEM_ACTION_ID = "pokemon_applyitem_confirm";
+function buildApplyItemActionId(statKey) {
+  return `${APPLY_ITEM_ACTION_ID}_${statKey}`;
+}
 
 function safeJsonParse(value) {
   if (!value) return null;
@@ -394,7 +397,7 @@ function buildApplyItemViewMessage({ slackUserId, preview, feedbackText = null }
 
     return {
       type: "button",
-      action_id: APPLY_ITEM_ACTION_ID,
+      action_id: buildApplyItemActionId(key),
       text: { type: "plain_text", text: `${config.emoji} +1 ${config.label}`, emoji: true },
       style: isMaxed ? undefined : "primary",
       value: buildActionValue({ type: "apply_item", slackUserId, pokemonId: pokemon.id, statKey: key }),
@@ -542,6 +545,7 @@ module.exports = {
   SELL_CONFIRM_ACTION_ID,
   SELL_CANCEL_ACTION_ID,
   APPLY_ITEM_ACTION_ID,
+  buildApplyItemActionId,
   parsePokemonActionValue,
   buildEvolvePreview,
   buildEvolvePreviewMessage,
