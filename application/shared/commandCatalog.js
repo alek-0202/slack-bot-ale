@@ -6,6 +6,13 @@ const sharedCommandCatalog = {
     slackUsage: '`!help`',
     discordDescription: 'Mostra os comandos gerais',
   },
+  att: {
+    name: 'att',
+    category: 'general',
+    summary: 'Mostra a atualização atual do jogo/bot',
+    slackUsage: '`!att`',
+    discordDescription: 'Mostra a atualização atual do jogo/bot',
+  },
   pokemonhelp: {
     name: 'pokemonhelp',
     category: 'pokemon',

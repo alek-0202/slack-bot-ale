@@ -15,6 +15,7 @@ const pokemonHelpCommand = require("./commands/pokemonhelp");
 const caraOuCoroaCommand = require("./commands/caraoucoroa");
 const dailyCommand = require("./commands/daily");
 const dhelpCommand = require("./commands/dhelp");
+const attCommand = require("./commands/att");
 const coffeCommand = require("./commands/coffe");
 const pokeCommand = require("./commands/pokemon/poke");
 const captureCommand = require("./commands/pokemon/capture");
@@ -97,6 +98,7 @@ for (const commandModule of [
   caraOuCoroaCommand,
   dailyCommand,
   dhelpCommand,
+  attCommand,
   coffeCommand,
   pokeCommand,
   captureCommand,
