@@ -38,10 +38,27 @@ function clearBattle(channelId) {
   battlesByChannel.delete(channelId);
 }
 
+function clearAllActiveBattles() {
+  const channels = Array.from(battlesByChannel.keys());
+  let clearedCount = 0;
+
+  for (const channelId of channels) {
+    const battle = battlesByChannel.get(channelId);
+    if (!battle) continue;
+    if (battle.status !== "active" && battle.status !== "selecting") continue;
+
+    clearBattle(channelId);
+    clearedCount += 1;
+  }
+
+  return { clearedCount };
+}
+
 module.exports = {
   isUserInActiveBattle,
   getUserActiveBattleChannel,
   getBattle,
   setBattle,
   clearBattle,
+  clearAllActiveBattles,
 };
