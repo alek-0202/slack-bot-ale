@@ -420,7 +420,21 @@ async function startFarmDungeon({ slackUserId, pokemonId, level }) {
     currentTurnUserId: battle.currentTurnUserId,
   });
 
-  return { ok: true, mode: 'farm', level: Number(level), battle };
+  const { enemyTurns } = processEnemyTurnIfNeeded({ battle, trigger: 'start_farm' });
+  battle.metadata.turnLog = buildDungeonTurnLog({
+    battle,
+    playerTurn: null,
+    enemyTurn: enemyTurns[enemyTurns.length - 1] || null,
+  });
+  battleStore.setBattle(battle.channelId, battle);
+
+  let completion = null;
+  if (battle.status === 'finished') {
+    completion = await finalizeDungeonBattle(battle);
+    battleStore.setBattle(battle.channelId, battle);
+  }
+
+  return { ok: true, mode: 'farm', level: Number(level), battle, completion };
 }
 
 async function startDailyDungeon({ slackUserId, pokemonId, mode }) {
@@ -484,7 +498,21 @@ async function startDailyDungeon({ slackUserId, pokemonId, mode }) {
     enemyLevel,
   });
 
-  return { ok: true, mode: normalizedMode, enemyLevel, battle };
+  const { enemyTurns } = processEnemyTurnIfNeeded({ battle, trigger: 'start_daily' });
+  battle.metadata.turnLog = buildDungeonTurnLog({
+    battle,
+    playerTurn: null,
+    enemyTurn: enemyTurns[enemyTurns.length - 1] || null,
+  });
+  battleStore.setBattle(battle.channelId, battle);
+
+  let completion = null;
+  if (battle.status === 'finished') {
+    completion = await finalizeDungeonBattle(battle);
+    battleStore.setBattle(battle.channelId, battle);
+  }
+
+  return { ok: true, mode: normalizedMode, enemyLevel, battle, completion };
 }
 
 function getDungeonBattle(channelId) {
@@ -607,6 +635,111 @@ function resolveDungeonAiTurn(battle) {
   return { action, resolution };
 }
 
+function processEnemyTurnIfNeeded({ battle, trigger = 'unknown', maxEnemyTurns = 3 }) {
+  const playerUserId = battle.metadata?.slackUserId || battle.challengerId;
+  const enemyTurns = [];
+  let safeguard = 0;
+
+  logger.info('Verificando necessidade de turno automático do inimigo na dungeon', {
+    file: 'services/dungeonService.js',
+    method: 'processEnemyTurnIfNeeded',
+    battleId: battle.id,
+    sessionId: battle.channelId,
+    slackUserId: playerUserId,
+    trigger,
+    currentTurnUserId: battle.currentTurnUserId,
+    battleStatus: battle.status,
+    maxEnemyTurns,
+  });
+
+  while (battle.status === 'active' && battle.currentTurnUserId === DUNGEON_ENEMY_USER_ID && safeguard < maxEnemyTurns) {
+    safeguard += 1;
+    let enemyTurn = resolveDungeonAiTurn(battle);
+    if (!enemyTurn) break;
+
+    if (!enemyTurn.resolution?.outcome?.ok && enemyTurn.action.actionType !== BATTLE_ACTION.ATTACK) {
+      logger.warn('Falha em ação não ofensiva da IA; aplicando fallback para ataque básico na dungeon', {
+        file: 'services/dungeonService.js',
+        method: 'processEnemyTurnIfNeeded',
+        battleId: battle.id,
+        sessionId: battle.channelId,
+        slackUserId: playerUserId,
+        trigger,
+        attemptedActionType: enemyTurn.action.actionType,
+        reason: enemyTurn.resolution?.outcome?.reason,
+      });
+      enemyTurn = {
+        action: { actionType: BATTLE_ACTION.ATTACK, actionPayload: {} },
+        resolution: resolveBattleTurn({
+          battle,
+          actorUserId: DUNGEON_ENEMY_USER_ID,
+          actionType: BATTLE_ACTION.ATTACK,
+          actionPayload: {},
+        }),
+      };
+    }
+
+    battle.metadata.lastResolution = enemyTurn.resolution;
+    enemyTurns.push(enemyTurn);
+
+    logger.info('Turno automático do inimigo aplicado na dungeon', {
+      file: 'services/dungeonService.js',
+      method: 'processEnemyTurnIfNeeded',
+      battleId: battle.id,
+      sessionId: battle.channelId,
+      slackUserId: playerUserId,
+      trigger,
+      autoTurnStep: safeguard,
+      actionType: enemyTurn.action.actionType,
+      outcomeType: enemyTurn.resolution?.outcome?.type || null,
+      outcomeOk: enemyTurn.resolution?.outcome?.ok === true,
+      nextTurnUserId: battle.currentTurnUserId,
+      battleStatus: battle.status,
+    });
+
+    if (!enemyTurn.resolution?.outcome?.ok && battle.currentTurnUserId === DUNGEON_ENEMY_USER_ID) {
+      logger.warn('Fluxo de turno automático interrompido para evitar loop na dungeon', {
+        file: 'services/dungeonService.js',
+        method: 'processEnemyTurnIfNeeded',
+        battleId: battle.id,
+        sessionId: battle.channelId,
+        slackUserId: playerUserId,
+        trigger,
+        autoTurnStep: safeguard,
+        reason: enemyTurn.resolution?.outcome?.reason || 'unknown',
+      });
+      break;
+    }
+  }
+
+  if (battle.status === 'active' && battle.currentTurnUserId === DUNGEON_ENEMY_USER_ID && safeguard >= maxEnemyTurns) {
+    logger.error('Safeguard de turno automático da dungeon atingido', {
+      file: 'services/dungeonService.js',
+      method: 'processEnemyTurnIfNeeded',
+      battleId: battle.id,
+      sessionId: battle.channelId,
+      slackUserId: playerUserId,
+      trigger,
+      maxEnemyTurns,
+      currentTurnUserId: battle.currentTurnUserId,
+    });
+  }
+
+  logger.info('Verificação de turno automático concluída na dungeon', {
+    file: 'services/dungeonService.js',
+    method: 'processEnemyTurnIfNeeded',
+    battleId: battle.id,
+    sessionId: battle.channelId,
+    slackUserId: playerUserId,
+    trigger,
+    enemyTurnsApplied: enemyTurns.length,
+    battleStatus: battle.status,
+    currentTurnUserId: battle.currentTurnUserId,
+  });
+
+  return { enemyTurns };
+}
+
 async function finalizeDungeonBattle(battle) {
   const playerUserId = battle.metadata?.slackUserId || battle.challengerId;
   const playerState = battle.players[playerUserId];
@@ -716,6 +849,7 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
 
   const turnLog = [{ actorUserId, actionType, outcome: playerResolution.outcome }];
   let enemyTurn = null;
+  let enemyTurns = [];
 
   if (!playerResolution.finished && battle.currentTurnUserId === DUNGEON_ENEMY_USER_ID) {
     logger.info('Troca de turno player -> bot detectada na dungeon', {
@@ -727,10 +861,15 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
       previousActorUserId: actorUserId,
       currentTurnUserId: battle.currentTurnUserId,
     });
-    enemyTurn = resolveDungeonAiTurn(battle);
-    if (enemyTurn) {
-      battle.metadata.lastResolution = enemyTurn.resolution;
-      turnLog.push({ actorUserId: DUNGEON_ENEMY_USER_ID, actionType: enemyTurn.action.actionType, outcome: enemyTurn.resolution.outcome });
+    const enemyTurnProcessing = processEnemyTurnIfNeeded({ battle, trigger: 'post_player_action' });
+    enemyTurns = enemyTurnProcessing.enemyTurns;
+    enemyTurn = enemyTurns[enemyTurns.length - 1] || null;
+    for (const appliedEnemyTurn of enemyTurns) {
+      turnLog.push({
+        actorUserId: DUNGEON_ENEMY_USER_ID,
+        actionType: appliedEnemyTurn.action.actionType,
+        outcome: appliedEnemyTurn.resolution.outcome,
+      });
     }
   }
 
@@ -779,6 +918,7 @@ module.exports = {
   getDungeonFarmList,
   getFarmReward,
   decideAiAction,
+  processEnemyTurnIfNeeded,
   getEligibleDungeonPokemons,
   validateDungeonPokemonSelection,
   mapDungeonFailureReason,
