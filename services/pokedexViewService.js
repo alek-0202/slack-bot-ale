@@ -140,9 +140,9 @@ async function buildPokedexMessage({
     level: entry.level,
     shiny: Boolean(entry.shiny),
     hasAccessory: Boolean(visualBlocks.accessory),
-    accessoryType: visualBlocks.accessory?.slack_file?.id ? "slack_file" : visualBlocks.accessory?.image_url ? "image_url" : "none",
+    accessoryType: visualBlocks.accessory?.image_url ? "image_url" : "none",
     accessoryImage: summarizeImageReference(visualBlocks.accessory?.image_url),
-    accessorySlackFileId: visualBlocks.accessory?.slack_file?.id || null,
+    accessoryImageUrlLength: visualBlocks.accessory?.image_url?.length || 0,
     visualBlocksCount: visualBlocks.blocks.length,
   });
 

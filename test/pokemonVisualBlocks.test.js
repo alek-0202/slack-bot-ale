@@ -3,14 +3,11 @@ const assert = require('node:assert/strict');
 
 const {
   buildPokemonVisualBlocks,
-  extractSlackFileId,
   buildSlackImageAccessory,
+  publishRenderedImageUrl,
   getLevelBorderStyle,
   isSlackCompatibleImageUrl,
-  isSupportedSlackImageFile,
-  isPngBuffer,
   resolveSlackCompatibleImageUrl,
-  summarizeUploadedSlackFile,
 } = require('../adapters/slack/renderers/pokemonVisualBlocks');
 const { buildPokedexMessage } = require('../services/pokedexViewService');
 
@@ -96,43 +93,6 @@ test('resolveSlackCompatibleImageUrl usa fallback quando render em camadas gera 
   assert.equal(resolved.imageUrl, 'https://example.com/fallback.png');
 });
 
-test('extractSlackFileId suporta shape real do uploadV2 com resposta aninhada', () => {
-  const uploadResponse = {
-    ok: true,
-    files: [
-      {
-        ok: true,
-        files: [
-          {
-            id: 'F_RENDER_123',
-          },
-        ],
-      },
-    ],
-  };
-
-  const extracted = extractSlackFileId(uploadResponse);
-
-  assert.equal(extracted.slackFileId, 'F_RENDER_123');
-  assert.equal(extracted.extractedFrom, 'files[0].files[0].id');
-});
-
-test('buildSlackImageAccessory converte tipo interno slack_file_id para schema oficial do Block Kit', () => {
-  const accessory = buildSlackImageAccessory({
-    finalImage: { type: 'slack_file_id', id: 'F0ANQ48DZC4' },
-    altText: 'pokemon',
-    context: { test: true },
-  });
-
-  assert.deepEqual(accessory, {
-    type: 'image',
-    alt_text: 'pokemon',
-    slack_file: {
-      id: 'F0ANQ48DZC4',
-    },
-  });
-});
-
 test('buildSlackImageAccessory usa image_url quando referência final é URL pública válida', () => {
   const accessory = buildSlackImageAccessory({
     finalImage: { type: 'http_url', url: 'https://example.com/render.png' },
@@ -147,49 +107,51 @@ test('buildSlackImageAccessory usa image_url quando referência final é URL pú
   });
 });
 
-test('isPngBuffer detecta assinatura binária PNG', () => {
-  const pngLike = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
-  const jpegLike = Buffer.from('ffd8ffe000104a4649460001', 'hex');
+test('publishRenderedImageUrl cria URL pública curta quando base URL está configurada', () => {
+  const previousBaseUrl = process.env.RENDERED_IMAGE_PUBLIC_BASE_URL;
+  process.env.RENDERED_IMAGE_PUBLIC_BASE_URL = 'https://img.example.com';
 
-  assert.equal(isPngBuffer(pngLike), true);
-  assert.equal(isPngBuffer(jpegLike), false);
-});
-
-test('isSupportedSlackImageFile aceita apenas tipos de imagem compatíveis com slack_file no Block Kit', () => {
-  assert.equal(isSupportedSlackImageFile({ mimetype: 'image/png', filetype: 'png' }), true);
-  assert.equal(isSupportedSlackImageFile({ mimetype: 'image/jpeg', filetype: 'jpg' }), true);
-  assert.equal(isSupportedSlackImageFile({ mimetype: 'image/webp', filetype: 'webp' }), false);
-  assert.equal(isSupportedSlackImageFile({ mimetype: 'application/octet-stream', filetype: 'binary' }), false);
-});
-
-test('summarizeUploadedSlackFile lê metadados principais retornados no upload V2', () => {
-  const summary = summarizeUploadedSlackFile({
-    ok: true,
-    files: [
-      {
-        files: [
-          {
-            id: 'F123',
-            name: 'pokemon-card.png',
-            mimetype: 'image/png',
-            filetype: 'png',
-            pretty_type: 'PNG',
-            url_private: 'https://files.slack.com/files-pri/T1-F123/image.png',
-            permalink: 'https://workspace.slack.com/files/U1/F123',
-          },
-        ],
-      },
-    ],
+  const published = publishRenderedImageUrl({
+    pngBuffer: Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'),
+    species: { id: 25, name: 'Pikachu' },
+    level: 10,
+    shiny: false,
+    commandName: 'test',
   });
 
-  assert.deepEqual(summary, {
-    id: 'F123',
-    name: 'pokemon-card.png',
-    mimetype: 'image/png',
-    filetype: 'png',
-    prettyType: 'PNG',
-    urlPrivate: 'https://files.slack.com/files-pri/T1-F123/image.png',
-    permalink: 'https://workspace.slack.com/files/U1/F123',
-    isImageEligible: true,
+  if (previousBaseUrl === undefined) {
+    delete process.env.RENDERED_IMAGE_PUBLIC_BASE_URL;
+  } else {
+    process.env.RENDERED_IMAGE_PUBLIC_BASE_URL = previousBaseUrl;
+  }
+
+  assert.equal(published.ok, true);
+  assert.equal(published.format, 'public_url');
+  assert.match(published.imageUrl, /^https:\/\/img\.example\.com\/rendered-images\/[A-Za-z0-9_-]+$/);
+});
+
+test('publishRenderedImageUrl falha sem base URL pública configurada', () => {
+  const previousBaseUrl = process.env.RENDERED_IMAGE_PUBLIC_BASE_URL;
+  const previousPublicBaseUrl = process.env.PUBLIC_BASE_URL;
+  delete process.env.RENDERED_IMAGE_PUBLIC_BASE_URL;
+  delete process.env.PUBLIC_BASE_URL;
+
+  const published = publishRenderedImageUrl({
+    pngBuffer: Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'),
   });
+
+  if (previousBaseUrl === undefined) {
+    delete process.env.RENDERED_IMAGE_PUBLIC_BASE_URL;
+  } else {
+    process.env.RENDERED_IMAGE_PUBLIC_BASE_URL = previousBaseUrl;
+  }
+
+  if (previousPublicBaseUrl === undefined) {
+    delete process.env.PUBLIC_BASE_URL;
+  } else {
+    process.env.PUBLIC_BASE_URL = previousPublicBaseUrl;
+  }
+
+  assert.equal(published.ok, false);
+  assert.equal(published.reason, 'missing_public_base_url');
 });
