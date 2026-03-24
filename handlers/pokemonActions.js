@@ -9,8 +9,11 @@ const {
   UP_CANCEL_ACTION_ID,
   SELL_CONFIRM_ACTION_ID,
   SELL_CANCEL_ACTION_ID,
+  APPLY_ITEM_ACTION_ID,
   parsePokemonActionValue,
   buildUnauthorizedActionMessage,
+  buildApplyItemViewMessage,
+  applyBookItemToPokemon,
   evolvePokemon,
   upgradePokemonToLevel,
   sellPokemon,
@@ -198,6 +201,85 @@ function registerPokemonActions(app) {
       `🛑 Upgrade cancelado por <@${actorUserId}> para o Pokémon ID *${payload.pokemonId}* até o nível *${payload.targetLevel}*.`,
     );
     await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+  });
+
+
+  app.action(APPLY_ITEM_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parsePokemonActionValue(action?.value);
+
+    logger.info("Clique de aplicação de Livro do Ancião recebido", {
+      actorUserId,
+      ownerSlackUserId: payload?.slackUserId,
+      pokemonId: payload?.pokemonId,
+      statKey: payload?.statKey,
+    });
+
+    if (!payload?.slackUserId || !payload?.pokemonId || !payload?.statKey) {
+      await respond({ response_type: "ephemeral", text: "Não consegui validar essa aplicação de item 😵" });
+      return;
+    }
+
+    if (actorUserId !== payload.slackUserId) {
+      await respond(buildUnauthorizedActionMessage(payload.slackUserId));
+      return;
+    }
+
+    try {
+      const result = await applyBookItemToPokemon({
+        slackUserId: actorUserId,
+        pokemonId: payload.pokemonId,
+        statKey: payload.statKey,
+      });
+
+      if (!result.ok) {
+        const map = {
+          pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
+          invalid_stat: "Atributo inválido para este item.",
+          stat_maxed: "Esse atributo já atingiu o limite de +30 com Livro do Ancião.",
+          insufficient_item: "Você não possui 5 Livros do Ancião na mochila.",
+          pokemon_in_healing_station: "Esse Pokémon está na estação de cura e não pode receber Livro do Ancião agora.",
+        };
+        await respond({ response_type: "ephemeral", text: map[result.reason] || "Não consegui aplicar o Livro do Ancião agora 😵" });
+        return;
+      }
+
+      const updatedPreview = {
+        pokemon: result.pokemon,
+        booksQty: result.remainingBooks,
+      };
+      const feedbackText = `✅ *Aplicado com sucesso!* ${payload.statKey.toUpperCase()} agora está em *+${result.statBonus}/30* com Livro do Ancião.`;
+      const updatedMessage = buildApplyItemViewMessage({
+        slackUserId: actorUserId,
+        preview: updatedPreview,
+        feedbackText,
+      });
+
+      await client.chat.update({
+        channel: body.channel.id,
+        ts: body.message.ts,
+        text: updatedMessage.text,
+        blocks: updatedMessage.blocks,
+      });
+
+      logger.info("Aplicação de Livro do Ancião concluída", {
+        actorUserId,
+        pokemonId: payload.pokemonId,
+        statKey: payload.statKey,
+        consumedBooks: result.consumedBooks,
+        remainingBooks: result.remainingBooks,
+        statBonus: result.statBonus,
+      });
+    } catch (error) {
+      logger.error("Falha ao aplicar Livro do Ancião", {
+        actorUserId,
+        pokemonId: payload?.pokemonId,
+        statKey: payload?.statKey,
+        error,
+      });
+      await respond({ response_type: "ephemeral", text: "Não consegui aplicar o Livro do Ancião agora 😵" });
+    }
   });
 
   app.action(SELL_CONFIRM_ACTION_ID, async ({ ack, body, action, client, respond }) => {

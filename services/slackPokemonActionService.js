@@ -8,6 +8,13 @@ const { buildSellPreview, buildSellPreviewBatch, sellPokemon, sellPokemonBatch }
 const { formatGold, isGoldGte } = require("../utils/gold");
 const { getPokemonProgressionSnapshot } = require("./pokemonStatsService");
 const { assertPokemonAvailableForAction } = require("./healingStationService");
+const {
+  ANCIENT_BOOK_COST,
+  ANCIENT_BOOK_STAT_LIMIT,
+  BOOK_STAT_CONFIG,
+  getPokemonBookBonuses,
+  applyAncientBookBonus,
+} = require("./ancientBookService");
 
 const logger = createLogger("slack-pokemon-actions");
 
@@ -17,6 +24,7 @@ const UP_CONFIRM_ACTION_ID = "pokemon_up_confirm";
 const UP_CANCEL_ACTION_ID = "pokemon_up_cancel";
 const SELL_CONFIRM_ACTION_ID = "pokemon_sell_confirm";
 const SELL_CANCEL_ACTION_ID = "pokemon_sell_cancel";
+const APPLY_ITEM_ACTION_ID = "pokemon_applyitem_confirm";
 
 function safeJsonParse(value) {
   if (!value) return null;
@@ -365,6 +373,88 @@ function buildUpgradeBatchPreviewMessage({ slackUserId, preview }) {
 }
 
 
+
+function buildApplyItemViewMessage({ slackUserId, preview, feedbackText = null }) {
+  const pokemon = preview?.pokemon || {};
+  const species = pokemon?.pokemon_species || {};
+  const pokemonName = species?.name || "Pokémon";
+  const booksQty = Math.max(0, Number(preview?.booksQty) || 0);
+  const bonuses = getPokemonBookBonuses(pokemon);
+
+  const bonusLines = Object.keys(BOOK_STAT_CONFIG).map((key) => {
+    const config = BOOK_STAT_CONFIG[key];
+    const bonusValue = Math.max(0, Number(bonuses[key]) || 0);
+    return `${config.emoji} *${config.label}:* +${bonusValue}/${ANCIENT_BOOK_STAT_LIMIT}`;
+  });
+
+  const actionButtons = Object.keys(BOOK_STAT_CONFIG).map((key) => {
+    const config = BOOK_STAT_CONFIG[key];
+    const currentBonus = Math.max(0, Number(bonuses[key]) || 0);
+    const isMaxed = currentBonus >= ANCIENT_BOOK_STAT_LIMIT;
+
+    return {
+      type: "button",
+      action_id: APPLY_ITEM_ACTION_ID,
+      text: { type: "plain_text", text: `${config.emoji} +1 ${config.label}`, emoji: true },
+      style: isMaxed ? undefined : "primary",
+      value: buildActionValue({ type: "apply_item", slackUserId, pokemonId: pokemon.id, statKey: key }),
+      ...(isMaxed ? { confirm: {
+        title: { type: "plain_text", text: "Limite atingido" },
+        text: { type: "mrkdwn", text: `*${config.label}* já está no limite +${ANCIENT_BOOK_STAT_LIMIT}.` },
+        confirm: { type: "plain_text", text: "OK" },
+        deny: { type: "plain_text", text: "Fechar" },
+      } } : {}),
+    };
+  });
+
+  return {
+    text: `Aplicar Livro do Ancião em ${pokemonName}`,
+    blocks: [
+      { type: "header", text: { type: "plain_text", text: "📘 Livro do Ancião", emoji: true } },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            `*Pokémon:* ${pokemonName} (#${pokemon.id})\n` +
+            `🎚️ *Nível:* ${pokemon.level}\n` +
+            `🎒 *Livros disponíveis:* *${booksQty}*\n` +
+            `💸 *Custo fixo:* *${ANCIENT_BOOK_COST} livros* por +1 atributo\n` +
+            `📏 *Limite por atributo:* +${ANCIENT_BOOK_STAT_LIMIT}` +
+            (feedbackText ? `\n\n${feedbackText}` : ""),
+        },
+        accessory: buildAccessoryImage(species),
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*Bônus permanentes por Livro:*\n${bonusLines.join("\n")}`,
+        },
+      },
+      {
+        type: "context",
+        elements: [{
+          type: "mrkdwn",
+          text: "⚠️ Sem reembolso. Livros gastos não voltam. Ao vender o Pokémon, todos os bônus de Livro do Ancião são perdidos.",
+        }],
+      },
+      {
+        type: "context",
+        elements: [{ type: "mrkdwn", text: `Somente <@${slackUserId}> pode aplicar itens neste Pokémon.` }],
+      },
+      {
+        type: "actions",
+        elements: actionButtons,
+      },
+    ],
+  };
+}
+
+async function applyBookItemToPokemon({ slackUserId, pokemonId, statKey }) {
+  return applyAncientBookBonus({ slackUserId, pokemonId, statKey });
+}
+
 async function buildSellPreviewCard({ slackUserId, pokemonId, pokemonIds }) {
   if (Array.isArray(pokemonIds)) {
     return buildSellPreviewBatch({ slackUserId, pokemonIds });
@@ -451,12 +541,15 @@ module.exports = {
   UP_CANCEL_ACTION_ID,
   SELL_CONFIRM_ACTION_ID,
   SELL_CANCEL_ACTION_ID,
+  APPLY_ITEM_ACTION_ID,
   parsePokemonActionValue,
   buildEvolvePreview,
   buildEvolvePreviewMessage,
   buildEvolveUnavailableMessage,
   buildUpgradeBatchPreview,
   buildUpgradeBatchPreviewMessage,
+  buildApplyItemViewMessage,
+  applyBookItemToPokemon,
   buildSellPreviewCard,
   buildSellPreviewMessage,
   buildUnauthorizedActionMessage,
