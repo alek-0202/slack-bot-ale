@@ -15,10 +15,14 @@ const pokemonHelpCommand = require("./commands/pokemonhelp");
 const caraOuCoroaCommand = require("./commands/caraoucoroa");
 const dailyCommand = require("./commands/daily");
 const dhelpCommand = require("./commands/dhelp");
+const attCommand = require("./commands/att");
 const coffeCommand = require("./commands/coffe");
 const pokeCommand = require("./commands/pokemon/poke");
 const captureCommand = require("./commands/pokemon/capture");
+const captureItemCommand = require("./commands/pokemon/c");
 const profileCommand = require("./commands/pokemon/profile");
+const dungeonCommand = require("./commands/pokemon/dungeon");
+const mochilaCommand = require("./commands/pokemon/mochila");
 const pokedexCommand = require("./commands/pokemon/pokedex");
 const pokeallCommand = require("./commands/pokemon/pokeall");
 const pokenameCommand = require("./commands/pokemon/pokename");
@@ -53,6 +57,7 @@ const { registerBattleActions } = require("./handlers/battleActions");
 const { registerMarketActions } = require("./handlers/marketActions");
 const { registerPokemonActions } = require("./handlers/pokemonActions");
 const { registerHealingStationActions } = require("./handlers/healingStationActions");
+const { registerDungeonActions } = require("./handlers/dungeonActions");
 
 
 const logger = createLogger("slack-bot");
@@ -69,6 +74,7 @@ registerBattleActions(app);
 registerMarketActions(app);
 registerPokemonActions(app);
 registerHealingStationActions(app);
+registerDungeonActions(app);
 
 const mentionReplies = [
   "Fala comigo não, tô de férias 😴",
@@ -92,10 +98,14 @@ for (const commandModule of [
   caraOuCoroaCommand,
   dailyCommand,
   dhelpCommand,
+  attCommand,
   coffeCommand,
   pokeCommand,
   captureCommand,
+  captureItemCommand,
   profileCommand,
+  dungeonCommand,
+  mochilaCommand,
   pokedexCommand,
   pokeallCommand,
   pokenameCommand,

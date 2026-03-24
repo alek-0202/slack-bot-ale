@@ -6,6 +6,7 @@ const { calculatePokemonStats } = require("./pokemonStatsService");
 const { getGoldValueByRarityAndLevel } = require("./economyService");
 const { createLogger } = require("../utils/logger");
 const { addGold, assertNonNegativeGold, formatGold, toDatabaseGold, toGoldBigInt } = require("../utils/gold");
+const { CAPTURE_ACCOUNT_XP, grantAccountXp } = require('./accountProgressionService');
 
 const CAPTURE_COOLDOWN_MS = 60 * 60 * 1000;
 const SHINY_CHANCE = 0.02;
@@ -33,6 +34,9 @@ async function capturePokemon(slackUserId, context = {}) {
     channelId: context.channelId || null,
     platform: context.platform || null,
     rawText: context.rawText || null,
+    source: context.source || 'capture',
+    bypassCooldown: Boolean(context.bypassCooldown),
+    skipCooldownWrite: Boolean(context.skipCooldownWrite),
   };
 
   logger.info("Iniciando fluxo de captura", {
@@ -67,7 +71,7 @@ async function capturePokemon(slackUserId, context = {}) {
     });
 
     const remainingMs = getCooldownRemainingMs(user.last_capture_at);
-    if (remainingMs > 0) {
+    if (!safeContext.bypassCooldown && remainingMs > 0) {
       logger.info("Captura bloqueada por cooldown", {
         slackUserId,
         channelId: safeContext.channelId,
@@ -124,7 +128,7 @@ async function capturePokemon(slackUserId, context = {}) {
       level,
       shiny,
       stats,
-      source: "capture",
+      source: safeContext.source,
     });
 
     logger.info("Pokémon persistido em user_pokemons", {
@@ -136,12 +140,13 @@ async function capturePokemon(slackUserId, context = {}) {
 
     const previousGold = toGoldBigInt(user.gold);
     const nextGold = assertNonNegativeGold(addGold(previousGold, goldReward));
+    const updatePayload = { gold: toDatabaseGold(nextGold) };
+    if (!safeContext.skipCooldownWrite) {
+      updatePayload.last_capture_at = nowIso;
+    }
     const { error: updateUserError } = await supabase
       .from("users")
-      .update({
-        last_capture_at: nowIso,
-        gold: toDatabaseGold(nextGold),
-      })
+      .update(updatePayload)
       .eq("slack_user_id", slackUserId);
     if (updateUserError) throw updateUserError;
 
@@ -151,7 +156,8 @@ async function capturePokemon(slackUserId, context = {}) {
       goldBefore: formatGold(previousGold),
       goldDelta: formatGold(goldReward),
       goldAfter: formatGold(nextGold),
-      lastCaptureAt: nowIso,
+      lastCaptureAt: safeContext.skipCooldownWrite ? user.last_capture_at || null : nowIso,
+      cooldownWriteSkipped: safeContext.skipCooldownWrite,
     });
 
     const { error: trxError } = await supabase.from("transactions").insert({
@@ -168,6 +174,19 @@ async function capturePokemon(slackUserId, context = {}) {
       type: "capture_reward",
     });
 
+    const accountXpReward = CAPTURE_ACCOUNT_XP[selected.rarity] || 0;
+    let accountXpResult = null;
+    try {
+      accountXpResult = await grantAccountXp(slackUserId, accountXpReward, 'capture_reward');
+    } catch (xpError) {
+      logger.warn('Falha ao conceder XP de conta na captura; seguindo sem bloquear recompensa principal', {
+        slackUserId,
+        channelId: safeContext.channelId,
+        accountXpReward,
+        error: xpError,
+      });
+    }
+
     logger.info("Fluxo de captura concluído com sucesso", {
       slackUserId,
       channelId: safeContext.channelId,
@@ -175,6 +194,8 @@ async function capturePokemon(slackUserId, context = {}) {
       speciesId: selected.id,
       speciesName: selected.name,
       goldReward: formatGold(goldReward),
+      accountXpReward,
+      accountLevel: accountXpResult?.current?.level || null,
     });
 
     return {
@@ -183,6 +204,8 @@ async function capturePokemon(slackUserId, context = {}) {
       species: selected,
       shiny,
       goldReward: formatGold(goldReward),
+      accountXpReward,
+      accountXpResult,
     };
   } catch (error) {
     logger.error("Falha no fluxo de captura", {
@@ -196,5 +219,7 @@ async function capturePokemon(slackUserId, context = {}) {
 
 module.exports = {
   CAPTURE_COOLDOWN_MS,
+  getCooldownRemainingMs,
+  formatRemaining,
   capturePokemon,
 };

@@ -6,6 +6,13 @@ const sharedCommandCatalog = {
     slackUsage: '`!help`',
     discordDescription: 'Mostra os comandos gerais',
   },
+  att: {
+    name: 'att',
+    category: 'general',
+    summary: 'Mostra a atualização atual do jogo/bot',
+    slackUsage: '`!att`',
+    discordDescription: 'Mostra a atualização atual do jogo/bot',
+  },
   pokemonhelp: {
     name: 'pokemonhelp',
     category: 'pokemon',
@@ -125,6 +132,21 @@ const sharedCommandCatalog = {
     summary: 'Registra ou atualiza as magias de um Pokémon',
     slackUsage: '`!magicregister <pokeid>`',
     discordDescription: 'Registra as magias de um Pokémon',
+  },
+
+  dungeon: {
+    name: 'dungeon',
+    category: 'pokemon',
+    summary: 'Abre ou executa dungeons PvE',
+    slackUsage: '`!dungeon`',
+    discordDescription: 'Abre ou executa dungeons PvE',
+  },
+  mochila: {
+    name: 'mochila',
+    category: 'pokemon',
+    summary: 'Mostra sua mochila de itens',
+    slackUsage: '`!mochila`',
+    discordDescription: 'Mostra sua mochila de itens',
   },
   trade: {
     name: 'trade',

@@ -1,6 +1,9 @@
 create table if not exists public.users (
   slack_user_id text primary key,
   gold bigint not null default 100,
+  current_energy integer not null default 5,
+  max_energy integer not null default 5,
+  last_energy_update timestamptz not null default timezone('utc', now()),
   created_at timestamptz not null default now(),
   last_capture_at timestamptz,
   last_claim_at timestamptz
@@ -74,6 +77,18 @@ begin
   ) then
     alter table public.user_pokemons
       add constraint user_pokemons_level_cap check (level >= 1 and level <= 50);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'users_energy_non_negative'
+      and conrelid = 'public.users'::regclass
+  ) then
+    alter table public.users
+      add constraint users_energy_non_negative check (current_energy >= 0 and max_energy > 0 and current_energy <= max_energy);
   end if;
 end $$;
 
