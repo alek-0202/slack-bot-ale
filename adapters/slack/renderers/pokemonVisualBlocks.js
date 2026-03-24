@@ -1,13 +1,13 @@
 const crypto = require("crypto");
 const { formatPokemonStars, normalizeLevel } = require("../../../services/pokemonProgressionService");
 const { createLogger } = require("../../../utils/logger");
+const { saveRenderedImage } = require("../../../utils/renderedImageStore");
 const { LEVEL_BORDER_TIERS, getLevelBorderStyle } = require("./pokemonVisualTier");
 const { renderLayeredPokemonSprite } = require("./pokemonLayeredSpriteRenderer");
 
 const logger = createLogger("renderer:pokemon-visual-blocks");
 const SLACK_IMAGE_URL_MAX_LENGTH = 3000;
-const PNG_SIGNATURE = "89504e470d0a1a0a";
-const SLACK_ALLOWED_IMAGE_FILETYPES = new Set(["png", "jpg", "jpeg", "gif"]);
+const RENDERED_IMAGE_PATH_PREFIX = "/rendered-images/";
 
 function isFinalEvolution(species = {}) {
   return !species?.evolves_to;
@@ -78,50 +78,6 @@ function summarizeAccessoryForLog(accessory) {
   };
 }
 
-function isPngBuffer(buffer) {
-  if (!Buffer.isBuffer(buffer) || buffer.length < 8) return false;
-  return buffer.subarray(0, 8).toString("hex") === PNG_SIGNATURE;
-}
-
-function isSupportedSlackImageFile(file = {}) {
-  const mimetype = typeof file.mimetype === "string" ? file.mimetype.toLowerCase() : "";
-  const filetype = typeof file.filetype === "string" ? file.filetype.toLowerCase() : "";
-  const mimeSubtype = mimetype.startsWith("image/") ? mimetype.slice("image/".length) : "";
-  return SLACK_ALLOWED_IMAGE_FILETYPES.has(filetype) || SLACK_ALLOWED_IMAGE_FILETYPES.has(mimeSubtype);
-}
-
-function extractSlackFileObject(uploadResponse) {
-  const candidates = [
-    uploadResponse?.file,
-    uploadResponse?.files?.[0]?.file,
-    uploadResponse?.files?.[0],
-    uploadResponse?.files?.[0]?.files?.[0],
-    uploadResponse?.result?.file,
-    uploadResponse?.result?.files?.[0],
-    uploadResponse?.result?.files?.[0]?.file,
-    uploadResponse?.result?.files?.[0]?.files?.[0],
-  ];
-
-  const matched = candidates.find((candidate) => candidate && typeof candidate === "object" && typeof candidate.id === "string");
-  return matched || null;
-}
-
-function summarizeUploadedSlackFile(uploadResponse) {
-  const file = extractSlackFileObject(uploadResponse);
-  if (!file) return null;
-
-  return {
-    id: typeof file.id === "string" ? file.id : null,
-    name: typeof file.name === "string" ? file.name : null,
-    mimetype: typeof file.mimetype === "string" ? file.mimetype : null,
-    filetype: typeof file.filetype === "string" ? file.filetype : null,
-    prettyType: typeof file.pretty_type === "string" ? file.pretty_type : null,
-    urlPrivate: typeof file.url_private === "string" ? file.url_private : null,
-    permalink: typeof file.permalink === "string" ? file.permalink : null,
-    isImageEligible: isSupportedSlackImageFile(file),
-  };
-}
-
 function buildSlackImageAccessory({ finalImage, altText, context = {} }) {
   const normalizedAltText = typeof altText === "string" && altText.trim().length > 0 ? altText : "Pokémon";
   let accessory;
@@ -133,26 +89,7 @@ function buildSlackImageAccessory({ finalImage, altText, context = {} }) {
       alt_text: normalizedAltText,
     };
   } else if (finalImage && typeof finalImage === "object") {
-    const slackFileId = typeof finalImage.id === "string" ? finalImage.id : null;
-    const slackFileUrl = typeof finalImage.url === "string" ? finalImage.url : null;
-
-    if ((finalImage.type === "slack_file_id" || finalImage.type === "slack_file") && slackFileId) {
-      accessory = {
-        type: "image",
-        alt_text: normalizedAltText,
-        slack_file: {
-          id: slackFileId,
-        },
-      };
-    } else if (finalImage.type === "slack_file" && slackFileUrl) {
-      accessory = {
-        type: "image",
-        alt_text: normalizedAltText,
-        slack_file: {
-          url: slackFileUrl,
-        },
-      };
-    } else if (finalImage.type === "http_url" && isSlackCompatibleImageUrl(finalImage.url)) {
+    if (finalImage.type === "http_url" && isSlackCompatibleImageUrl(finalImage.url)) {
       accessory = {
         type: "image",
         image_url: finalImage.url,
@@ -185,189 +122,94 @@ function buildDeterministicFileName({ species = {}, level = 1, shiny = false }) 
   return `${normalizedName || "pokemon"}-lv${level}-${shiny ? "shiny" : "normal"}-${entropy}.png`;
 }
 
-function extractSlackFileId(uploadResponse) {
-  const candidates = [
-    { path: "file.id", value: uploadResponse?.file?.id },
-    { path: "file_id", value: uploadResponse?.file_id },
-    { path: "files[0].id", value: uploadResponse?.files?.[0]?.id },
-    { path: "files[0].file.id", value: uploadResponse?.files?.[0]?.file?.id },
-    { path: "files[0].files[0].id", value: uploadResponse?.files?.[0]?.files?.[0]?.id },
-    { path: "result.file.id", value: uploadResponse?.result?.file?.id },
-    { path: "result.files[0].id", value: uploadResponse?.result?.files?.[0]?.id },
-    { path: "result.files[0].files[0].id", value: uploadResponse?.result?.files?.[0]?.files?.[0]?.id },
-  ];
-
-  const matched = candidates.find((candidate) => typeof candidate.value === "string" && candidate.value.length > 0);
-  return {
-    slackFileId: matched?.value || null,
-    extractedFrom: matched?.path || null,
-  };
+function getRenderedImagePublicBaseUrl() {
+  const raw = process.env.RENDERED_IMAGE_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL || "";
+  return raw.trim().replace(/\/+$/, "");
 }
 
-function summarizeUploadResponse(uploadResponse) {
-  const files = Array.isArray(uploadResponse?.files) ? uploadResponse.files : null;
-  const firstFilesEntry = files?.[0] || null;
-  const nestedFiles = Array.isArray(firstFilesEntry?.files) ? firstFilesEntry.files : null;
-
-  return {
-    ok: uploadResponse?.ok,
-    topLevelKeys: uploadResponse && typeof uploadResponse === "object" ? Object.keys(uploadResponse).slice(0, 20) : [],
-    hasFile: Boolean(uploadResponse?.file),
-    hasFiles: Boolean(files),
-    filesCount: files?.length || 0,
-    firstFilesEntryKeys: firstFilesEntry && typeof firstFilesEntry === "object" ? Object.keys(firstFilesEntry).slice(0, 20) : [],
-    firstFilesEntryHasFile: Boolean(firstFilesEntry?.file),
-    firstFilesEntryHasFiles: Boolean(nestedFiles),
-    firstFilesEntryNestedFilesCount: nestedFiles?.length || 0,
-    resultKeys: uploadResponse?.result && typeof uploadResponse.result === "object" ? Object.keys(uploadResponse.result).slice(0, 20) : [],
-  };
-}
-
-async function uploadRenderToSlack({ slackClient, channelId, pngBuffer, species = {}, level = 1, shiny = false, commandName = "unknown" }) {
-  if (!slackClient || !Buffer.isBuffer(pngBuffer) || pngBuffer.length === 0) {
+function publishRenderedImageUrl({ pngBuffer, commandName = "unknown", species = {}, level = 1, shiny = false }) {
+  if (!Buffer.isBuffer(pngBuffer) || pngBuffer.length === 0) {
     return {
       ok: false,
-      reason: "missing_upload_context",
+      reason: "missing_render_buffer",
       format: "buffer",
-      slackFileId: null,
+      imageUrl: null,
     };
   }
 
   try {
+    const baseUrl = getRenderedImagePublicBaseUrl();
+    if (!baseUrl) {
+      logger.warn("URL pública base indisponível para publicar render em camadas", {
+        commandName,
+        speciesName: species.name,
+        level,
+        shiny,
+        envKeys: {
+          renderedImagePublicBaseUrl: Boolean(process.env.RENDERED_IMAGE_PUBLIC_BASE_URL),
+          publicBaseUrl: Boolean(process.env.PUBLIC_BASE_URL),
+        },
+      });
+      return {
+        ok: false,
+        reason: "missing_public_base_url",
+        format: "buffer",
+        imageUrl: null,
+      };
+    }
+
     const filename = buildDeterministicFileName({ species, level, shiny });
-    const isPng = isPngBuffer(pngBuffer);
-    const uploadMethod = "files.uploadV2";
-    const uploadPayload = {
-      file: pngBuffer,
-      filename,
-      filetype: "png",
-      alt_text: `${species.name || "Pokémon"} em card renderizado`,
-      title: `${species.name || "Pokémon"} · Lv ${level}`,
-      ...(channelId ? { channel_id: channelId } : {}),
-    };
+    const imageId = saveRenderedImage({ buffer: pngBuffer, mimeType: "image/png" });
+    const imageUrl = imageId ? `${baseUrl}${RENDERED_IMAGE_PATH_PREFIX}${imageId}` : null;
+    const imageUrlLength = typeof imageUrl === "string" ? imageUrl.length : 0;
 
-    logger.info("Preparando upload da renderização para Slack Files", {
+    logger.info("Render em camadas publicado em URL pública", {
       commandName,
-      uploadMethod,
-      channelId: channelId || null,
       speciesName: species.name,
       level,
       shiny,
-      uploadFilename: filename,
-      uploadMimeType: "image/png",
-      uploadBufferSize: pngBuffer.length,
-      uploadLooksLikePng: isPng,
-      uploadFiletype: uploadPayload.filetype,
+      renderedFilename: filename,
+      imageBufferSize: pngBuffer.length,
+      imagePublicUrl: imageUrl,
+      imageUrlLength,
     });
 
-    const uploadResponse = await slackClient.files.uploadV2(uploadPayload);
-
-    const { slackFileId, extractedFrom } = extractSlackFileId(uploadResponse);
-    const responseSummary = summarizeUploadResponse(uploadResponse);
-    const uploadedFile = summarizeUploadedSlackFile(uploadResponse);
-
-    logger.info("Upload Slack finalizado para render em camadas", {
-      commandName,
-      uploadMethod,
-      channelId: channelId || null,
-      speciesName: species.name,
-      level,
-      shiny,
-      extractedFrom,
-      uploadedFile,
-      ...responseSummary,
-    });
-
-    if (!slackFileId) {
-      logger.warn("Upload Slack concluído sem file id; fallback será aplicado", {
-        commandName,
-        uploadMethod,
-        speciesName: species.name,
-        level,
-        shiny,
-        channelId,
-        extractedFrom,
-        ...responseSummary,
-      });
-      return {
-        ok: false,
-        reason: "missing_file_id",
-        format: "buffer",
-        slackFileId: null,
-        slackFileUrl: null,
-        fileSummary: uploadedFile,
-      };
-    }
-
-    if (!uploadedFile?.isImageEligible) {
-      logger.warn("Slack retornou arquivo que não foi classificado como imagem válida para Block Kit", {
+    if (!isSlackCompatibleImageUrl(imageUrl)) {
+      logger.warn("URL pública renderizada incompatível com image_url do Slack; fallback será aplicado", {
         commandName,
         speciesName: species.name,
         level,
         shiny,
-        slackFileId,
-        uploadedFile,
+        imageUrl: summarizeImageReference(imageUrl),
       });
-      if (uploadedFile?.urlPrivate) {
-        return {
-          ok: true,
-          reason: "id_not_supported_falling_back_to_url",
-          format: "uploaded_slack_file_url",
-          slackFileId: null,
-          slackFileUrl: uploadedFile.urlPrivate,
-          extractedFrom,
-          fileSummary: uploadedFile,
-        };
-      }
-
       return {
         ok: false,
-        reason: "uploaded_file_not_image",
+        reason: "invalid_public_url",
         format: "buffer",
-        slackFileId: null,
-        slackFileUrl: null,
-        fileSummary: uploadedFile,
-      };
-    }
-
-    if (uploadedFile?.urlPrivate) {
-      return {
-        ok: true,
-        reason: null,
-        format: "uploaded_slack_file",
-        slackFileId,
-        slackFileUrl: uploadedFile.urlPrivate,
-        extractedFrom,
-        fileSummary: uploadedFile,
+        imageUrl: null,
       };
     }
 
     return {
       ok: true,
       reason: null,
-      format: "uploaded_slack_file",
-      slackFileId,
-      slackFileUrl: null,
-      extractedFrom,
-      fileSummary: uploadedFile,
+      format: "public_url",
+      imageUrl,
     };
   } catch (error) {
-    logger.error("Falha ao enviar render em camadas para Slack Files", {
+    logger.error("Falha ao publicar render em camadas para URL pública", {
       commandName,
       speciesName: species.name,
       level,
       shiny,
-      channelId: channelId || null,
       error,
     });
 
     return {
       ok: false,
-      reason: "upload_failed",
+      reason: "publish_failed",
       format: "buffer",
-      slackFileId: null,
-      slackFileUrl: null,
-      fileSummary: null,
+      imageUrl: null,
     };
   }
 }
@@ -409,8 +251,6 @@ async function buildAccessoryImage({
   species = {},
   level = 1,
   shiny = false,
-  slackClient = null,
-  channelId = null,
   commandName = "unknown",
 }) {
   if (!species.sprite_url) return undefined;
@@ -432,9 +272,7 @@ async function buildAccessoryImage({
   }
 
   if (layeredRender.ok && layeredRender.imageBuffer) {
-    const uploadResult = await uploadRenderToSlack({
-      slackClient,
-      channelId,
+    const publishResult = publishRenderedImageUrl({
       pngBuffer: layeredRender.imageBuffer,
       species,
       level,
@@ -450,40 +288,29 @@ async function buildAccessoryImage({
       shiny,
       rendererOk: layeredRender.ok,
       rendererOutputType: layeredRender.metadata?.outputType || "unknown",
-      uploaded: uploadResult.ok,
-      deliveryFormat: uploadResult.format,
-      uploadReason: uploadResult.reason,
+      published: publishResult.ok,
+      deliveryFormat: publishResult.format,
+      publishReason: publishResult.reason,
       loadedAssets: layeredRender.metadata?.loadedAssets?.length || 0,
       missingAssets: layeredRender.metadata?.missingAssets?.length || 0,
       generatedFrame: Boolean(layeredRender.metadata?.usedGeneratedFrame),
     });
 
-    if (uploadResult.ok && (uploadResult.slackFileId || uploadResult.slackFileUrl)) {
-      const finalImage = uploadResult.slackFileId
-        ? {
-            type: "slack_file_id",
-            id: uploadResult.slackFileId,
-          }
-        : uploadResult.slackFileUrl
-          ? {
-              type: "slack_file",
-              url: uploadResult.slackFileUrl,
-            }
-          : null;
-
+    if (publishResult.ok && publishResult.imageUrl) {
       logger.info("Imagem final resolvida para Slack accessory", {
         commandName,
         speciesName: species.name,
         speciesId: species.id,
         level,
         shiny,
-        resolvedSource: finalImage?.type === "slack_file" ? "layered_render_uploaded_slack_file_url" : "layered_render_uploaded_slack_file_id",
-        accessoryMode: finalImage?.type === "slack_file" ? "slack_file.url" : "slack_file.id",
-        finalImage,
+        resolvedSource: "layered_render_public_url",
+        accessoryMode: "image_url",
+        finalImage: summarizeImageReference(publishResult.imageUrl),
+        imageUrlLength: publishResult.imageUrl.length,
       });
 
       return buildSlackImageAccessory({
-        finalImage,
+        finalImage: publishResult.imageUrl,
         altText: `${frameEmojis} ${species.name || "Pokémon"} · Lv ${normalizeLevel(level)} ${frameEmojis}`,
         context: {
           commandName,
@@ -501,7 +328,7 @@ async function buildAccessoryImage({
       speciesId: species.id,
       level,
       shiny,
-      fallbackReason: uploadResult.reason,
+      fallbackReason: publishResult.reason,
     });
   }
 
@@ -552,8 +379,6 @@ async function buildPokemonVisualBlocks({
   species = {},
   level = 1,
   shiny = false,
-  slackClient = null,
-  channelId = null,
   commandName = "unknown",
 }) {
   const visual = buildPokemonVisualSummary({ species, level });
@@ -586,7 +411,7 @@ async function buildPokemonVisualBlocks({
 
   return {
     ...visual,
-    accessory: await buildAccessoryImage({ species, level, shiny, slackClient, channelId, commandName }),
+    accessory: await buildAccessoryImage({ species, level, shiny, commandName }),
     blocks,
   };
 }
@@ -598,14 +423,10 @@ module.exports = {
   buildStarsLabel,
   isSlackCompatibleImageUrl,
   summarizeImageReference,
-  extractSlackFileId,
-  summarizeUploadResponse,
   resolveSlackCompatibleImageUrl,
   buildSlackImageAccessory,
+  publishRenderedImageUrl,
   summarizeAccessoryForLog,
-  summarizeUploadedSlackFile,
-  isSupportedSlackImageFile,
-  isPngBuffer,
   buildAccessoryImage,
   buildPokemonVisualSummary,
   buildPokemonVisualBlocks,
