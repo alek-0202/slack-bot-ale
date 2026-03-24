@@ -74,6 +74,44 @@ function buildDeterministicFileName({ species = {}, level = 1, shiny = false }) 
   return `${normalizedName || "pokemon"}-lv${level}-${shiny ? "shiny" : "normal"}-${entropy}.png`;
 }
 
+function extractSlackFileId(uploadResponse) {
+  const candidates = [
+    { path: "file.id", value: uploadResponse?.file?.id },
+    { path: "file_id", value: uploadResponse?.file_id },
+    { path: "files[0].id", value: uploadResponse?.files?.[0]?.id },
+    { path: "files[0].file.id", value: uploadResponse?.files?.[0]?.file?.id },
+    { path: "files[0].files[0].id", value: uploadResponse?.files?.[0]?.files?.[0]?.id },
+    { path: "result.file.id", value: uploadResponse?.result?.file?.id },
+    { path: "result.files[0].id", value: uploadResponse?.result?.files?.[0]?.id },
+    { path: "result.files[0].files[0].id", value: uploadResponse?.result?.files?.[0]?.files?.[0]?.id },
+  ];
+
+  const matched = candidates.find((candidate) => typeof candidate.value === "string" && candidate.value.length > 0);
+  return {
+    slackFileId: matched?.value || null,
+    extractedFrom: matched?.path || null,
+  };
+}
+
+function summarizeUploadResponse(uploadResponse) {
+  const files = Array.isArray(uploadResponse?.files) ? uploadResponse.files : null;
+  const firstFilesEntry = files?.[0] || null;
+  const nestedFiles = Array.isArray(firstFilesEntry?.files) ? firstFilesEntry.files : null;
+
+  return {
+    ok: uploadResponse?.ok,
+    topLevelKeys: uploadResponse && typeof uploadResponse === "object" ? Object.keys(uploadResponse).slice(0, 20) : [],
+    hasFile: Boolean(uploadResponse?.file),
+    hasFiles: Boolean(files),
+    filesCount: files?.length || 0,
+    firstFilesEntryKeys: firstFilesEntry && typeof firstFilesEntry === "object" ? Object.keys(firstFilesEntry).slice(0, 20) : [],
+    firstFilesEntryHasFile: Boolean(firstFilesEntry?.file),
+    firstFilesEntryHasFiles: Boolean(nestedFiles),
+    firstFilesEntryNestedFilesCount: nestedFiles?.length || 0,
+    resultKeys: uploadResponse?.result && typeof uploadResponse.result === "object" ? Object.keys(uploadResponse.result).slice(0, 20) : [],
+  };
+}
+
 async function uploadRenderToSlack({ slackClient, channelId, pngBuffer, species = {}, level = 1, shiny = false, commandName = "unknown" }) {
   if (!slackClient || !Buffer.isBuffer(pngBuffer) || pngBuffer.length === 0) {
     return {
@@ -86,22 +124,40 @@ async function uploadRenderToSlack({ slackClient, channelId, pngBuffer, species 
 
   try {
     const filename = buildDeterministicFileName({ species, level, shiny });
-    const uploadResponse = await slackClient.files.uploadV2({
+    const uploadMethod = "files.uploadV2";
+    const uploadPayload = {
       file: pngBuffer,
       filename,
       title: `${species.name || "Pokémon"} · Lv ${level}`,
-    });
+      ...(channelId ? { channel_id: channelId } : {}),
+    };
 
-    const firstFile = uploadResponse?.files?.[0] || uploadResponse?.file || null;
-    const slackFileId = firstFile?.id || null;
+    const uploadResponse = await slackClient.files.uploadV2(uploadPayload);
+
+    const { slackFileId, extractedFrom } = extractSlackFileId(uploadResponse);
+    const responseSummary = summarizeUploadResponse(uploadResponse);
+
+    logger.info("Upload Slack finalizado para render em camadas", {
+      commandName,
+      uploadMethod,
+      channelId: channelId || null,
+      speciesName: species.name,
+      level,
+      shiny,
+      extractedFrom,
+      ...responseSummary,
+    });
 
     if (!slackFileId) {
       logger.warn("Upload Slack concluído sem file id; fallback será aplicado", {
         commandName,
+        uploadMethod,
         speciesName: species.name,
         level,
         shiny,
         channelId,
+        extractedFrom,
+        ...responseSummary,
       });
       return {
         ok: false,
@@ -116,6 +172,7 @@ async function uploadRenderToSlack({ slackClient, channelId, pngBuffer, species 
       reason: null,
       format: "uploaded_slack_file",
       slackFileId,
+      extractedFrom,
     };
   } catch (error) {
     logger.error("Falha ao enviar render em camadas para Slack Files", {
@@ -341,6 +398,8 @@ module.exports = {
   buildStarsLabel,
   isSlackCompatibleImageUrl,
   summarizeImageReference,
+  extractSlackFileId,
+  summarizeUploadResponse,
   resolveSlackCompatibleImageUrl,
   buildAccessoryImage,
   buildPokemonVisualSummary,

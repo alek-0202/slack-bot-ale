@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   buildPokemonVisualBlocks,
+  extractSlackFileId,
   getLevelBorderStyle,
   isSlackCompatibleImageUrl,
   resolveSlackCompatibleImageUrl,
@@ -89,4 +90,25 @@ test('resolveSlackCompatibleImageUrl usa fallback quando render em camadas gera 
 
   assert.equal(resolved.source, 'species_sprite_url');
   assert.equal(resolved.imageUrl, 'https://example.com/fallback.png');
+});
+
+test('extractSlackFileId suporta shape real do uploadV2 com resposta aninhada', () => {
+  const uploadResponse = {
+    ok: true,
+    files: [
+      {
+        ok: true,
+        files: [
+          {
+            id: 'F_RENDER_123',
+          },
+        ],
+      },
+    ],
+  };
+
+  const extracted = extractSlackFileId(uploadResponse);
+
+  assert.equal(extracted.slackFileId, 'F_RENDER_123');
+  assert.equal(extracted.extractedFrom, 'files[0].files[0].id');
 });
