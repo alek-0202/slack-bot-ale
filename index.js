@@ -18,6 +18,7 @@ const dhelpCommand = require("./commands/dhelp");
 const coffeCommand = require("./commands/coffe");
 const pokeCommand = require("./commands/pokemon/poke");
 const captureCommand = require("./commands/pokemon/capture");
+const captureItemCommand = require("./commands/pokemon/c");
 const profileCommand = require("./commands/pokemon/profile");
 const dungeonCommand = require("./commands/pokemon/dungeon");
 const mochilaCommand = require("./commands/pokemon/mochila");
@@ -99,6 +100,7 @@ for (const commandModule of [
   coffeCommand,
   pokeCommand,
   captureCommand,
+  captureItemCommand,
   profileCommand,
   dungeonCommand,
   mochilaCommand,

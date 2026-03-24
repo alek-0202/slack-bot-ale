@@ -1,15 +1,38 @@
 const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService");
 const { formatPokemonStars } = require("../../../services/pokemonProgressionService");
 
+const PROFILE_OPEN_BAG_ACTION_ID = 'profile_open_bag';
+
 function renderSlackProfileSummary({ slackUserId, profile }) {
-  return (
+  const text = (
     `📋 Perfil de <@${slackUserId}>\n` +
     `💰 Gold: *${profile.gold}*\n` +
     `🧭 Nível da conta: *${profile.accountLevel || 1}*\n` +
     `✨ XP: *${profile.accountXp || 0} / ${profile.accountXpToNextLevel || 100}* ${profile.accountXpBar || ''}\n` +
+    `⚡ Energia: *${profile.energyCurrent || 0} / ${profile.energyMax || 5}* (próxima em ${profile.energyNextIn || 'cheia'})\n` +
+    `🧿 Pokebola (!c): *${profile.pokeballCQty || 0}*\n` +
+    `🕒 Cooldown !capture: *${profile.captureCooldownText || 'pronto'}*\n` +
     `🎯 Total capturado: *${profile.totalCaptured}*\n` +
     `📘 Pokédex descoberta: *${profile.uniqueCount}*`
   );
+
+  return {
+    text,
+    blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text } },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            action_id: PROFILE_OPEN_BAG_ACTION_ID,
+            text: { type: 'plain_text', text: '🎒 Mochila' },
+            value: JSON.stringify({ slackUserId }),
+          },
+        ],
+      },
+    ],
+  };
 }
 
 function renderSlackCaptureResult({ slackUserId, result }) {
@@ -114,6 +137,7 @@ function renderSlackUpgradeResult({ result, slackUserId, maxLevel, getNextUpgrad
 }
 
 module.exports = {
+  PROFILE_OPEN_BAG_ACTION_ID,
   renderSlackProfileSummary,
   renderSlackCaptureResult,
   renderSlackUpgradeResult,

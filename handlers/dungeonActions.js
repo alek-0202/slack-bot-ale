@@ -98,6 +98,16 @@ async function handleDungeonSelectModeAction({ body, action, client, respond }) 
     return updateMessage(client, body, renderDungeonFarmSelection({ slackUserId: actorUserId, pokemon: validation.pokemon, farmLevels: FARM_LEVELS }));
   }
 
+  if (payload.mode === 'daily') {
+    logger.info('Clique em dungeon diária desabilitada', {
+      file: 'handlers/dungeonActions.js',
+      handler: 'handleDungeonSelectModeAction',
+      actorUserId,
+      pokemonId: payload.pokemonId,
+    });
+    return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('daily_disabled') }));
+  }
+
   return updateMessage(client, body, renderDungeonDailySelection({ slackUserId: actorUserId, pokemon: validation.pokemon }));
 }
 

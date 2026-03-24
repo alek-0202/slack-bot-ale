@@ -1,4 +1,7 @@
 const { createLogger } = require("../utils/logger");
+const { getUserItems } = require('../services/inventoryService');
+const { PROFILE_OPEN_BAG_ACTION_ID } = require('../adapters/slack/renderers/sharedPokemonRenderer');
+const { buildMochilaPayload } = require('../commands/pokemon/mochila');
 const {
   EVOLVE_CONFIRM_ACTION_ID,
   EVOLVE_CANCEL_ACTION_ID,
@@ -266,6 +269,31 @@ ${pokemonSummary}
 
     const pokemonIds = Array.isArray(payload?.pokemonIds) ? payload.pokemonIds : (payload?.pokemonId ? [payload.pokemonId] : []);
     const updated = buildUpdatedMessage(`🛑 Venda cancelada por <@${actorUserId}> para o(s) Pokémon(s) ID *${pokemonIds.join(", ")}*.`);
+    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+  });
+
+  app.action(PROFILE_OPEN_BAG_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    let payload = null;
+    try {
+      payload = JSON.parse(action?.value || '{}');
+    } catch (error) {
+      payload = {};
+    }
+
+    if (payload?.slackUserId && actorUserId !== payload.slackUserId) {
+      await respond(buildUnauthorizedActionMessage(payload.slackUserId));
+      return;
+    }
+
+    const items = await getUserItems(actorUserId);
+    if (!items.length) {
+      await respond({ response_type: 'ephemeral', text: '🎒 Sua mochila está vazia no momento.' });
+      return;
+    }
+
+    const updated = buildMochilaPayload(actorUserId, items);
     await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
   });
 

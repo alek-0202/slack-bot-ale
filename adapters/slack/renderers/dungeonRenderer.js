@@ -87,9 +87,10 @@ function renderDungeonModeSelection({ slackUserId, pokemon }) {
         type: 'actions',
         elements: [
           { type: 'button', text: { type: 'plain_text', text: 'Farm', emoji: true }, action_id: buildIndexedActionId(DUNGEON_SELECT_MODE_ACTION_ID, 'farm'), style: 'primary', value: buildActionValue({ slackUserId, pokemonId: pokemon.id, mode: 'farm' }) },
-          { type: 'button', text: { type: 'plain_text', text: 'Diária', emoji: true }, action_id: buildIndexedActionId(DUNGEON_SELECT_MODE_ACTION_ID, 'daily'), value: buildActionValue({ slackUserId, pokemonId: pokemon.id, mode: 'daily' }) },
+          { type: 'button', text: { type: 'plain_text', text: 'Diária (manutenção)', emoji: true }, action_id: buildIndexedActionId(DUNGEON_SELECT_MODE_ACTION_ID, 'daily'), value: buildActionValue({ slackUserId, pokemonId: pokemon.id, mode: 'daily' }) },
         ],
       },
+      { type: 'context', elements: [{ type: 'mrkdwn', text: 'ℹ️ Dungeon diária em manutenção temporária.' }] },
     ],
   };
 }

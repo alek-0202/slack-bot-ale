@@ -14,8 +14,17 @@ const { BATTLE_ACTION } = require('../application/battle/domain/actionResolver')
 const { createBattle, assignSelectedPokemon, startBattle } = require('../application/battle/domain/battleState');
 
 test('farm reward scales with dungeon level', () => {
-  assert.deepEqual(getFarmReward(5), { gold: 1500, accountXp: 500, ancientBookQty: 1 });
-  assert.deepEqual(getFarmReward(25), { gold: 7500, accountXp: 2500, ancientBookQty: 2 });
+  const low = getFarmReward(5);
+  assert.equal(low.gold, 1500);
+  assert.equal(low.accountXp, 500);
+  assert.equal(low.ancientBookQty, 1);
+  assert.ok(low.pokeballCQty >= 1 && low.pokeballCQty <= 3);
+
+  const high = getFarmReward(35);
+  assert.equal(high.gold, 10500);
+  assert.equal(high.accountXp, 3500);
+  assert.equal(high.ancientBookQty, 2);
+  assert.ok(high.pokeballCQty >= 2 && high.pokeballCQty <= 5);
   assert.ok(FARM_LEVELS.includes(50));
 });
 

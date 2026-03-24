@@ -34,6 +34,9 @@ async function capturePokemon(slackUserId, context = {}) {
     channelId: context.channelId || null,
     platform: context.platform || null,
     rawText: context.rawText || null,
+    source: context.source || 'capture',
+    bypassCooldown: Boolean(context.bypassCooldown),
+    skipCooldownWrite: Boolean(context.skipCooldownWrite),
   };
 
   logger.info("Iniciando fluxo de captura", {
@@ -68,7 +71,7 @@ async function capturePokemon(slackUserId, context = {}) {
     });
 
     const remainingMs = getCooldownRemainingMs(user.last_capture_at);
-    if (remainingMs > 0) {
+    if (!safeContext.bypassCooldown && remainingMs > 0) {
       logger.info("Captura bloqueada por cooldown", {
         slackUserId,
         channelId: safeContext.channelId,
@@ -125,7 +128,7 @@ async function capturePokemon(slackUserId, context = {}) {
       level,
       shiny,
       stats,
-      source: "capture",
+      source: safeContext.source,
     });
 
     logger.info("Pokémon persistido em user_pokemons", {
@@ -137,12 +140,13 @@ async function capturePokemon(slackUserId, context = {}) {
 
     const previousGold = toGoldBigInt(user.gold);
     const nextGold = assertNonNegativeGold(addGold(previousGold, goldReward));
+    const updatePayload = { gold: toDatabaseGold(nextGold) };
+    if (!safeContext.skipCooldownWrite) {
+      updatePayload.last_capture_at = nowIso;
+    }
     const { error: updateUserError } = await supabase
       .from("users")
-      .update({
-        last_capture_at: nowIso,
-        gold: toDatabaseGold(nextGold),
-      })
+      .update(updatePayload)
       .eq("slack_user_id", slackUserId);
     if (updateUserError) throw updateUserError;
 
@@ -152,7 +156,8 @@ async function capturePokemon(slackUserId, context = {}) {
       goldBefore: formatGold(previousGold),
       goldDelta: formatGold(goldReward),
       goldAfter: formatGold(nextGold),
-      lastCaptureAt: nowIso,
+      lastCaptureAt: safeContext.skipCooldownWrite ? user.last_capture_at || null : nowIso,
+      cooldownWriteSkipped: safeContext.skipCooldownWrite,
     });
 
     const { error: trxError } = await supabase.from("transactions").insert({
@@ -214,5 +219,7 @@ async function capturePokemon(slackUserId, context = {}) {
 
 module.exports = {
   CAPTURE_COOLDOWN_MS,
+  getCooldownRemainingMs,
+  formatRemaining,
   capturePokemon,
 };
