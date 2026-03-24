@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   buildPokemonVisualBlocks,
   extractSlackFileId,
+  buildSlackImageAccessory,
   getLevelBorderStyle,
   isSlackCompatibleImageUrl,
   resolveSlackCompatibleImageUrl,
@@ -111,4 +112,34 @@ test('extractSlackFileId suporta shape real do uploadV2 com resposta aninhada', 
 
   assert.equal(extracted.slackFileId, 'F_RENDER_123');
   assert.equal(extracted.extractedFrom, 'files[0].files[0].id');
+});
+
+test('buildSlackImageAccessory converte tipo interno slack_file_id para schema oficial do Block Kit', () => {
+  const accessory = buildSlackImageAccessory({
+    finalImage: { type: 'slack_file_id', id: 'F0ANQ48DZC4' },
+    altText: 'pokemon',
+    context: { test: true },
+  });
+
+  assert.deepEqual(accessory, {
+    type: 'image',
+    alt_text: 'pokemon',
+    slack_file: {
+      id: 'F0ANQ48DZC4',
+    },
+  });
+});
+
+test('buildSlackImageAccessory usa image_url quando referência final é URL pública válida', () => {
+  const accessory = buildSlackImageAccessory({
+    finalImage: { type: 'http_url', url: 'https://example.com/render.png' },
+    altText: 'pokemon',
+    context: { test: true },
+  });
+
+  assert.deepEqual(accessory, {
+    type: 'image',
+    image_url: 'https://example.com/render.png',
+    alt_text: 'pokemon',
+  });
 });
