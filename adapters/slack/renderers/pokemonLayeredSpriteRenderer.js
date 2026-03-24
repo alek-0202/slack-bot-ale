@@ -10,6 +10,7 @@ const CANVAS_SIZE = 256;
 const SPRITE_SIZE = 164;
 const SPRITE_X = Math.floor((CANVAS_SIZE - SPRITE_SIZE) / 2);
 const SPRITE_Y = Math.floor((CANVAS_SIZE - SPRITE_SIZE) / 2);
+const ASSET_RENDER_ENABLED = String(process.env.POKEMON_VISUAL_USE_ASSETS || "false").toLowerCase() === "true";
 
 const TIER_BY_HEX = Object.freeze({
   "#D1D5DB": "cinza",
@@ -67,7 +68,7 @@ async function loadOptionalAsset(assetPath, metadata, loadImage) {
     return image;
   } catch (error) {
     metadata.missingAssets.push(assetPath);
-    logger.warn("Asset visual ausente, usando fallback", {
+    logger.warn("Asset visual ausente, usando fallback programático", {
       assetPath,
       code: error.code,
     });
@@ -86,8 +87,8 @@ function applyBaseLayer(ctx) {
 function applyShinyAura(ctx) {
   const center = CANVAS_SIZE / 2;
   const gradient = ctx.createRadialGradient(center, center, 36, center, center, 108);
-  gradient.addColorStop(0, "rgba(255,255,220,0.60)");
-  gradient.addColorStop(0.55, "rgba(255,230,128,0.30)");
+  gradient.addColorStop(0, "rgba(255,255,220,0.66)");
+  gradient.addColorStop(0.55, "rgba(255,230,128,0.35)");
   gradient.addColorStop(1, "rgba(255,230,128,0)");
 
   ctx.save();
@@ -100,8 +101,8 @@ function applyShinyAura(ctx) {
 function applyLevel50Aura(ctx) {
   const center = CANVAS_SIZE / 2;
   const gradient = ctx.createRadialGradient(center, center, 28, center, center, 112);
-  gradient.addColorStop(0, "rgba(180,90,255,0.35)");
-  gradient.addColorStop(0.65, "rgba(144,55,220,0.24)");
+  gradient.addColorStop(0, "rgba(180,90,255,0.42)");
+  gradient.addColorStop(0.65, "rgba(144,55,220,0.28)");
   gradient.addColorStop(1, "rgba(116,42,168,0)");
 
   ctx.save();
@@ -119,30 +120,50 @@ function applyLevel50Aura(ctx) {
   ctx.restore();
 }
 
-function applyFallbackFrame(ctx, tierKey) {
+function applyGeneratedFrame(ctx, tierKey) {
   const color = FRAME_COLORS[tierKey] || FRAME_COLORS.cinza;
+  const center = CANVAS_SIZE / 2;
+
+  const outer = ctx.createLinearGradient(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  outer.addColorStop(0, `${color}F0`);
+  outer.addColorStop(1, `${color}AA`);
+
   ctx.save();
-  ctx.strokeStyle = `${color}`;
-  ctx.lineWidth = 10;
+  ctx.strokeStyle = outer;
+  ctx.shadowColor = `${color}AA`;
+  ctx.shadowBlur = 14;
+  ctx.lineWidth = 12;
   ctx.strokeRect(8, 8, CANVAS_SIZE - 16, CANVAS_SIZE - 16);
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = "rgba(255,255,255,0.35)";
-  ctx.strokeRect(14, 14, CANVAS_SIZE - 28, CANVAS_SIZE - 28);
+
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(255,255,255,0.50)";
+  ctx.strokeRect(16, 16, CANVAS_SIZE - 32, CANVAS_SIZE - 32);
+
+  const vignette = ctx.createRadialGradient(center, center, 68, center, center, 132);
+  vignette.addColorStop(0, "rgba(255,255,255,0)");
+  vignette.addColorStop(1, `${color}33`);
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   ctx.restore();
 }
 
-async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = false }) {
+async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = false, commandName = "unknown" }) {
   const metadata = {
+    commandName,
     level,
     shiny: Boolean(shiny),
     loadedAssets: [],
     missingAssets: [],
-    usedFallbackFrame: false,
+    usedGeneratedFrame: false,
     tier: null,
+    outputType: "none",
+    assetMode: ASSET_RENDER_ENABLED ? "asset_based" : "generated",
   };
 
   if (!species?.sprite_url) {
     logger.warn("Render visual pulado por ausência de sprite_url", {
+      commandName,
       speciesName: species?.name,
       level,
     });
@@ -150,7 +171,9 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
       ok: false,
       reason: "missing_sprite_url",
       metadata,
-      imageUrl: null,
+      imageBuffer: null,
+      imageMimeType: null,
+      fallbackImageUrl: null,
     };
   }
 
@@ -160,7 +183,9 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
       ok: false,
       reason: "canvas_runtime_unavailable",
       metadata,
-      imageUrl: species.sprite_url,
+      imageBuffer: null,
+      imageMimeType: null,
+      fallbackImageUrl: species.sprite_url,
     };
   }
 
@@ -171,21 +196,29 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
     metadata.tier = tierKey;
 
     logger.info("Iniciando render em camadas do card/pokemon", {
+      commandName,
       speciesName: species?.name,
       level,
       tier: tierKey,
       shiny: Boolean(shiny),
       level50: Number(level) === 50,
+      assetMode: metadata.assetMode,
     });
 
-    const [spriteBuffer, frameAsset, shinyOverlay, level50Overlay] = await Promise.all([
-      fetchImageBuffer(species.sprite_url),
-      loadOptionalAsset(path.join(FRAME_ASSET_ROOT, `${tierKey}.png`), metadata, loadImage),
-      shiny ? loadOptionalAsset(path.join(EFFECTS_ASSET_ROOT, "shiny", "aura.png"), metadata, loadImage) : Promise.resolve(null),
-      Number(level) === 50 ? loadOptionalAsset(path.join(EFFECTS_ASSET_ROOT, "level50", "aura.png"), metadata, loadImage) : Promise.resolve(null),
-    ]);
-
+    const spriteBuffer = await fetchImageBuffer(species.sprite_url);
     const spriteImage = await loadImage(spriteBuffer);
+
+    let frameAsset = null;
+    let shinyOverlay = null;
+    let level50Overlay = null;
+
+    if (ASSET_RENDER_ENABLED) {
+      [frameAsset, shinyOverlay, level50Overlay] = await Promise.all([
+        loadOptionalAsset(path.join(FRAME_ASSET_ROOT, `${tierKey}.png`), metadata, loadImage),
+        shiny ? loadOptionalAsset(path.join(EFFECTS_ASSET_ROOT, "shiny", "aura.png"), metadata, loadImage) : Promise.resolve(null),
+        Number(level) === 50 ? loadOptionalAsset(path.join(EFFECTS_ASSET_ROOT, "level50", "aura.png"), metadata, loadImage) : Promise.resolve(null),
+      ]);
+    }
 
     const canvas = createCanvas(CANVAS_SIZE, CANVAS_SIZE);
     const ctx = canvas.getContext("2d");
@@ -211,14 +244,15 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
     if (frameAsset) {
       ctx.drawImage(frameAsset, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
     } else {
-      metadata.usedFallbackFrame = true;
-      applyFallbackFrame(ctx, tierKey);
+      metadata.usedGeneratedFrame = true;
+      applyGeneratedFrame(ctx, tierKey);
     }
 
     const pngBuffer = canvas.toBuffer("image/png");
-    const imageUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
+    metadata.outputType = "buffer";
 
     logger.info("Render em camadas finalizado", {
+      commandName,
       speciesName: species?.name,
       level,
       tier: tierKey,
@@ -226,17 +260,21 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
       level50: Number(level) === 50,
       loadedAssets: metadata.loadedAssets.length,
       missingAssets: metadata.missingAssets.length,
-      fallbackFrame: metadata.usedFallbackFrame,
+      generatedFrame: metadata.usedGeneratedFrame,
       borderLabel: border.label,
+      outputType: metadata.outputType,
     });
 
     return {
       ok: true,
       metadata,
-      imageUrl,
+      imageBuffer: pngBuffer,
+      imageMimeType: "image/png",
+      fallbackImageUrl: species.sprite_url,
     };
   } catch (error) {
     logger.error("Falha no render em camadas do card/pokemon", {
+      commandName,
       speciesName: species?.name,
       level,
       shiny,
@@ -248,7 +286,9 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
       ok: false,
       reason: "render_error",
       metadata,
-      imageUrl: species.sprite_url,
+      imageBuffer: null,
+      imageMimeType: null,
+      fallbackImageUrl: species.sprite_url,
     };
   }
 }

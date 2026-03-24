@@ -41,6 +41,9 @@ function registerPokedexActions(app) {
         index: view.index,
         total: view.total,
         mode,
+        slackClient: client,
+        channelId: body.channel.id,
+        commandName: mode,
       });
 
       await client.chat.update({

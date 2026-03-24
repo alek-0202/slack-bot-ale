@@ -7,7 +7,7 @@ const logger = createLogger("command:pa");
 module.exports = {
   name: "pa",
   aliases: ["pokeattributes", "pokeatributes"],
-  async execute({ event, say }) {
+  async execute({ app, event, say }) {
     try {
       const user = await getUser(event.user);
       if (!user) {
@@ -22,6 +22,9 @@ module.exports = {
         index: view.index,
         total: view.total,
         mode: "pa",
+        slackClient: app?.client || null,
+        channelId: event.channel,
+        commandName: "pa",
       });
 
       await say(message);

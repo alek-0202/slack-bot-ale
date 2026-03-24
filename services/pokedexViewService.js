@@ -64,7 +64,16 @@ async function getPokedexView(slackUserId, rawIndex) {
   };
 }
 
-async function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex" }) {
+async function buildPokedexMessage({
+  slackUserId,
+  entry,
+  index,
+  total,
+  mode = "pokedex",
+  slackClient = null,
+  channelId = null,
+  commandName = null,
+}) {
   const isAttributesMode = mode === "pa";
   const prevActionId = isAttributesMode ? PA_NAV_PREV_ACTION_ID : POKEDEX_NAV_PREV_ACTION_ID;
   const nextActionId = isAttributesMode ? PA_NAV_NEXT_ACTION_ID : POKEDEX_NAV_NEXT_ACTION_ID;
@@ -112,9 +121,18 @@ async function buildPokedexMessage({ slackUserId, entry, index, total, mode = "p
     `${entry.grouped ? "📦 Grupo: *instâncias equivalentes (Lv 1)*\n" : ""}` +
     `🎯 Captura #${entry.id}${shinyTag}${attributesText}`;
 
-  const visualBlocks = await buildPokemonVisualBlocks({ species, level: entry.level, shiny: entry.shiny });
+  const visualBlocks = await buildPokemonVisualBlocks({
+    species,
+    level: entry.level,
+    shiny: entry.shiny,
+    slackClient,
+    channelId,
+    commandName: commandName || mode,
+  });
   logger.info("Mensagem de Pokédex montada com bloco visual", {
     commandMode: mode,
+    commandName: commandName || mode,
+    channelId,
     builder: "buildPokedexMessage",
     speciesName: species.name,
     speciesId: species.id,
@@ -122,7 +140,9 @@ async function buildPokedexMessage({ slackUserId, entry, index, total, mode = "p
     level: entry.level,
     shiny: Boolean(entry.shiny),
     hasAccessory: Boolean(visualBlocks.accessory),
+    accessoryType: visualBlocks.accessory?.slack_file?.id ? "slack_file" : visualBlocks.accessory?.image_url ? "image_url" : "none",
     accessoryImage: summarizeImageReference(visualBlocks.accessory?.image_url),
+    accessorySlackFileId: visualBlocks.accessory?.slack_file?.id || null,
     visualBlocksCount: visualBlocks.blocks.length,
   });
 

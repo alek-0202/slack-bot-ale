@@ -6,7 +6,7 @@ const logger = createLogger("command:pokedex");
 
 module.exports = {
   name: "pokedex",
-  async execute({ event, say }) {
+  async execute({ app, event, say }) {
     try {
       const user = await getUser(event.user);
       if (!user) {
@@ -20,6 +20,10 @@ module.exports = {
         entry: view.entry,
         index: view.index,
         total: view.total,
+        mode: "pokedex",
+        slackClient: app?.client || null,
+        channelId: event.channel,
+        commandName: "pokedex",
       });
 
       await say(message);
