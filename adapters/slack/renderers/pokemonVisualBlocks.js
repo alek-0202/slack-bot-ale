@@ -58,6 +58,71 @@ function summarizeImageReference(value) {
   };
 }
 
+function summarizeAccessoryForLog(accessory) {
+  if (!accessory) {
+    return {
+      present: false,
+    };
+  }
+
+  const altText = typeof accessory.alt_text === "string" ? accessory.alt_text : "";
+  return {
+    present: true,
+    type: accessory.type || null,
+    usesSlackFile: Boolean(accessory.slack_file),
+    usesImageUrl: typeof accessory.image_url === "string",
+    imageUrlLength: typeof accessory.image_url === "string" ? accessory.image_url.length : 0,
+    hasAltText: altText.trim().length > 0,
+  };
+}
+
+function buildSlackImageAccessory({ finalImage, altText, context = {} }) {
+  const normalizedAltText = typeof altText === "string" && altText.trim().length > 0 ? altText : "Pokémon";
+  let accessory;
+
+  if (typeof finalImage === "string" && isSlackCompatibleImageUrl(finalImage)) {
+    accessory = {
+      type: "image",
+      image_url: finalImage,
+      alt_text: normalizedAltText,
+    };
+  } else if (finalImage && typeof finalImage === "object") {
+    const slackFileId = typeof finalImage.id === "string" ? finalImage.id : null;
+    const slackFileUrl = typeof finalImage.url === "string" ? finalImage.url : null;
+
+    if ((finalImage.type === "slack_file_id" || finalImage.type === "slack_file") && slackFileId) {
+      accessory = {
+        type: "image",
+        alt_text: normalizedAltText,
+        slack_file: {
+          id: slackFileId,
+        },
+      };
+    } else if (finalImage.type === "slack_file" && slackFileUrl) {
+      accessory = {
+        type: "image",
+        alt_text: normalizedAltText,
+        slack_file: {
+          url: slackFileUrl,
+        },
+      };
+    } else if (finalImage.type === "http_url" && isSlackCompatibleImageUrl(finalImage.url)) {
+      accessory = {
+        type: "image",
+        image_url: finalImage.url,
+        alt_text: normalizedAltText,
+      };
+    }
+  }
+
+  logger.info("Accessory final validado para Block Kit", {
+    ...context,
+    ...summarizeAccessoryForLog(accessory),
+  });
+
+  return accessory;
+}
+
 function buildDeterministicFileName({ species = {}, level = 1, shiny = false }) {
   const entropy = crypto
     .createHash("md5")
@@ -280,6 +345,11 @@ async function buildAccessoryImage({
     });
 
     if (uploadResult.ok && uploadResult.slackFileId) {
+      const finalImage = {
+        type: "slack_file_id",
+        id: uploadResult.slackFileId,
+      };
+
       logger.info("Imagem final resolvida para Slack accessory", {
         commandName,
         speciesName: species.name,
@@ -287,19 +357,20 @@ async function buildAccessoryImage({
         level,
         shiny,
         resolvedSource: "layered_render_uploaded",
-        finalImage: {
-          type: "slack_file_id",
-          id: uploadResult.slackFileId,
-        },
+        finalImage,
       });
 
-      return {
-        type: "image",
-        slack_file: {
-          id: uploadResult.slackFileId,
+      return buildSlackImageAccessory({
+        finalImage,
+        altText: `${frameEmojis} ${species.name || "Pokémon"} · Lv ${normalizeLevel(level)} ${frameEmojis}`,
+        context: {
+          commandName,
+          speciesName: species.name,
+          speciesId: species.id,
+          level,
+          shiny,
         },
-        alt_text: `${frameEmojis} ${species.name || "Pokémon"} · Lv ${normalizeLevel(level)} ${frameEmojis}`,
-      };
+      });
     }
 
     logger.warn("Render em camadas disponível, mas delivery falhou. Aplicando fallback para URL pública", {
@@ -337,15 +408,22 @@ async function buildAccessoryImage({
     finalImage: summarizeImageReference(resolvedImage.imageUrl),
   });
 
-  if (!resolvedImage.imageUrl) {
-    return undefined;
-  }
-
-  return {
-    type: "image",
-    image_url: resolvedImage.imageUrl,
-    alt_text: `${frameEmojis} ${species.name || "Pokémon"} · Lv ${normalizeLevel(level)} ${frameEmojis}`,
-  };
+  return buildSlackImageAccessory({
+    finalImage: resolvedImage.imageUrl
+      ? {
+          type: "http_url",
+          url: resolvedImage.imageUrl,
+        }
+      : null,
+    altText: `${frameEmojis} ${species.name || "Pokémon"} · Lv ${normalizeLevel(level)} ${frameEmojis}`,
+    context: {
+      commandName,
+      speciesName: species.name,
+      speciesId: species.id,
+      level,
+      shiny,
+    },
+  });
 }
 
 async function buildPokemonVisualBlocks({
@@ -401,6 +479,8 @@ module.exports = {
   extractSlackFileId,
   summarizeUploadResponse,
   resolveSlackCompatibleImageUrl,
+  buildSlackImageAccessory,
+  summarizeAccessoryForLog,
   buildAccessoryImage,
   buildPokemonVisualSummary,
   buildPokemonVisualBlocks,
