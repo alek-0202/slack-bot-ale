@@ -1,18 +1,9 @@
 const { formatPokemonStars, normalizeLevel } = require("../../../services/pokemonProgressionService");
+const { createLogger } = require("../../../utils/logger");
+const { LEVEL_BORDER_TIERS, getLevelBorderStyle } = require("./pokemonVisualTier");
+const { renderLayeredPokemonSprite } = require("./pokemonLayeredSpriteRenderer");
 
-const LEVEL_BORDER_TIERS = Object.freeze([
-  { min: 50, max: 50, label: "Dourada", emoji: "🟨", hex: "#D4AF37", hasBorder: true },
-  { min: 40, max: 49, label: "Vermelha", emoji: "🟥", hex: "#C62828", hasBorder: true },
-  { min: 30, max: 39, label: "Roxa", emoji: "🟪", hex: "#7B1FA2", hasBorder: true },
-  { min: 20, max: 29, label: "Azul escuro", emoji: "🟦", hex: "#1E3A8A", hasBorder: true },
-  { min: 10, max: 19, label: "Cinza claro", emoji: "⬜", hex: "#D1D5DB", hasBorder: true },
-  { min: 1, max: 9, label: "Sem borda", emoji: "⚪", hex: null, hasBorder: false },
-]);
-
-function getLevelBorderStyle(level = 1) {
-  const safeLevel = normalizeLevel(level);
-  return LEVEL_BORDER_TIERS.find((tier) => safeLevel >= tier.min && safeLevel <= tier.max) || LEVEL_BORDER_TIERS[LEVEL_BORDER_TIERS.length - 1];
-}
+const logger = createLogger("renderer:pokemon-visual-blocks");
 
 function isFinalEvolution(species = {}) {
   return !species?.evolves_to;
@@ -35,20 +26,33 @@ function buildPokemonVisualSummary({ species = {}, level = 1 }) {
   };
 }
 
-function buildAccessoryImage({ species = {}, level = 1 }) {
+async function buildAccessoryImage({ species = {}, level = 1, shiny = false }) {
   if (!species.sprite_url) return undefined;
 
   const border = getLevelBorderStyle(level);
   const frameEmojis = border.hasBorder ? `${border.emoji} ${border.emoji}` : "▫️ ▫️";
 
+  const layeredRender = await renderLayeredPokemonSprite({ species, level, shiny });
+  const imageUrl = layeredRender.ok ? layeredRender.imageUrl : species.sprite_url;
+
+  if (!layeredRender.ok) {
+    logger.warn("Falha no render em camadas: mantendo sprite original", {
+      speciesName: species.name,
+      speciesId: species.id,
+      level,
+      shiny,
+      reason: layeredRender.reason,
+    });
+  }
+
   return {
     type: "image",
-    image_url: species.sprite_url,
+    image_url: imageUrl,
     alt_text: `${frameEmojis} ${species.name || "Pokémon"} · Lv ${normalizeLevel(level)} ${frameEmojis}`,
   };
 }
 
-function buildPokemonVisualBlocks({ species = {}, level = 1 }) {
+async function buildPokemonVisualBlocks({ species = {}, level = 1, shiny = false }) {
   const visual = buildPokemonVisualSummary({ species, level });
   const blocks = [];
   const contextElements = [
@@ -79,7 +83,7 @@ function buildPokemonVisualBlocks({ species = {}, level = 1 }) {
 
   return {
     ...visual,
-    accessory: buildAccessoryImage({ species, level }),
+    accessory: await buildAccessoryImage({ species, level, shiny }),
     blocks,
   };
 }

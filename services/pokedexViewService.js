@@ -58,7 +58,7 @@ async function getPokedexView(slackUserId, rawIndex) {
   };
 }
 
-function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex" }) {
+async function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex" }) {
   const isAttributesMode = mode === "pa";
   const prevActionId = isAttributesMode ? PA_NAV_PREV_ACTION_ID : POKEDEX_NAV_PREV_ACTION_ID;
   const nextActionId = isAttributesMode ? PA_NAV_NEXT_ACTION_ID : POKEDEX_NAV_NEXT_ACTION_ID;
@@ -106,7 +106,7 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
     `${entry.grouped ? "📦 Grupo: *instâncias equivalentes (Lv 1)*\n" : ""}` +
     `🎯 Captura #${entry.id}${shinyTag}${attributesText}`;
 
-  const visualBlocks = buildPokemonVisualBlocks({ species, level: entry.level });
+  const visualBlocks = await buildPokemonVisualBlocks({ species, level: entry.level, shiny: entry.shiny });
   const section = {
     type: "section",
     text: {

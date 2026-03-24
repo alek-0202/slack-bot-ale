@@ -12,7 +12,7 @@ module.exports = {
       }
 
       const view = await getPokedexView(event.user, 0);
-      const message = buildPokedexMessage({
+      const message = await buildPokedexMessage({
         slackUserId: event.user,
         entry: view.entry,
         index: view.index,
