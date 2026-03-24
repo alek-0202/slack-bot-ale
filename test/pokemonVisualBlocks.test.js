@@ -7,7 +7,10 @@ const {
   buildSlackImageAccessory,
   getLevelBorderStyle,
   isSlackCompatibleImageUrl,
+  isSupportedSlackImageFile,
+  isPngBuffer,
   resolveSlackCompatibleImageUrl,
+  summarizeUploadedSlackFile,
 } = require('../adapters/slack/renderers/pokemonVisualBlocks');
 const { buildPokedexMessage } = require('../services/pokedexViewService');
 
@@ -141,5 +144,52 @@ test('buildSlackImageAccessory usa image_url quando referência final é URL pú
     type: 'image',
     image_url: 'https://example.com/render.png',
     alt_text: 'pokemon',
+  });
+});
+
+test('isPngBuffer detecta assinatura binária PNG', () => {
+  const pngLike = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+  const jpegLike = Buffer.from('ffd8ffe000104a4649460001', 'hex');
+
+  assert.equal(isPngBuffer(pngLike), true);
+  assert.equal(isPngBuffer(jpegLike), false);
+});
+
+test('isSupportedSlackImageFile aceita apenas tipos de imagem compatíveis com slack_file no Block Kit', () => {
+  assert.equal(isSupportedSlackImageFile({ mimetype: 'image/png', filetype: 'png' }), true);
+  assert.equal(isSupportedSlackImageFile({ mimetype: 'image/jpeg', filetype: 'jpg' }), true);
+  assert.equal(isSupportedSlackImageFile({ mimetype: 'image/webp', filetype: 'webp' }), false);
+  assert.equal(isSupportedSlackImageFile({ mimetype: 'application/octet-stream', filetype: 'binary' }), false);
+});
+
+test('summarizeUploadedSlackFile lê metadados principais retornados no upload V2', () => {
+  const summary = summarizeUploadedSlackFile({
+    ok: true,
+    files: [
+      {
+        files: [
+          {
+            id: 'F123',
+            name: 'pokemon-card.png',
+            mimetype: 'image/png',
+            filetype: 'png',
+            pretty_type: 'PNG',
+            url_private: 'https://files.slack.com/files-pri/T1-F123/image.png',
+            permalink: 'https://workspace.slack.com/files/U1/F123',
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.deepEqual(summary, {
+    id: 'F123',
+    name: 'pokemon-card.png',
+    mimetype: 'image/png',
+    filetype: 'png',
+    prettyType: 'PNG',
+    urlPrivate: 'https://files.slack.com/files-pri/T1-F123/image.png',
+    permalink: 'https://workspace.slack.com/files/U1/F123',
+    isImageEligible: true,
   });
 });
