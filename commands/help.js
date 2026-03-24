@@ -53,7 +53,7 @@ function buildPokemonHelp() {
     "⚡ *Captura, coleção e consulta*",
     ...linesFrom(["capture", "pokedex", "pa"], sharedPokemonCommands),
     "`!pokeall` → abre o catálogo global de espécies",
-    ...linesFrom(["pokename", "poketag", "pokeid", "pokeplayer", "elements"], sharedPokemonCommands),
+    ...linesFrom(["pokename", "poketag", "pokeid", "applyitem", "pokeplayer", "elements"], sharedPokemonCommands),
     "",
     "⬆️ *Progressão*",
     ...linesFrom(["upgrade", "up", "evolve"], sharedPokemonCommands),

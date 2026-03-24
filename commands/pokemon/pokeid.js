@@ -36,6 +36,14 @@ module.exports = {
         ? `\n🧪 ${buildPokemonTypesLabel(species.element_types)}`
         : "";
       const finalEvolutionLabel = visual.finalEvolution ? "\n👑 *Última evolução*" : "";
+      const bookBonusLabel =
+        Number(pokemon.book_bonus_attack || 0) +
+        Number(pokemon.book_bonus_magic || 0) +
+        Number(pokemon.book_bonus_defense || 0) +
+        Number(pokemon.book_bonus_hp || 0) +
+        Number(pokemon.book_bonus_speed || 0) > 0
+          ? `\n📘 *Livro do Ancião:* ⚔️ +${pokemon.book_bonus_attack || 0} | ✨ +${pokemon.book_bonus_magic || 0} | 🛡️ +${pokemon.book_bonus_defense || 0} | ❤️ +${pokemon.book_bonus_hp || 0} | 💨 +${pokemon.book_bonus_speed || 0}`
+          : "";
 
       await say({
         text: `Consulta do Pokémon ID ${pokemonId}`,
@@ -53,6 +61,7 @@ module.exports = {
                 `🛡️ *DEF:* ${pokemon.defense || 0} | ❤️ *HP:* ${pokemon.current_hp ?? pokemon.hp ?? 0}/${pokemon.hp || 0} | 💨 *SPD:* ${pokemon.speed || 0}\n` +
                 `⭐ *Estrelas:* ${visual.starsLabel}\n` +
                 `👤 *Dono:* <@${pokemon.slack_user_id}>` +
+                bookBonusLabel +
                 finalEvolutionLabel +
                 rarityLabel +
                 typesLabel +
