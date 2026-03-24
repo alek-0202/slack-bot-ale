@@ -90,6 +90,13 @@ const sharedCommandCatalog = {
     slackUsage: '`!evolve <pokemon_id>`',
     discordDescription: 'Evolui um Pokémon',
   },
+  applyitem: {
+    name: 'applyitem',
+    category: 'pokemon',
+    summary: 'Abre o HUD para aplicar Livro do Ancião em um Pokémon seu',
+    slackUsage: '`!applyitem <pokemon_id>`',
+    discordDescription: 'Aplica Livro do Ancião em um Pokémon da coleção',
+  },
   pokeid: {
     name: 'pokeid',
     category: 'pokemon',
