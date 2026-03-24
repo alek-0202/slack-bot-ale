@@ -21,6 +21,7 @@ const {
 } = require("../services/slackPokemonActionService");
 
 const logger = createLogger("handler:pokemon-actions");
+const APPLY_ITEM_ACTION_PATTERN = new RegExp(`^${APPLY_ITEM_ACTION_ID}(?:_.+)?$`);
 
 function buildUpdatedMessage(text) {
   return {
@@ -204,7 +205,7 @@ function registerPokemonActions(app) {
   });
 
 
-  app.action(APPLY_ITEM_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+  app.action(APPLY_ITEM_ACTION_PATTERN, async ({ ack, body, action, client, respond }) => {
     await ack();
     const actorUserId = body.user?.id;
     const payload = parsePokemonActionValue(action?.value);
@@ -214,6 +215,7 @@ function registerPokemonActions(app) {
       ownerSlackUserId: payload?.slackUserId,
       pokemonId: payload?.pokemonId,
       statKey: payload?.statKey,
+      actionId: action?.action_id,
     });
 
     if (!payload?.slackUserId || !payload?.pokemonId || !payload?.statKey) {
