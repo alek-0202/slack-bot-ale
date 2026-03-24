@@ -1,5 +1,8 @@
 const { getUser } = require("../../services/userService");
 const { getPokedexView, buildPokedexMessage } = require("../../services/pokedexViewService");
+const { createLogger } = require("../../utils/logger");
+
+const logger = createLogger("command:pa");
 
 module.exports = {
   name: "pa",
@@ -23,7 +26,10 @@ module.exports = {
 
       await say(message);
     } catch (error) {
-      console.error("Erro no !pa:", error.message || error);
+      logger.error("Falha ao renderizar mensagem !pa", {
+        command: "pa",
+        error,
+      });
       await say("Não consegui abrir seus atributos da Pokédex agora 😵");
     }
   },
