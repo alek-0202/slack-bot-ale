@@ -1,12 +1,18 @@
 const { calculatePokemonSellPrice } = require("./sellService");
 const { getUserPokemons, buildPokedexDisplayEntries } = require("./pokemonService");
 const { buildPokemonTypesLabel } = require("./pokemonTypeService");
-const { buildPokemonVisualBlocks, buildPokemonVisualSummary } = require("../adapters/slack/renderers/pokemonVisualBlocks");
+const {
+  buildPokemonVisualBlocks,
+  buildPokemonVisualSummary,
+  summarizeImageReference,
+} = require("../adapters/slack/renderers/pokemonVisualBlocks");
+const { createLogger } = require("../utils/logger");
 
 const POKEDEX_NAV_PREV_ACTION_ID = "pokedex_navigate_prev";
 const POKEDEX_NAV_NEXT_ACTION_ID = "pokedex_navigate_next";
 const PA_NAV_PREV_ACTION_ID = "pa_navigate_prev";
 const PA_NAV_NEXT_ACTION_ID = "pa_navigate_next";
+const logger = createLogger("service:pokedex-view");
 
 function createNavValue({ ownerSlackUserId, index, mode = "pokedex" }) {
   return JSON.stringify({ ownerSlackUserId, index, mode });
@@ -107,6 +113,19 @@ async function buildPokedexMessage({ slackUserId, entry, index, total, mode = "p
     `🎯 Captura #${entry.id}${shinyTag}${attributesText}`;
 
   const visualBlocks = await buildPokemonVisualBlocks({ species, level: entry.level, shiny: entry.shiny });
+  logger.info("Mensagem de Pokédex montada com bloco visual", {
+    commandMode: mode,
+    builder: "buildPokedexMessage",
+    speciesName: species.name,
+    speciesId: species.id,
+    pokemonId: entry.id,
+    level: entry.level,
+    shiny: Boolean(entry.shiny),
+    hasAccessory: Boolean(visualBlocks.accessory),
+    accessoryImage: summarizeImageReference(visualBlocks.accessory?.image_url),
+    visualBlocksCount: visualBlocks.blocks.length,
+  });
+
   const section = {
     type: "section",
     text: {

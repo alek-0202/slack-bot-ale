@@ -1,7 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildPokemonVisualBlocks, getLevelBorderStyle } = require('../adapters/slack/renderers/pokemonVisualBlocks');
+const {
+  buildPokemonVisualBlocks,
+  getLevelBorderStyle,
+  isSlackCompatibleImageUrl,
+  resolveSlackCompatibleImageUrl,
+} = require('../adapters/slack/renderers/pokemonVisualBlocks');
 const { buildPokedexMessage } = require('../services/pokedexViewService');
 
 test('getLevelBorderStyle mantém as mesmas faixas visuais existentes', () => {
@@ -66,4 +71,22 @@ test('buildPokedexMessage usa accessory no section principal e remove linha text
   assert.equal(message.blocks[0].accessory?.type, 'image');
   assert.ok(!Object.hasOwn(message.blocks[0].accessory, 'title'));
   assert.ok(!message.blocks[0].text.text.includes('Moldura:'));
+});
+
+test('isSlackCompatibleImageUrl rejeita referências inválidas para image_url', () => {
+  assert.equal(isSlackCompatibleImageUrl('data:image/png;base64,abc123'), false);
+  assert.equal(isSlackCompatibleImageUrl('C:\\\\Users\\\\bot\\\\render.png'), false);
+  assert.equal(isSlackCompatibleImageUrl('/tmp/render.png'), false);
+  assert.equal(isSlackCompatibleImageUrl('https://example.com/pikachu.png'), true);
+});
+
+test('resolveSlackCompatibleImageUrl usa fallback quando render em camadas gera data URI', () => {
+  const resolved = resolveSlackCompatibleImageUrl({
+    layeredImageUrl: 'data:image/png;base64,abc123',
+    fallbackImageUrl: 'https://example.com/fallback.png',
+    context: { test: true },
+  });
+
+  assert.equal(resolved.source, 'species_sprite_url');
+  assert.equal(resolved.imageUrl, 'https://example.com/fallback.png');
 });

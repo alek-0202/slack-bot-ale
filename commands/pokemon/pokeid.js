@@ -2,7 +2,11 @@ const { parsePositiveInt } = require("../../utils/number");
 const { createLogger } = require("../../utils/logger");
 const { getOwnedPokemonById } = require("../../services/pokemonLookupService");
 const { buildPokemonTypesLabel } = require("../../services/pokemonTypeService");
-const { buildPokemonVisualBlocks, buildPokemonVisualSummary } = require("../../adapters/slack/renderers/pokemonVisualBlocks");
+const {
+  buildPokemonVisualBlocks,
+  buildPokemonVisualSummary,
+  summarizeImageReference,
+} = require("../../adapters/slack/renderers/pokemonVisualBlocks");
 
 const logger = createLogger("command:pokeid");
 
@@ -30,6 +34,14 @@ module.exports = {
       const species = pokemon.pokemon_species || {};
       const visual = buildPokemonVisualSummary({ species, level: pokemon.level });
       const visualBlocks = await buildPokemonVisualBlocks({ species, level: pokemon.level, shiny: pokemon.shiny });
+      logger.info("Payload visual do !pokeid preparado", {
+        command: "pokeid",
+        builder: "buildPokemonVisualBlocks",
+        pokemonId: pokemon.id,
+        speciesName: species.name,
+        hasAccessory: Boolean(visualBlocks.accessory),
+        accessoryImage: summarizeImageReference(visualBlocks.accessory?.image_url),
+      });
       const shinyLabel = pokemon.shiny ? "\n✨ *Shiny*" : "";
       const rarityLabel = species.rarity ? `\n🏅 *Raridade:* ${species.rarity}` : "";
       const typesLabel = buildPokemonTypesLabel(species.element_types)

@@ -1,5 +1,8 @@
 const { getUser } = require("../../services/userService");
 const { getPokedexView, buildPokedexMessage } = require("../../services/pokedexViewService");
+const { createLogger } = require("../../utils/logger");
+
+const logger = createLogger("command:pokedex");
 
 module.exports = {
   name: "pokedex",
@@ -21,7 +24,10 @@ module.exports = {
 
       await say(message);
     } catch (error) {
-      console.error("Erro no !pokedex:", error.message || error);
+      logger.error("Falha ao renderizar mensagem !pokedex", {
+        command: "pokedex",
+        error,
+      });
       await say("Não consegui abrir sua Pokédex agora 😵");
     }
   },
