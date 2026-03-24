@@ -26,6 +26,8 @@ begin
   end if;
 end $$;
 
+drop function if exists public.grant_account_xp(text, bigint, text);
+
 create or replace function public.grant_account_xp(
   p_slack_user_id text,
   p_xp_amount bigint,
