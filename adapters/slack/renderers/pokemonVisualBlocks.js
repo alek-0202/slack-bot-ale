@@ -75,7 +75,7 @@ function buildDeterministicFileName({ species = {}, level = 1, shiny = false }) 
 }
 
 async function uploadRenderToSlack({ slackClient, channelId, pngBuffer, species = {}, level = 1, shiny = false, commandName = "unknown" }) {
-  if (!slackClient || !channelId || !Buffer.isBuffer(pngBuffer) || pngBuffer.length === 0) {
+  if (!slackClient || !Buffer.isBuffer(pngBuffer) || pngBuffer.length === 0) {
     return {
       ok: false,
       reason: "missing_upload_context",
@@ -87,7 +87,6 @@ async function uploadRenderToSlack({ slackClient, channelId, pngBuffer, species 
   try {
     const filename = buildDeterministicFileName({ species, level, shiny });
     const uploadResponse = await slackClient.files.uploadV2({
-      channel_id: channelId,
       file: pngBuffer,
       filename,
       title: `${species.name || "Pokémon"} · Lv ${level}`,
@@ -124,7 +123,7 @@ async function uploadRenderToSlack({ slackClient, channelId, pngBuffer, species 
       speciesName: species.name,
       level,
       shiny,
-      channelId,
+      channelId: channelId || null,
       error,
     });
 
