@@ -29,7 +29,7 @@ module.exports = {
 
       const species = pokemon.pokemon_species || {};
       const visual = buildPokemonVisualSummary({ species, level: pokemon.level });
-      const visualBlocks = buildPokemonVisualBlocks({ species, level: pokemon.level });
+      const visualBlocks = await buildPokemonVisualBlocks({ species, level: pokemon.level, shiny: pokemon.shiny });
       const shinyLabel = pokemon.shiny ? "\n✨ *Shiny*" : "";
       const rarityLabel = species.rarity ? `\n🏅 *Raridade:* ${species.rarity}` : "";
       const typesLabel = buildPokemonTypesLabel(species.element_types)
