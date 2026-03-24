@@ -106,7 +106,7 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
     `${entry.grouped ? "📦 Grupo: *instâncias equivalentes (Lv 1)*\n" : ""}` +
     `🎯 Captura #${entry.id}${shinyTag}${attributesText}`;
 
-  const visualBlocks = buildPokemonVisualBlocks({ species, level: entry.level });
+  const visualBlocks = buildPokemonVisualBlocks({ species, level: entry.level, shiny: entry.shiny });
   const section = {
     type: "section",
     text: {
