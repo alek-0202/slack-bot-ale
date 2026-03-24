@@ -120,6 +120,10 @@ async function handleDungeonStartFarmAction({ body, action, client, respond }) {
       return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason(result.reason) }));
     }
 
+    if (result.completion) {
+      return updateMessage(client, body, renderDungeonBattleFinished({ battle: result.battle, completion: result.completion }));
+    }
+
     return updateMessage(client, body, renderDungeonBattleState(result.battle));
   } catch (error) {
     logger.error('Falha ao iniciar dungeon farm via block action', {
@@ -152,6 +156,10 @@ async function handleDungeonStartDailyAction({ body, action, client, respond }) 
     const result = await startDailyDungeon({ slackUserId: actorUserId, pokemonId: payload.pokemonId, mode: payload.difficulty });
     if (!result.ok) {
       return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason(result.reason) }));
+    }
+
+    if (result.completion) {
+      return updateMessage(client, body, renderDungeonBattleFinished({ battle: result.battle, completion: result.completion }));
     }
 
     return updateMessage(client, body, renderDungeonBattleState(result.battle));
