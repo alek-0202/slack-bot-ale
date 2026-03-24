@@ -27,6 +27,7 @@ function buildGeneralHelp() {
     "`!aceitar` / `!recusar` → responde ao desafio de cara ou coroa",
     "`!daily` → resgata recompensa diária de gold",
     "`!dhelp` → explica como funciona o !daily",
+    "`!att` → mostra o resumo da atualização atual do jogo/bot",
     "`!coffe` → envia um card interativo de coffe break",
   ].join("\n");
 }
@@ -43,6 +44,7 @@ function buildPokemonHelp() {
     "",
     "📖 *Perfil e progresso*",
     "`!poke start` → inicia seu perfil Pokémon",
+    "`!att` → mostra changelog da versão atual com novidades Pokémon",
     "`!balance` → mostra seu gold atual",
     "`!daily` → resgata recompensa diária (1x por dia)",
     "`!dhelp` → explica o !daily e mostra as chances",
