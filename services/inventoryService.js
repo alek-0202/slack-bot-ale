@@ -11,6 +11,12 @@ const ITEM_CATALOG = {
     description: 'Tomos antigos coletados em dungeons. Úteis para futuras evoluções, crafts e sistemas especiais.',
     extraData: { kind: 'material', rarity: 'dungeon' },
   },
+  pokeball_c: {
+    itemKey: 'pokeball_c',
+    itemName: 'Pokebola (!c)',
+    description: 'Permite capturar um Pokémon sem cooldown',
+    extraData: { kind: 'consumable', category: 'capture' },
+  },
 };
 
 function getItemDefinition(itemKey) {
@@ -106,10 +112,24 @@ async function getUserItems(slackUserId) {
   return data || [];
 }
 
+async function getUserItemQuantity(slackUserId, itemKey) {
+  const supabase = getSupabaseClient();
+  const normalizedItemKey = String(itemKey || '').trim().toLowerCase();
+  const { data, error } = await supabase
+    .from('user_items')
+    .select('quantity')
+    .eq('slack_user_id', slackUserId)
+    .eq('item_key', normalizedItemKey)
+    .maybeSingle();
+  if (error) throw error;
+  return Math.max(0, Number(data?.quantity) || 0);
+}
+
 module.exports = {
   ITEM_CATALOG,
   getItemDefinition,
   addItem,
   removeItem,
   getUserItems,
+  getUserItemQuantity,
 };

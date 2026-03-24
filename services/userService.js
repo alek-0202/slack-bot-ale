@@ -13,7 +13,7 @@ async function getUser(slackUserId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("users")
-    .select("slack_user_id, gold, account_xp, account_level, created_at, last_capture_at, last_claim_at")
+    .select("slack_user_id, gold, account_xp, account_level, current_energy, max_energy, last_energy_update, created_at, last_capture_at, last_claim_at")
     .eq("slack_user_id", slackUserId)
     .maybeSingle();
 
@@ -27,7 +27,7 @@ async function createUserIfMissing(slackUserId) {
   const { data, error } = await supabase
     .from("users")
     .upsert({ slack_user_id: slackUserId }, { onConflict: "slack_user_id" })
-    .select("slack_user_id, gold, account_xp, account_level, created_at, last_capture_at, last_claim_at")
+    .select("slack_user_id, gold, account_xp, account_level, current_energy, max_energy, last_energy_update, created_at, last_capture_at, last_claim_at")
     .single();
 
   if (error) throw error;

@@ -85,6 +85,19 @@ async function grantAccountXp(slackUserId, xpAmount, reason = 'system') {
   const row = Array.isArray(data) ? data[0] : data;
   const previousSnapshot = getAccountLevelSnapshot(row?.previous_total_xp || 0);
   const nextSnapshot = getAccountLevelSnapshot(row?.current_total_xp || 0);
+  if (Boolean(row?.leveled_up)) {
+    logger.info('Level up da conta com rewards aplicado', {
+      file: 'services/accountProgressionService.js',
+      method: 'grantAccountXp',
+      slackUserId,
+      reason,
+      previousLevel: previousSnapshot.level,
+      currentLevel: nextSnapshot.level,
+      levelsGained: Number(row?.levels_gained) || 0,
+      goldRewardGranted: Number(row?.gold_reward_granted) || 0,
+      pokeballCGranted: Number(row?.pokeball_c_granted) || 0,
+    });
+  }
 
   return {
     ok: true,
@@ -94,6 +107,8 @@ async function grantAccountXp(slackUserId, xpAmount, reason = 'system') {
     current: nextSnapshot,
     leveledUp: Boolean(row?.leveled_up),
     levelsGained: Number(row?.levels_gained) || 0,
+    goldRewardGranted: Number(row?.gold_reward_granted) || 0,
+    pokeballCGranted: Number(row?.pokeball_c_granted) || 0,
   };
 }
 

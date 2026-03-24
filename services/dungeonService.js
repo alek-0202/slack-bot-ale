@@ -9,6 +9,7 @@ const { getSupabaseClient } = require('../database/supabase');
 const { createUserIfMissing } = require('./userService');
 const { addItem } = require('./inventoryService');
 const { grantAccountXp } = require('./accountProgressionService');
+const { consumeDungeonEnergy } = require('./energyService');
 const { formatGold } = require('../utils/gold');
 const { createLogger } = require('../utils/logger');
 const battleStore = require('./battleStateStore');
@@ -24,6 +25,7 @@ const DAILY_CHANCES = {
   normal: { common: 70, uncommon: 15, rare: 10, epic: 5 },
   hard: { common: 30, uncommon: 40, rare: 20, epic: 7, legendary: 2, mythical: 1 },
 };
+const DAILY_DUNGEON_ENABLED = false;
 const logger = createLogger('service:dungeon');
 
 function getDungeonFarmList() { return [...FARM_LEVELS]; }
@@ -37,6 +39,8 @@ function mapDungeonFailureReason(reason) {
     pokemon_fainted: 'Esse Pokémon está com HP zerado.',
     pokemon_in_active_battle: 'Esse Pokémon já está em outra batalha ou sessão.',
     already_used_today: 'Você já usou essa dungeon diária hoje.',
+    daily_disabled: 'Dungeon diária em manutenção.',
+    insufficient_energy: 'Energia insuficiente para entrar na dungeon farm.',
     battle_not_found: 'Não encontrei uma batalha de dungeon ativa para esse botão.',
     reward_already_granted: 'Essa dungeon já foi finalizada anteriormente.',
     battle_not_active: 'A batalha da dungeon já não está mais ativa.',
@@ -78,7 +82,15 @@ async function getEligibleDungeonPokemons(slackUserId) {
 
 function getFarmReward(level) {
   const safe = Number(level);
-  return { gold: 300 * safe, accountXp: 100 * safe, ancientBookQty: safe >= 25 ? 2 : 1 };
+  const pokeballCQty = safe <= 30
+    ? (1 + Math.floor(Math.random() * 3))
+    : (2 + Math.floor(Math.random() * 4));
+  return { gold: 300 * safe, accountXp: 100 * safe, ancientBookQty: safe >= 25 ? 2 : 1, pokeballCQty };
+}
+
+function getFarmPokeballRewardRange(level) {
+  const safe = Number(level);
+  return safe <= 30 ? { min: 1, max: 3 } : { min: 2, max: 5 };
 }
 
 function weightedPickByConfiguredChances(speciesList, chances) {
@@ -303,6 +315,28 @@ async function grantDungeonRewards({ slackUserId, reward, transactionType, captu
       grantStatus: 'item_granted',
     });
   }
+  if (reward.pokeballCQty) {
+    logger.info('Adicionando item de recompensa da dungeon', {
+      file: 'services/dungeonService.js',
+      method: 'grantDungeonRewards',
+      rpcName: 'upsert_user_item',
+      slackUserId,
+      itemKey: 'pokeball_c',
+      quantity: reward.pokeballCQty,
+    });
+    const itemResult = await addItem(slackUserId, 'pokeball_c', reward.pokeballCQty);
+    items.push(itemResult);
+    logger.info('RPC upsert_user_item concluída no pipeline da dungeon', {
+      file: 'services/dungeonService.js',
+      method: 'grantDungeonRewards',
+      rpcName: 'upsert_user_item',
+      slackUserId,
+      itemKey: 'pokeball_c',
+      quantity: reward.pokeballCQty,
+      rpcResult: itemResult,
+      grantStatus: 'item_granted',
+    });
+  }
 
   let captured = null;
   if (capturedSpecies) {
@@ -403,6 +437,8 @@ async function startFarmDungeon({ slackUserId, pokemonId, level }) {
   });
 
   const reward = getFarmReward(level);
+  const energyConsumption = await consumeDungeonEnergy(slackUserId, 1);
+  if (!energyConsumption.ok) return { ok: false, reason: energyConsumption.reason, energy: energyConsumption.energy };
   const battle = createDungeonBattle({
     slackUserId,
     playerPokemon,
@@ -441,6 +477,14 @@ async function startDailyDungeon({ slackUserId, pokemonId, mode }) {
   const normalizedMode = String(mode || '').toLowerCase();
   const context = createDungeonStartContext({ slackUserId, pokemonId, mode: 'daily', dailyMode: normalizedMode });
   logger.info('Iniciando fluxo de dungeon daily', { ...context, method: 'startDailyDungeon' });
+  if (!DAILY_DUNGEON_ENABLED) {
+    logger.info('Clique em dungeon diária desabilitada', {
+      ...context,
+      method: 'startDailyDungeon',
+      maintenance: true,
+    });
+    return { ok: false, reason: 'daily_disabled' };
+  }
 
   if (!['normal', 'hard'].includes(normalizedMode)) return { ok: false, reason: 'invalid_daily_mode' };
 
@@ -912,11 +956,13 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
 module.exports = {
   FARM_LEVELS,
   DAILY_CHANCES,
+  DAILY_DUNGEON_ENABLED,
   DUNGEON_ENEMY_USER_ID,
   getDungeonEnemyStatModifier,
   balanceDungeonEnemyStats,
   getDungeonFarmList,
   getFarmReward,
+  getFarmPokeballRewardRange,
   decideAiAction,
   processEnemyTurnIfNeeded,
   getEligibleDungeonPokemons,

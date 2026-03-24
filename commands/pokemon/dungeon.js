@@ -1,11 +1,19 @@
-const { getDungeonFarmList, getFarmReward, startFarmDungeon, startDailyDungeon, mapDungeonFailureReason } = require('../../services/dungeonService');
+const {
+  getDungeonFarmList,
+  getFarmReward,
+  getFarmPokeballRewardRange,
+  startFarmDungeon,
+  startDailyDungeon,
+  mapDungeonFailureReason,
+} = require('../../services/dungeonService');
 const { handleDungeonCommand } = require('../../handlers/dungeonActions');
 const { renderDungeonBattleState } = require('../../adapters/slack/renderers/dungeonRenderer');
 
 function buildMenu() {
   const farmLines = getDungeonFarmList().map((level) => {
     const reward = getFarmReward(level);
-    return `• Farm Lv ${level} → ${reward.gold} gold / ${reward.accountXp} XP / ${reward.ancientBookQty} Livro Ancião`;
+    const pokeballRange = getFarmPokeballRewardRange(level);
+    return `• Farm Lv ${level} → ${reward.gold} gold / ${reward.accountXp} XP / ${reward.ancientBookQty} Livro Ancião / ${pokeballRange.min}-${pokeballRange.max} Pokebola (!c)`;
   });
   return [
     '🏰 *Dungeon*',
@@ -24,8 +32,7 @@ function buildMenu() {
     ...farmLines,
     '',
     '*Diária*',
-    '• Normal → 3000 gold / 500 XP + 1 Pokémon aleatório',
-    '• Hard → 5000 gold / 1500 XP + 1 Pokémon aleatório',
+    '• Dungeon diária em manutenção temporária',
   ].join('\n');
 }
 
