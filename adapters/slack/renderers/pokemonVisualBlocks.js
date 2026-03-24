@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const { formatPokemonStars, normalizeLevel } = require("../../../services/pokemonProgressionService");
 const { createLogger } = require("../../../utils/logger");
 const { LEVEL_BORDER_TIERS, getLevelBorderStyle } = require("./pokemonVisualTier");
@@ -57,11 +58,90 @@ function summarizeImageReference(value) {
   };
 }
 
+function buildDeterministicFileName({ species = {}, level = 1, shiny = false }) {
+  const entropy = crypto
+    .createHash("md5")
+    .update(`${species.id || "unknown"}:${species.name || "pokemon"}:${level}:${shiny ? "1" : "0"}:${Date.now()}`)
+    .digest("hex")
+    .slice(0, 10);
+
+  const normalizedName = String(species.name || "pokemon")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
+  return `${normalizedName || "pokemon"}-lv${level}-${shiny ? "shiny" : "normal"}-${entropy}.png`;
+}
+
+async function uploadRenderToSlack({ slackClient, channelId, pngBuffer, species = {}, level = 1, shiny = false, commandName = "unknown" }) {
+  if (!slackClient || !channelId || !Buffer.isBuffer(pngBuffer) || pngBuffer.length === 0) {
+    return {
+      ok: false,
+      reason: "missing_upload_context",
+      format: "buffer",
+      slackFileId: null,
+    };
+  }
+
+  try {
+    const filename = buildDeterministicFileName({ species, level, shiny });
+    const uploadResponse = await slackClient.files.uploadV2({
+      channel_id: channelId,
+      file: pngBuffer,
+      filename,
+      title: `${species.name || "Pokémon"} · Lv ${level}`,
+    });
+
+    const firstFile = uploadResponse?.files?.[0] || uploadResponse?.file || null;
+    const slackFileId = firstFile?.id || null;
+
+    if (!slackFileId) {
+      logger.warn("Upload Slack concluído sem file id; fallback será aplicado", {
+        commandName,
+        speciesName: species.name,
+        level,
+        shiny,
+        channelId,
+      });
+      return {
+        ok: false,
+        reason: "missing_file_id",
+        format: "buffer",
+        slackFileId: null,
+      };
+    }
+
+    return {
+      ok: true,
+      reason: null,
+      format: "uploaded_slack_file",
+      slackFileId,
+    };
+  } catch (error) {
+    logger.error("Falha ao enviar render em camadas para Slack Files", {
+      commandName,
+      speciesName: species.name,
+      level,
+      shiny,
+      channelId,
+      error,
+    });
+
+    return {
+      ok: false,
+      reason: "upload_failed",
+      format: "buffer",
+      slackFileId: null,
+    };
+  }
+}
+
 function resolveSlackCompatibleImageUrl({ layeredImageUrl, fallbackImageUrl, context = {} }) {
   if (isSlackCompatibleImageUrl(layeredImageUrl)) {
     return {
       imageUrl: layeredImageUrl,
-      source: "layered_render",
+      source: "layered_render_public_url",
     };
   }
 
@@ -90,17 +170,97 @@ function resolveSlackCompatibleImageUrl({ layeredImageUrl, fallbackImageUrl, con
   };
 }
 
-async function buildAccessoryImage({ species = {}, level = 1, shiny = false }) {
+async function buildAccessoryImage({
+  species = {},
+  level = 1,
+  shiny = false,
+  slackClient = null,
+  channelId = null,
+  commandName = "unknown",
+}) {
   if (!species.sprite_url) return undefined;
 
   const border = getLevelBorderStyle(level);
   const frameEmojis = border.hasBorder ? `${border.emoji} ${border.emoji}` : "▫️ ▫️";
 
-  const layeredRender = await renderLayeredPokemonSprite({ species, level, shiny });
+  const layeredRender = await renderLayeredPokemonSprite({ species, level, shiny, commandName });
+
+  if (!layeredRender.ok) {
+    logger.warn("Falha no render em camadas: mantendo sprite original", {
+      commandName,
+      speciesName: species.name,
+      speciesId: species.id,
+      level,
+      shiny,
+      reason: layeredRender.reason,
+    });
+  }
+
+  if (layeredRender.ok && layeredRender.imageBuffer) {
+    const uploadResult = await uploadRenderToSlack({
+      slackClient,
+      channelId,
+      pngBuffer: layeredRender.imageBuffer,
+      species,
+      level,
+      shiny,
+      commandName,
+    });
+
+    logger.info("Resultado do delivery da imagem renderizada", {
+      commandName,
+      speciesName: species.name,
+      speciesId: species.id,
+      level,
+      shiny,
+      rendererOk: layeredRender.ok,
+      rendererOutputType: layeredRender.metadata?.outputType || "unknown",
+      uploaded: uploadResult.ok,
+      deliveryFormat: uploadResult.format,
+      uploadReason: uploadResult.reason,
+      loadedAssets: layeredRender.metadata?.loadedAssets?.length || 0,
+      missingAssets: layeredRender.metadata?.missingAssets?.length || 0,
+      generatedFrame: Boolean(layeredRender.metadata?.usedGeneratedFrame),
+    });
+
+    if (uploadResult.ok && uploadResult.slackFileId) {
+      logger.info("Imagem final resolvida para Slack accessory", {
+        commandName,
+        speciesName: species.name,
+        speciesId: species.id,
+        level,
+        shiny,
+        resolvedSource: "layered_render_uploaded",
+        finalImage: {
+          type: "slack_file_id",
+          id: uploadResult.slackFileId,
+        },
+      });
+
+      return {
+        type: "image",
+        slack_file: {
+          id: uploadResult.slackFileId,
+        },
+        alt_text: `${frameEmojis} ${species.name || "Pokémon"} · Lv ${normalizeLevel(level)} ${frameEmojis}`,
+      };
+    }
+
+    logger.warn("Render em camadas disponível, mas delivery falhou. Aplicando fallback para URL pública", {
+      commandName,
+      speciesName: species.name,
+      speciesId: species.id,
+      level,
+      shiny,
+      fallbackReason: uploadResult.reason,
+    });
+  }
+
   const resolvedImage = resolveSlackCompatibleImageUrl({
-    layeredImageUrl: layeredRender?.imageUrl,
-    fallbackImageUrl: species.sprite_url,
+    layeredImageUrl: null,
+    fallbackImageUrl: layeredRender.fallbackImageUrl || species.sprite_url,
     context: {
+      commandName,
       speciesName: species.name,
       speciesId: species.id,
       level,
@@ -110,17 +270,8 @@ async function buildAccessoryImage({ species = {}, level = 1, shiny = false }) {
     },
   });
 
-  if (!layeredRender.ok) {
-    logger.warn("Falha no render em camadas: mantendo sprite original", {
-      speciesName: species.name,
-      speciesId: species.id,
-      level,
-      shiny,
-      reason: layeredRender.reason,
-    });
-  }
-
   logger.info("Imagem final resolvida para Slack accessory", {
+    commandName,
     speciesName: species.name,
     speciesId: species.id,
     level,
@@ -141,7 +292,14 @@ async function buildAccessoryImage({ species = {}, level = 1, shiny = false }) {
   };
 }
 
-async function buildPokemonVisualBlocks({ species = {}, level = 1, shiny = false }) {
+async function buildPokemonVisualBlocks({
+  species = {},
+  level = 1,
+  shiny = false,
+  slackClient = null,
+  channelId = null,
+  commandName = "unknown",
+}) {
   const visual = buildPokemonVisualSummary({ species, level });
   const blocks = [];
   const contextElements = [
@@ -172,7 +330,7 @@ async function buildPokemonVisualBlocks({ species = {}, level = 1, shiny = false
 
   return {
     ...visual,
-    accessory: await buildAccessoryImage({ species, level, shiny }),
+    accessory: await buildAccessoryImage({ species, level, shiny, slackClient, channelId, commandName }),
     blocks,
   };
 }
