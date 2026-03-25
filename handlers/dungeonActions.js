@@ -9,6 +9,8 @@ const {
   mapDungeonFailureReason,
   processDungeonTurn,
   getDungeonBattle,
+  getDungeonOwnerUserId,
+  isDungeonProcessing,
 } = require('../services/dungeonService');
 const { BATTLE_ACTION } = require('../application/battle/domain/actionResolver');
 const {
@@ -30,6 +32,7 @@ const {
 } = require('../adapters/slack/renderers/dungeonRenderer');
 
 const logger = createLogger('handler:dungeon-actions');
+const DUNGEON_OWNER_ONLY_MESSAGE = 'Você não pode interagir na dungeon de outro jogador';
 
 const DUNGEON_SELECT_POKEMON_ACTION_PATTERN = new RegExp(`^${DUNGEON_SELECT_POKEMON_ACTION_ID}_.+$`);
 const DUNGEON_SELECT_MODE_ACTION_PATTERN = new RegExp(`^${DUNGEON_SELECT_MODE_ACTION_ID}_.+$`);
@@ -207,6 +210,18 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
     if (!battle) {
       return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('battle_not_found') }));
     }
+    const ownerUserId = getDungeonOwnerUserId(battle);
+    if (ownerUserId !== actorUserId) {
+      if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_OWNER_ONLY_MESSAGE });
+      return;
+    }
+    if (battle.status !== 'active') {
+      return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('battle_not_active') }));
+    }
+    if (isDungeonProcessing(channelId)) {
+      if (respond) await respond({ response_type: 'ephemeral', text: '⏳ Já estou processando sua ação anterior na dungeon.' });
+      return;
+    }
     if (battle.currentTurnUserId !== actorUserId) {
       logger.warn('Clique fora do turno válido na dungeon (abertura de magia)', {
         file: 'handlers/dungeonActions.js',
@@ -234,6 +249,14 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
   const result = await processDungeonTurn({ channelId, actorUserId, actionType: actionTypeMap[actionName] });
 
   if (!result.ok) {
+    if (result.reason === 'not_dungeon_owner') {
+      if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_OWNER_ONLY_MESSAGE });
+      return;
+    }
+    if (result.reason === 'processing_in_progress') {
+      if (respond) await respond({ response_type: 'ephemeral', text: '⏳ Já estou processando sua ação anterior na dungeon.' });
+      return;
+    }
     if (result.reason === 'not_actor_turn') {
       logger.warn('Clique fora do turno válido na dungeon', {
         file: 'handlers/dungeonActions.js',
@@ -287,6 +310,14 @@ async function handleDungeonBattleMagicAction({ body, action, client, respond })
   });
 
   if (!result.ok) {
+    if (result.reason === 'not_dungeon_owner') {
+      if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_OWNER_ONLY_MESSAGE });
+      return;
+    }
+    if (result.reason === 'processing_in_progress') {
+      if (respond) await respond({ response_type: 'ephemeral', text: '⏳ Já estou processando sua ação anterior na dungeon.' });
+      return;
+    }
     if (result.reason === 'not_actor_turn') {
       logger.warn('Clique fora do turno válido na dungeon (magia)', {
         file: 'handlers/dungeonActions.js',
@@ -310,7 +341,7 @@ async function handleDungeonBattleMagicAction({ body, action, client, respond })
   return updateMessage(client, body, renderDungeonBattleState(result.battle));
 }
 
-async function handleDungeonBattleMagicCancelAction({ body, action, client }) {
+async function handleDungeonBattleMagicCancelAction({ body, action, client, respond }) {
   const payload = parsePokemonActionValue(action?.value) || {};
   const actorUserId = body.user?.id;
   const battle = getDungeonBattle(payload.channelId);
@@ -325,6 +356,10 @@ async function handleDungeonBattleMagicCancelAction({ body, action, client }) {
 
   if (!battle) {
     return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('battle_not_found') }));
+  }
+  if (getDungeonOwnerUserId(battle) !== actorUserId) {
+    if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_OWNER_ONLY_MESSAGE });
+    return;
   }
 
   return updateMessage(client, body, renderDungeonBattleState(battle));
@@ -361,9 +396,9 @@ function registerDungeonActions(app) {
     await handleDungeonBattleMagicAction({ body, action, client, respond });
   });
 
-  app.action(DUNGEON_BATTLE_MAGIC_CANCEL_ACTION_ID, async ({ ack, body, action, client }) => {
+  app.action(DUNGEON_BATTLE_MAGIC_CANCEL_ACTION_ID, async ({ ack, body, action, client, respond }) => {
     await ack();
-    await handleDungeonBattleMagicCancelAction({ body, action, client });
+    await handleDungeonBattleMagicCancelAction({ body, action, client, respond });
   });
 }
 

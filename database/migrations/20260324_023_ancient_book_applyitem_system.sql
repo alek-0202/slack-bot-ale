@@ -23,6 +23,36 @@ begin
   end if;
 end $$;
 
+create or replace function public.preserve_hp_ratio(
+  p_current_hp integer,
+  p_old_max_hp integer,
+  p_new_max_hp integer
+)
+returns integer
+language plpgsql
+immutable
+as $$
+declare
+  v_current_hp integer := greatest(coalesce(p_current_hp, 0), 0);
+  v_old_max_hp integer := greatest(coalesce(p_old_max_hp, 0), 0);
+  v_new_max_hp integer := greatest(coalesce(p_new_max_hp, 0), 0);
+begin
+  if v_new_max_hp = 0 then
+    return 0;
+  end if;
+
+  if v_old_max_hp <= 0 then
+    return least(v_current_hp, v_new_max_hp);
+  end if;
+
+  if v_current_hp >= v_old_max_hp then
+    return v_new_max_hp;
+  end if;
+
+  return least(v_new_max_hp, greatest(0, floor((v_current_hp::numeric / v_old_max_hp::numeric) * v_new_max_hp)::integer));
+end;
+$$;
+
 create or replace function public.apply_ancient_book_bonus(
   p_slack_user_id text,
   p_pokemon_id bigint,
@@ -104,7 +134,10 @@ begin
       magic = case when v_stat_key = 'magic' then up.magic + 1 else up.magic end,
       defense = case when v_stat_key = 'defense' then up.defense + 1 else up.defense end,
       hp = case when v_stat_key = 'hp' then up.hp + 1 else up.hp end,
-      current_hp = case when v_stat_key = 'hp' then least(up.hp + 1, greatest(coalesce(up.current_hp, up.hp), 0) + 1) else up.current_hp end,
+      current_hp = case
+        when v_stat_key = 'hp' then public.preserve_hp_ratio(coalesce(up.current_hp, up.hp), up.hp, up.hp + 1)
+        else up.current_hp
+      end,
       speed = case when v_stat_key = 'speed' then up.speed + 1 else up.speed end
   where up.id = p_pokemon_id
     and up.slack_user_id = p_slack_user_id;
@@ -261,7 +294,7 @@ begin
       attack = v_attack,
       magic = v_magic,
       defense = v_defense,
-      current_hp = least(v_final_hp, greatest(0, round((greatest(coalesce(current_hp, hp), 0)::numeric / greatest(hp, 1)::numeric) * v_final_hp)::integer)),
+      current_hp = public.preserve_hp_ratio(coalesce(current_hp, hp), hp, v_final_hp),
       hp = v_final_hp,
       speed = v_speed
   where id = p_pokemon_id
@@ -391,7 +424,7 @@ begin
       attack = v_attack + v_book_bonus_attack,
       magic = v_magic + v_book_bonus_magic,
       defense = v_defense + v_book_bonus_defense,
-      current_hp = v_hp + v_book_bonus_hp,
+      current_hp = public.preserve_hp_ratio(coalesce(current_hp, hp), hp, v_hp + v_book_bonus_hp),
       hp = v_hp + v_book_bonus_hp,
       speed = v_speed + v_book_bonus_speed
   where id = p_pokemon_id
@@ -540,7 +573,7 @@ begin
       attack = v_attack + v_book_bonus_attack,
       magic = v_magic + v_book_bonus_magic,
       defense = v_defense + v_book_bonus_defense,
-      current_hp = v_hp + v_book_bonus_hp,
+      current_hp = public.preserve_hp_ratio(coalesce(current_hp, hp), hp, v_hp + v_book_bonus_hp),
       hp = v_hp + v_book_bonus_hp,
       speed = v_speed + v_book_bonus_speed
   where id = p_pokemon_id
@@ -652,7 +685,7 @@ begin
       magic = v_magic + v_book_bonus_magic,
       defense = v_defense + v_book_bonus_defense,
       hp = v_hp + v_book_bonus_hp,
-      current_hp = least(greatest(coalesce(current_hp, 0), 0), v_hp + v_book_bonus_hp),
+      current_hp = public.preserve_hp_ratio(coalesce(current_hp, hp), hp, v_hp + v_book_bonus_hp),
       speed = v_speed + v_book_bonus_speed
   where id = p_pokemon_id
     and slack_user_id = p_slack_user_id;
