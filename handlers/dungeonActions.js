@@ -51,6 +51,11 @@ async function updateMessage(client, body, payload) {
   await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: payload.text, blocks: payload.blocks });
 }
 
+async function respondEphemeral(respond, text) {
+  if (!respond) return;
+  await respond({ response_type: 'ephemeral', text });
+}
+
 async function handleDungeonCommand({ event, say }) {
   logger.info('Entrada do comando !dungeon', {
     file: 'handlers/dungeonActions.js',
@@ -215,32 +220,34 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
 
   const battle = getDungeonBattle(channelId);
   if (!battle) {
-    return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('battle_not_found') }));
+    await respondEphemeral(respond, mapDungeonFailureReason('battle_not_found'));
+    return;
   }
 
   if (battle.status !== 'active') {
-    return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('battle_not_active') }));
+    await respondEphemeral(respond, mapDungeonFailureReason('battle_not_active'));
+    return;
   }
 
   const ownerUserId = getDungeonOwnerUserId(battle);
   if (ownerUserId !== actorUserId) {
-    if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_OWNER_ONLY_MESSAGE });
+    await respondEphemeral(respond, DUNGEON_OWNER_ONLY_MESSAGE);
     return;
   }
 
   if (actionName === 'defense') {
-    if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_DEFENSE_NOT_READY_MESSAGE });
+    await respondEphemeral(respond, DUNGEON_DEFENSE_NOT_READY_MESSAGE);
     return;
   }
 
   if (!Object.keys(DUNGEON_ACTION_MAP).includes(actionName) && actionName !== 'magic') {
-    if (respond) await respond({ response_type: 'ephemeral', text: mapDungeonFailureReason('unsupported_action') });
+    await respondEphemeral(respond, mapDungeonFailureReason('unsupported_action'));
     return;
   }
 
   if (actionName === 'magic') {
     if (isDungeonProcessing(channelId)) {
-      if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_ACTION_PROCESSING_MESSAGE });
+      await respondEphemeral(respond, DUNGEON_ACTION_PROCESSING_MESSAGE);
       return;
     }
     if (battle.currentTurnUserId !== actorUserId) {
@@ -252,8 +259,8 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
         sessionId: channelId,
         currentTurnUserId: battle.currentTurnUserId,
       });
-      if (respond) await respond({ response_type: 'ephemeral', text: '⏳ Aguarde: o turno automático do inimigo ainda está sendo resolvido.' });
-      return updateMessage(client, body, renderDungeonBattleState(battle));
+      await respondEphemeral(respond, '⏳ Aguarde: o turno automático do inimigo ainda está sendo resolvido.');
+      return;
     }
     return updateMessage(client, body, renderDungeonMagicOptions({
       battle,
@@ -266,11 +273,11 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
 
   if (!result.ok) {
     if (result.reason === 'not_dungeon_owner') {
-      if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_OWNER_ONLY_MESSAGE });
+      await respondEphemeral(respond, DUNGEON_OWNER_ONLY_MESSAGE);
       return;
     }
     if (result.reason === 'processing_in_progress') {
-      if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_ACTION_PROCESSING_MESSAGE });
+      await respondEphemeral(respond, DUNGEON_ACTION_PROCESSING_MESSAGE);
       return;
     }
     if (result.reason === 'not_actor_turn') {
@@ -283,8 +290,8 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
         currentTurnUserId: result.validation?.currentTurnUserId || result.battle?.currentTurnUserId || null,
         attemptedAction: actionName,
       });
-      if (respond) await respond({ response_type: 'ephemeral', text: '⏳ Ainda não é o seu turno. O inimigo age automaticamente quando for a vez dele.' });
-      if (result.battle) return updateMessage(client, body, renderDungeonBattleState(result.battle));
+      await respondEphemeral(respond, '⏳ Ainda não é o seu turno. O inimigo age automaticamente quando for a vez dele.');
+      return;
     }
     logger.warn('Falha controlada ao processar turno da dungeon', {
       file: 'handlers/dungeonActions.js',
@@ -294,7 +301,8 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
       sessionId: channelId,
       reason: result.reason,
     });
-    return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason(result.reason) }));
+    await respondEphemeral(respond, mapDungeonFailureReason(result.reason));
+    return;
   }
 
   if (result.completion) {
@@ -327,11 +335,11 @@ async function handleDungeonBattleMagicAction({ body, action, client, respond })
 
   if (!result.ok) {
     if (result.reason === 'not_dungeon_owner') {
-      if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_OWNER_ONLY_MESSAGE });
+      await respondEphemeral(respond, DUNGEON_OWNER_ONLY_MESSAGE);
       return;
     }
     if (result.reason === 'processing_in_progress') {
-      if (respond) await respond({ response_type: 'ephemeral', text: '⏳ Já estou processando sua ação anterior na dungeon.' });
+      await respondEphemeral(respond, DUNGEON_ACTION_PROCESSING_MESSAGE);
       return;
     }
     if (result.reason === 'not_actor_turn') {
@@ -344,10 +352,11 @@ async function handleDungeonBattleMagicAction({ body, action, client, respond })
         currentTurnUserId: result.validation?.currentTurnUserId || result.battle?.currentTurnUserId || null,
         magicSlot: payload.magicSlot,
       });
-      if (respond) await respond({ response_type: 'ephemeral', text: '⏳ Ainda não é o seu turno para usar magia.' });
-      if (result.battle) return updateMessage(client, body, renderDungeonBattleState(result.battle));
+      await respondEphemeral(respond, '⏳ Ainda não é o seu turno para usar magia.');
+      return;
     }
-    return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason(result.reason) }));
+    await respondEphemeral(respond, mapDungeonFailureReason(result.reason));
+    return;
   }
 
   if (result.completion) {
@@ -371,10 +380,11 @@ async function handleDungeonBattleMagicCancelAction({ body, action, client, resp
   });
 
   if (!battle) {
-    return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('battle_not_found') }));
+    await respondEphemeral(respond, mapDungeonFailureReason('battle_not_found'));
+    return;
   }
   if (getDungeonOwnerUserId(battle) !== actorUserId) {
-    if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_OWNER_ONLY_MESSAGE });
+    await respondEphemeral(respond, DUNGEON_OWNER_ONLY_MESSAGE);
     return;
   }
 

@@ -157,3 +157,49 @@ test('clique de outro player na dungeon é no-op completo', async () => {
   assert.equal(updates.length, 0);
   assert.deepEqual(responds, [{ response_type: 'ephemeral', text: 'Você não pode interagir na dungeon de outro jogador' }]);
 });
+
+test('ação fora do turno responde ephemeral e não sobrescreve mensagem principal', async () => {
+  const handlers = loadDungeonActions({
+    getDungeonBattleImpl: () => ({ status: 'active', metadata: { slackUserId: 'U1' }, currentTurnUserId: 'ENEMY' }),
+    getDungeonOwnerUserIdImpl: () => 'U1',
+    processDungeonTurnImpl: async () => ({
+      ok: false,
+      reason: 'not_actor_turn',
+      validation: { currentTurnUserId: 'ENEMY' },
+      battle: { status: 'active', currentTurnUserId: 'ENEMY' },
+    }),
+  });
+
+  const responds = [];
+  const updates = [];
+
+  await handlers.handleDungeonBattleTurnAction({
+    body: { user: { id: 'U1' }, channel: { id: 'C1' }, message: { ts: '123.456' } },
+    action: { value: JSON.stringify({ action: 'attack', channelId: 'dungeon:U1', slackUserId: 'U1' }) },
+    respond: async (payload) => { responds.push(payload); },
+    client: { chat: { update: async (payload) => updates.push(payload) } },
+  });
+
+  assert.equal(updates.length, 0);
+  assert.deepEqual(responds, [{ response_type: 'ephemeral', text: '⏳ Ainda não é o seu turno. O inimigo age automaticamente quando for a vez dele.' }]);
+});
+
+test('sessão de dungeon inexistente responde ephemeral sem atualizar blocks', async () => {
+  const handlers = loadDungeonActions({
+    getDungeonBattleImpl: () => null,
+    getDungeonOwnerUserIdImpl: () => 'U1',
+  });
+
+  const responds = [];
+  const updates = [];
+
+  await handlers.handleDungeonBattleTurnAction({
+    body: { user: { id: 'U1' }, channel: { id: 'C1' }, message: { ts: '123.456' } },
+    action: { value: JSON.stringify({ action: 'attack', channelId: 'dungeon:U1', slackUserId: 'U1' }) },
+    respond: async (payload) => { responds.push(payload); },
+    client: { chat: { update: async (payload) => updates.push(payload) } },
+  });
+
+  assert.equal(updates.length, 0);
+  assert.deepEqual(responds, [{ response_type: 'ephemeral', text: 'battle_not_found' }]);
+});
