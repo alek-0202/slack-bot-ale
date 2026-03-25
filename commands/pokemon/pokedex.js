@@ -1,9 +1,12 @@
 const { getUser } = require("../../services/userService");
 const { getPokedexView, buildPokedexMessage } = require("../../services/pokedexViewService");
+const { createLogger } = require("../../utils/logger");
+
+const logger = createLogger("command:pokedex");
 
 module.exports = {
   name: "pokedex",
-  async execute({ event, say }) {
+  async execute({ app, event, say }) {
     try {
       const user = await getUser(event.user);
       if (!user) {
@@ -12,16 +15,23 @@ module.exports = {
       }
 
       const view = await getPokedexView(event.user, 0);
-      const message = buildPokedexMessage({
+      const message = await buildPokedexMessage({
         slackUserId: event.user,
         entry: view.entry,
         index: view.index,
         total: view.total,
+        mode: "pokedex",
+        slackClient: app?.client || null,
+        channelId: event.channel,
+        commandName: "pokedex",
       });
 
       await say(message);
     } catch (error) {
-      console.error("Erro no !pokedex:", error.message || error);
+      logger.error("Falha ao renderizar mensagem !pokedex", {
+        command: "pokedex",
+        error,
+      });
       await say("Não consegui abrir sua Pokédex agora 😵");
     }
   },

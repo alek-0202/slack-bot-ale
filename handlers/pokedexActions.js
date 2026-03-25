@@ -35,12 +35,15 @@ function registerPokedexActions(app) {
       }
 
       const view = await getPokedexView(ownerSlackUserId, index);
-      const message = buildPokedexMessage({
+      const message = await buildPokedexMessage({
         slackUserId: ownerSlackUserId,
         entry: view.entry,
         index: view.index,
         total: view.total,
         mode,
+        slackClient: client,
+        channelId: body.channel.id,
+        commandName: mode,
       });
 
       await client.chat.update({

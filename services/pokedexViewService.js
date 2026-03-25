@@ -1,12 +1,18 @@
 const { calculatePokemonSellPrice } = require("./sellService");
 const { getUserPokemons, buildPokedexDisplayEntries } = require("./pokemonService");
 const { buildPokemonTypesLabel } = require("./pokemonTypeService");
-const { buildPokemonVisualBlocks, buildPokemonVisualSummary } = require("../adapters/slack/renderers/pokemonVisualBlocks");
+const {
+  buildPokemonVisualBlocks,
+  buildPokemonVisualSummary,
+  summarizeImageReference,
+} = require("../adapters/slack/renderers/pokemonVisualBlocks");
+const { createLogger } = require("../utils/logger");
 
 const POKEDEX_NAV_PREV_ACTION_ID = "pokedex_navigate_prev";
 const POKEDEX_NAV_NEXT_ACTION_ID = "pokedex_navigate_next";
 const PA_NAV_PREV_ACTION_ID = "pa_navigate_prev";
 const PA_NAV_NEXT_ACTION_ID = "pa_navigate_next";
+const logger = createLogger("service:pokedex-view");
 
 function createNavValue({ ownerSlackUserId, index, mode = "pokedex" }) {
   return JSON.stringify({ ownerSlackUserId, index, mode });
@@ -58,7 +64,16 @@ async function getPokedexView(slackUserId, rawIndex) {
   };
 }
 
-function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex" }) {
+async function buildPokedexMessage({
+  slackUserId,
+  entry,
+  index,
+  total,
+  mode = "pokedex",
+  slackClient = null,
+  channelId = null,
+  commandName = null,
+}) {
   const isAttributesMode = mode === "pa";
   const prevActionId = isAttributesMode ? PA_NAV_PREV_ACTION_ID : POKEDEX_NAV_PREV_ACTION_ID;
   const nextActionId = isAttributesMode ? PA_NAV_NEXT_ACTION_ID : POKEDEX_NAV_NEXT_ACTION_ID;
@@ -106,7 +121,31 @@ function buildPokedexMessage({ slackUserId, entry, index, total, mode = "pokedex
     `${entry.grouped ? "📦 Grupo: *instâncias equivalentes (Lv 1)*\n" : ""}` +
     `🎯 Captura #${entry.id}${shinyTag}${attributesText}`;
 
-  const visualBlocks = buildPokemonVisualBlocks({ species, level: entry.level, shiny: entry.shiny });
+  const visualBlocks = await buildPokemonVisualBlocks({
+    species,
+    level: entry.level,
+    shiny: entry.shiny,
+    slackClient,
+    channelId,
+    commandName: commandName || mode,
+  });
+  logger.info("Mensagem de Pokédex montada com bloco visual", {
+    commandMode: mode,
+    commandName: commandName || mode,
+    channelId,
+    builder: "buildPokedexMessage",
+    speciesName: species.name,
+    speciesId: species.id,
+    pokemonId: entry.id,
+    level: entry.level,
+    shiny: Boolean(entry.shiny),
+    hasAccessory: Boolean(visualBlocks.accessory),
+    accessoryType: visualBlocks.accessory?.image_url ? "image_url" : "none",
+    accessoryImage: summarizeImageReference(visualBlocks.accessory?.image_url),
+    accessoryImageUrlLength: visualBlocks.accessory?.image_url?.length || 0,
+    visualBlocksCount: visualBlocks.blocks.length,
+  });
+
   const section = {
     type: "section",
     text: {
