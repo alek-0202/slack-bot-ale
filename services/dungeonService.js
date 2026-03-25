@@ -869,6 +869,9 @@ async function finalizeDungeonBattle(battle) {
 async function processDungeonTurn({ channelId, actorUserId, actionType, actionPayload = {} }) {
   const battle = getDungeonBattle(channelId);
   if (!battle) return { ok: false, reason: 'battle_not_found' };
+  if (actionType === BATTLE_ACTION.DEFENSE) {
+    return { ok: false, reason: 'defense_not_available', battle };
+  }
   const ownerUserId = getDungeonOwnerUserId(battle);
   if (ownerUserId !== actorUserId) {
     return { ok: false, reason: 'not_dungeon_owner', battle, ownerUserId };
