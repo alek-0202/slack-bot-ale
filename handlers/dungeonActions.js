@@ -33,6 +33,12 @@ const {
 
 const logger = createLogger('handler:dungeon-actions');
 const DUNGEON_OWNER_ONLY_MESSAGE = 'Você não pode interagir na dungeon de outro jogador';
+const DUNGEON_DEFENSE_NOT_READY_MESSAGE = 'Defesa ainda está em desenvolvimento.';
+const DUNGEON_ACTION_PROCESSING_MESSAGE = '⏳ Já estou processando sua ação anterior na dungeon.';
+const DUNGEON_ACTION_MAP = {
+  attack: BATTLE_ACTION.ATTACK,
+  potion: BATTLE_ACTION.POTION,
+};
 
 const DUNGEON_SELECT_POKEMON_ACTION_PATTERN = new RegExp(`^${DUNGEON_SELECT_POKEMON_ACTION_ID}_.+$`);
 const DUNGEON_SELECT_MODE_ACTION_PATTERN = new RegExp(`^${DUNGEON_SELECT_MODE_ACTION_ID}_.+$`);
@@ -195,6 +201,7 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
   const actorUserId = body.user?.id;
   const actionName = String(payload.action || '').toLowerCase();
   const channelId = payload.channelId;
+  const payloadOwnerUserId = payload.slackUserId;
 
   logger.info('Ação de turno da dungeon recebida', {
     file: 'handlers/dungeonActions.js',
@@ -202,24 +209,38 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
     actionId: action?.action_id,
     slackUserId: actorUserId,
     sessionId: channelId,
+    payloadOwnerUserId,
     actionName,
   });
 
+  const battle = getDungeonBattle(channelId);
+  if (!battle) {
+    return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('battle_not_found') }));
+  }
+
+  if (battle.status !== 'active') {
+    return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('battle_not_active') }));
+  }
+
+  const ownerUserId = getDungeonOwnerUserId(battle);
+  if (ownerUserId !== actorUserId) {
+    if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_OWNER_ONLY_MESSAGE });
+    return;
+  }
+
+  if (actionName === 'defense') {
+    if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_DEFENSE_NOT_READY_MESSAGE });
+    return;
+  }
+
+  if (!Object.keys(DUNGEON_ACTION_MAP).includes(actionName) && actionName !== 'magic') {
+    if (respond) await respond({ response_type: 'ephemeral', text: mapDungeonFailureReason('unsupported_action') });
+    return;
+  }
+
   if (actionName === 'magic') {
-    const battle = getDungeonBattle(channelId);
-    if (!battle) {
-      return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('battle_not_found') }));
-    }
-    const ownerUserId = getDungeonOwnerUserId(battle);
-    if (ownerUserId !== actorUserId) {
-      if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_OWNER_ONLY_MESSAGE });
-      return;
-    }
-    if (battle.status !== 'active') {
-      return updateMessage(client, body, renderDungeonError({ slackUserId: actorUserId, text: mapDungeonFailureReason('battle_not_active') }));
-    }
     if (isDungeonProcessing(channelId)) {
-      if (respond) await respond({ response_type: 'ephemeral', text: '⏳ Já estou processando sua ação anterior na dungeon.' });
+      if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_ACTION_PROCESSING_MESSAGE });
       return;
     }
     if (battle.currentTurnUserId !== actorUserId) {
@@ -241,12 +262,7 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
     }));
   }
 
-  const actionTypeMap = {
-    attack: BATTLE_ACTION.ATTACK,
-    potion: BATTLE_ACTION.POTION,
-    defense: BATTLE_ACTION.DEFENSE,
-  };
-  const result = await processDungeonTurn({ channelId, actorUserId, actionType: actionTypeMap[actionName] });
+  const result = await processDungeonTurn({ channelId, actorUserId, actionType: DUNGEON_ACTION_MAP[actionName] });
 
   if (!result.ok) {
     if (result.reason === 'not_dungeon_owner') {
@@ -254,7 +270,7 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
       return;
     }
     if (result.reason === 'processing_in_progress') {
-      if (respond) await respond({ response_type: 'ephemeral', text: '⏳ Já estou processando sua ação anterior na dungeon.' });
+      if (respond) await respond({ response_type: 'ephemeral', text: DUNGEON_ACTION_PROCESSING_MESSAGE });
       return;
     }
     if (result.reason === 'not_actor_turn') {
