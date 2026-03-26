@@ -123,8 +123,63 @@ function buildDeterministicFileName({ species = {}, level = 1, shiny = false }) 
 }
 
 function getRenderedImagePublicBaseUrl() {
-  const raw = process.env.RENDERED_IMAGE_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL || "";
-  return raw.trim().replace(/\/+$/, "");
+  const fromRenderedImagePublic = (process.env.RENDERED_IMAGE_PUBLIC_BASE_URL || "").trim();
+  if (fromRenderedImagePublic) {
+    return {
+      value: fromRenderedImagePublic.replace(/\/+$/, ""),
+      source: "RENDERED_IMAGE_PUBLIC_BASE_URL",
+    };
+  }
+
+  const fromPublicBase = (process.env.PUBLIC_BASE_URL || "").trim();
+  if (fromPublicBase) {
+    return {
+      value: fromPublicBase.replace(/\/+$/, ""),
+      source: "PUBLIC_BASE_URL",
+    };
+  }
+
+  return {
+    value: "",
+    source: "none",
+  };
+}
+
+function summarizePublicBaseUrl(baseUrl) {
+  if (!baseUrl) {
+    return {
+      configured: false,
+      host: null,
+      port: null,
+      protocol: null,
+      looksLocalOnly: null,
+      usesContainerPort3000: null,
+    };
+  }
+
+  try {
+    const parsed = new URL(baseUrl);
+    const explicitPort = parsed.port ? Number(parsed.port) : parsed.protocol === "https:" ? 443 : 80;
+    const hostname = parsed.hostname || "";
+    return {
+      configured: true,
+      host: hostname,
+      port: explicitPort,
+      protocol: parsed.protocol,
+      looksLocalOnly: hostname === "localhost" || hostname === "127.0.0.1",
+      usesContainerPort3000: explicitPort === 3000,
+    };
+  } catch {
+    return {
+      configured: true,
+      host: null,
+      port: null,
+      protocol: null,
+      looksLocalOnly: null,
+      usesContainerPort3000: null,
+      invalidUrl: true,
+    };
+  }
 }
 
 function publishRenderedImageUrl({ pngBuffer, commandName = "unknown", species = {}, level = 1, shiny = false }) {
@@ -138,17 +193,15 @@ function publishRenderedImageUrl({ pngBuffer, commandName = "unknown", species =
   }
 
   try {
-    const baseUrl = getRenderedImagePublicBaseUrl();
+    const resolvedBaseUrl = getRenderedImagePublicBaseUrl();
+    const baseUrl = resolvedBaseUrl.value;
     if (!baseUrl) {
       logger.warn("URL pública base indisponível para publicar render em camadas", {
         commandName,
         speciesName: species.name,
         level,
         shiny,
-        envKeys: {
-          renderedImagePublicBaseUrl: Boolean(process.env.RENDERED_IMAGE_PUBLIC_BASE_URL),
-          publicBaseUrl: Boolean(process.env.PUBLIC_BASE_URL),
-        },
+        baseUrlSource: resolvedBaseUrl.source,
       });
       return {
         ok: false,
@@ -162,6 +215,19 @@ function publishRenderedImageUrl({ pngBuffer, commandName = "unknown", species =
     const imageId = saveRenderedImage({ buffer: pngBuffer, mimeType: "image/png" });
     const imageUrl = imageId ? `${baseUrl}${RENDERED_IMAGE_PATH_PREFIX}${imageId}` : null;
     const imageUrlLength = typeof imageUrl === "string" ? imageUrl.length : 0;
+    const baseUrlSummary = summarizePublicBaseUrl(baseUrl);
+
+    if (baseUrlSummary.looksLocalOnly || baseUrlSummary.usesContainerPort3000) {
+      logger.warn("Base URL pública pode não ser alcançável pelo Slack", {
+        commandName,
+        speciesName: species.name,
+        level,
+        shiny,
+        baseUrl,
+        baseUrlSource: resolvedBaseUrl.source,
+        baseUrlSummary,
+      });
+    }
 
     logger.info("Render em camadas publicado em URL pública", {
       commandName,
@@ -170,6 +236,10 @@ function publishRenderedImageUrl({ pngBuffer, commandName = "unknown", species =
       shiny,
       renderedFilename: filename,
       imageBufferSize: pngBuffer.length,
+      imageId,
+      baseUrl,
+      baseUrlSource: resolvedBaseUrl.source,
+      baseUrlSummary,
       imagePublicUrl: imageUrl,
       imageUrlLength,
     });
@@ -268,6 +338,7 @@ async function buildAccessoryImage({
       level,
       shiny,
       reason: layeredRender.reason,
+      metadata: layeredRender.metadata || {},
     });
   }
 
