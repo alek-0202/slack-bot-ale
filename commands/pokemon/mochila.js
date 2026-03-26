@@ -1,10 +1,16 @@
 const { getUserItems } = require('../../services/inventoryService');
+const { getUser } = require('../../services/userService');
 
-function buildMochilaPayload(slackUserId, items) {
+function buildMochilaPayload(slackUserId, items, pokemonEssence = '0') {
+  const essenceLabel = Number(pokemonEssence || 0).toLocaleString('pt-BR');
   const text = [
     `🎒 *Mochila de <@${slackUserId}>*`,
     '',
-    ...items.map((item) => `• *${item.item_name}* x${item.quantity}${item.description ? ` — ${item.description}` : ''}`),
+    `🧪 *Essência Pokémon:* x${essenceLabel}`,
+    '',
+    ...(items.length
+      ? items.map((item) => `• *${item.item_name}* x${item.quantity}${item.description ? ` — ${item.description}` : ''}`)
+      : ['• Sem itens no momento.']),
   ].join('\n');
 
   return { text, blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] };
@@ -14,11 +20,7 @@ module.exports = {
   name: 'mochila',
   buildMochilaPayload,
   async execute({ event, say }) {
-    const items = await getUserItems(event.user);
-    if (!items.length) {
-      await say('🎒 Sua mochila está vazia no momento.');
-      return;
-    }
-    await say(buildMochilaPayload(event.user, items));
+    const [items, user] = await Promise.all([getUserItems(event.user), getUser(event.user)]);
+    await say(buildMochilaPayload(event.user, items, user?.pokemonEssence || '0'));
   },
 };
