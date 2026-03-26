@@ -85,6 +85,8 @@ begin
 end;
 $$;
 
+drop function if exists public.sell_user_pokemon(text, bigint);
+
 create or replace function public.sell_user_pokemon(
   p_slack_user_id text,
   p_pokemon_id bigint
@@ -162,6 +164,8 @@ begin
   return query select true, null::text, v_sale_price, v_essence, remaining_gold, remaining_essence, v_trade_items, v_market_purchases;
 end;
 $$;
+
+drop function if exists public.sell_user_pokemons_batch(text, bigint[], bigint);
 
 create or replace function public.sell_user_pokemons_batch(
   p_slack_user_id text,
