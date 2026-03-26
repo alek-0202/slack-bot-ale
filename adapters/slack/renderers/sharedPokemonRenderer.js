@@ -60,11 +60,27 @@ function renderSlackCaptureResult({ slackUserId, result }) {
     };
   }
 
-  const shinyTag = result.shiny ? '✨ SHINY!' : '';
+  const shinyTag = result.shiny ? `✨ SHINY${result.captured?.shiny_type ? ` (${result.captured.shiny_type})` : ''}!` : '';
+  const statLines = [
+    ['ATK', 'base_attack', 'attack_iv'],
+    ['DEF', 'base_defense', 'defense_iv'],
+    ['MAG', 'base_magic', 'magic_iv'],
+    ['HP', 'base_hp', 'hp_iv'],
+    ['SPD', 'base_speed', 'speed_iv'],
+  ]
+    .map(([label, baseKey, ivKey]) => {
+      const baseValue = Number(result.species?.[baseKey]);
+      const ivValue = Number(result.captured?.[ivKey] || 0);
+      if (!Number.isFinite(baseValue)) return null;
+      const sign = ivValue >= 0 ? '+' : '';
+      return `• ${label}: ${baseValue} (${sign}${ivValue})`;
+    })
+    .filter(Boolean);
   const text =
     `🎉 <@${slackUserId}> capturou *${result.species.name}* ${shinyTag}\n` +
     `⭐ Raridade: *${result.species.rarity}* | Lv ${result.captured.level}${buildPokemonTypesLabel(result.species.element_types) ? `\n🧪 ${buildPokemonTypesLabel(result.species.element_types)}` : ""}\n` +
     `🆔 ID da captura: *${result.captured.id}*\n` +
+    `${statLines.length ? `📊 Base + IV\n${statLines.join('\n')}\n` : ''}` +
     `💰 Recompensa: +${result.goldReward} gold\n` +
     `✨ XP da conta: +${result.accountXpReward || 0}`;
 

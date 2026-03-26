@@ -17,8 +17,48 @@ const logger = createLogger("pokemon-stats-service");
 const SPECIES_STAT_FIELDS = ["base_attack", "base_magic", "base_defense", "base_hp", "base_speed"];
 const MIN_EVOLUTION_GROWTH = 1.35;
 
+const IV_STAT_RANGES = Object.freeze({
+  attack: { min: -6, max: 12 },
+  defense: { min: -6, max: 12 },
+  magic: { min: -8, max: 18 },
+  hp: { min: -10, max: 20 },
+  speed: { min: -5, max: 15 },
+});
+const SHINY_TYPE = Object.freeze({
+  PRIME: "prime",
+  NORMAL: "normal",
+});
+const SHINY_MULTIPLIER = 1.15;
+const SHINY_PRIME_BONUS = 10;
+const LEGENDARY_BASE_BONUS = 15;
+
 function hasCompleteBaseStats(species = {}) {
   return SPECIES_STAT_FIELDS.every((field) => toPositiveInteger(species[field], 0) > 0);
+}
+
+function randomIntInclusive(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function rollPokemonIvOffsets({ shiny = false, shinyType = null } = {}) {
+  const isPrime = shiny && shinyType === SHINY_TYPE.PRIME;
+  return {
+    attack_iv: isPrime ? IV_STAT_RANGES.attack.max : randomIntInclusive(IV_STAT_RANGES.attack.min, IV_STAT_RANGES.attack.max),
+    defense_iv: isPrime ? IV_STAT_RANGES.defense.max : randomIntInclusive(IV_STAT_RANGES.defense.min, IV_STAT_RANGES.defense.max),
+    magic_iv: isPrime ? IV_STAT_RANGES.magic.max : randomIntInclusive(IV_STAT_RANGES.magic.min, IV_STAT_RANGES.magic.max),
+    hp_iv: isPrime ? IV_STAT_RANGES.hp.max : randomIntInclusive(IV_STAT_RANGES.hp.min, IV_STAT_RANGES.hp.max),
+    speed_iv: isPrime ? IV_STAT_RANGES.speed.max : randomIntInclusive(IV_STAT_RANGES.speed.min, IV_STAT_RANGES.speed.max),
+  };
+}
+
+function normalizeIvOffsets(offsets = {}) {
+  return {
+    attack: Number(offsets.attack_iv ?? offsets.attack ?? 0) || 0,
+    magic: Number(offsets.magic_iv ?? offsets.magic ?? 0) || 0,
+    defense: Number(offsets.defense_iv ?? offsets.defense ?? 0) || 0,
+    hp: Number(offsets.hp_iv ?? offsets.hp ?? 0) || 0,
+    speed: Number(offsets.speed_iv ?? offsets.speed ?? 0) || 0,
+  };
 }
 
 function getSpeciesBaseStats(species = {}, options = {}) {
@@ -39,6 +79,12 @@ function getSpeciesBaseStats(species = {}, options = {}) {
     speed: toPositiveInteger(species.base_speed, safeFallback.speed),
   };
 
+  if (["legendary", "mythical"].includes(String(species.rarity || "").toLowerCase())) {
+    for (const key of Object.keys(baseStats)) {
+      baseStats[key] += LEGENDARY_BASE_BONUS;
+    }
+  }
+
   if (!hasCompleteBaseStats(species)) {
     logger.warn("Espécie sem base stats completos; usando fallback seguro", {
       speciesId: species.id || null,
@@ -48,6 +94,19 @@ function getSpeciesBaseStats(species = {}, options = {}) {
   }
 
   return baseStats;
+}
+
+function applyIvAndShinyModifiers({ baseStats = {}, ivOffsets = {}, shiny = false, shinyType = null } = {}) {
+  const normalizedOffsets = normalizeIvOffsets(ivOffsets);
+  const isPrime = shiny && shinyType === SHINY_TYPE.PRIME;
+
+  return STAT_FIELDS.reduce((acc, statKey) => {
+    let value = Math.max(1, Number(baseStats[statKey] || 0) + Number(normalizedOffsets[statKey] || 0));
+    if (shiny) value = Math.round(value * SHINY_MULTIPLIER);
+    if (isPrime) value += SHINY_PRIME_BONUS;
+    acc[statKey] = Math.max(1, Math.round(value));
+    return acc;
+  }, {});
 }
 
 function getLevelStatMultiplier(level = 1) {
@@ -60,7 +119,7 @@ function getLevelStatMultiplier(level = 1) {
   return result.stats.attack / 100;
 }
 
-function calculatePokemonStats({ species = {}, level = 1, fallbackStats = {}, log = false, context = {} } = {}) {
+function calculatePokemonStats({ species = {}, level = 1, fallbackStats = {}, ivOffsets = {}, shiny = false, shinyType = null, log = false, context = {} } = {}) {
   const baseStats = getSpeciesBaseStats(species, { fallbackStats });
   const progression = calculateProgressedStats({
     baseStats,
@@ -73,12 +132,17 @@ function calculatePokemonStats({ species = {}, level = 1, fallbackStats = {}, lo
     },
   });
 
-  return progression.stats;
+  return applyIvAndShinyModifiers({
+    baseStats: progression.stats,
+    ivOffsets,
+    shiny,
+    shinyType,
+  });
 }
 
-function getPokemonProgressionSnapshot({ species = {}, level = 1, fallbackStats = {}, log = false, context = {} } = {}) {
+function getPokemonProgressionSnapshot({ species = {}, level = 1, fallbackStats = {}, ivOffsets = {}, shiny = false, shinyType = null, log = false, context = {} } = {}) {
   const baseStats = getSpeciesBaseStats(species, { fallbackStats });
-  return calculateProgressedStats({
+  const progression = calculateProgressedStats({
     baseStats,
     level,
     log,
@@ -88,6 +152,16 @@ function getPokemonProgressionSnapshot({ species = {}, level = 1, fallbackStats 
       ...context,
     },
   });
+
+  return {
+    ...progression,
+    stats: applyIvAndShinyModifiers({
+      baseStats: progression.stats,
+      ivOffsets,
+      shiny,
+      shinyType,
+    }),
+  };
 }
 
 function getStatSnapshotMetadata({ species = {}, level = 1, previousSpeciesId = null } = {}) {
@@ -109,7 +183,15 @@ module.exports = {
   MILESTONE_GROWTH_RATES,
   LEVEL_FIFTY_FLAT_BONUS,
   MIN_EVOLUTION_GROWTH,
+  IV_STAT_RANGES,
+  SHINY_TYPE,
+  SHINY_MULTIPLIER,
+  SHINY_PRIME_BONUS,
+  LEGENDARY_BASE_BONUS,
   hasCompleteBaseStats,
+  rollPokemonIvOffsets,
+  normalizeIvOffsets,
+  applyIvAndShinyModifiers,
   getLevelStatMultiplier,
   getSpeciesBaseStats,
   getPokemonStars,

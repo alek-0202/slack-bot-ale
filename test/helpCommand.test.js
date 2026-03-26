@@ -29,6 +29,10 @@ test("!help pokemon concentra comandos Pokémon e magicregister", async () => {
   assert.match(text, /!up <pokemon_id> <nível>/);
   assert.match(text, /!evolve <pokemon_id>/);
   assert.match(text, /!pokeid <id>/);
+  assert.match(text, /!c/);
+  assert.match(text, /!tshiny <id_origem> <id_destino>/);
+  assert.match(text, /Essência Pokémon/);
+  assert.match(text, /Botão Stats/);
   assert.match(text, /!pokeplayer @player <nomepokemon>/);
   assert.match(text, /!magicregister <pokeid>/);
   assert.match(text, /!healstation/);

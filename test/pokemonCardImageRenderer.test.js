@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const { buildPokemonLayeredImageUrl } = require('../adapters/slack/renderers/pokemonCardImageRenderer');
 
-test('buildPokemonLayeredImageUrl inclui aura roxa para nível 50', () => {
+test('buildPokemonLayeredImageUrl não usa mais roxo por nível 50 sem shiny', () => {
   const url = buildPokemonLayeredImageUrl({
     spriteUrl: 'https://example.com/mew.png',
     level: 50,
@@ -12,12 +12,12 @@ test('buildPokemonLayeredImageUrl inclui aura roxa para nível 50', () => {
   });
 
   const svg = decodeURIComponent(url || '');
-  assert.match(svg, /#8A2BE2/);
-  assert.match(svg, /opacity="0\.22"/);
+  assert.doesNotMatch(svg, /#8A2BE2/);
+  assert.match(svg, /opacity="0"/);
   assert.match(svg, /frameGradient/);
 });
 
-test('buildPokemonLayeredImageUrl inclui sparkles para shiny sem overlay branco', () => {
+test('buildPokemonLayeredImageUrl usa fundo roxo para shiny sem sparkles legados', () => {
   const url = buildPokemonLayeredImageUrl({
     spriteUrl: 'https://example.com/pikachu.png',
     level: 40,
@@ -26,7 +26,7 @@ test('buildPokemonLayeredImageUrl inclui sparkles para shiny sem overlay branco'
   });
 
   const svg = decodeURIComponent(url || '');
-  assert.match(svg, /sparkleGlow/);
-  assert.doesNotMatch(svg, /fill="#FFFFFF" opacity="0\.8"/);
+  assert.match(svg, /#8A2BE2/);
+  assert.doesNotMatch(svg, /sparkleGlow/);
   assert.match(svg, /feDropShadow dx="0" dy="3"/);
 });

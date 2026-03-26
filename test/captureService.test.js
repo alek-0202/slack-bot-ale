@@ -18,6 +18,7 @@ function loadCaptureService({
   getAllSpeciesImpl,
   insertUserPokemonImpl,
   calculatePokemonStatsImpl,
+  rollPokemonIvOffsetsImpl,
   getGoldValueByRarityAndLevelImpl,
 }) {
   [
@@ -64,7 +65,7 @@ function loadCaptureService({
     id: statsServicePath,
     filename: statsServicePath,
     loaded: true,
-    exports: { calculatePokemonStats: calculatePokemonStatsImpl },
+    exports: { calculatePokemonStats: calculatePokemonStatsImpl, rollPokemonIvOffsets: rollPokemonIvOffsetsImpl || (() => ({ attack_iv: 0, magic_iv: 0, defense_iv: 0, hp_iv: 0, speed_iv: 0 })), SHINY_TYPE: { PRIME: 'prime', NORMAL: 'normal' } },
   };
   require.cache[economyServicePath] = {
     id: economyServicePath,
@@ -134,6 +135,7 @@ test('capturePokemon conclui captura com retorno mínimo do insertUserPokemon', 
     getAllSpeciesImpl: async () => [selectedSpecies],
     insertUserPokemonImpl: async (payload) => ({ id: 77, species_id: payload.speciesId, level: payload.level, shiny: payload.shiny, source: payload.source }),
     calculatePokemonStatsImpl: () => ({ attack: 15, defense: 10, hp: 20, speed: 30 }),
+    rollPokemonIvOffsetsImpl: () => ({ attack_iv: 0, magic_iv: 0, defense_iv: 0, hp_iv: 0, speed_iv: 0 }),
     getGoldValueByRarityAndLevelImpl: () => 250,
   });
 

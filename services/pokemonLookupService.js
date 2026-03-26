@@ -17,7 +17,7 @@ async function getOwnedPokemonById(pokemonId) {
   const { data, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, slack_user_id, species_id, level, shiny, attack, magic, defense, hp, current_hp, speed, captured_at, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, pokemon_species(id, name, rarity, sprite_url, evolves_to, evolution_stage, element_types)",
+      "id, slack_user_id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, captured_at, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, pokemon_species(id, name, rarity, sprite_url, evolves_to, evolution_stage, element_types)",
     )
     .eq("id", pokemonId)
     .maybeSingle();
@@ -31,7 +31,7 @@ async function findUserPokemonsBySpeciesName({ slackUserId, speciesName }) {
   const { data, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, slack_user_id, species_id, level, shiny, attack, magic, defense, hp, current_hp, speed, captured_at, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, pokemon_species!inner(id, name, rarity, sprite_url)",
+      "id, slack_user_id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, captured_at, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, pokemon_species!inner(id, name, rarity, sprite_url)",
     )
     .eq("slack_user_id", slackUserId)
     .ilike("pokemon_species.name", speciesName)

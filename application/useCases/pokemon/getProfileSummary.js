@@ -44,6 +44,7 @@ async function getProfileSummary({ userId, createIfMissing = false }) {
       energyMax: energy.maxEnergy,
       energyNextIn: formatTimeToNextEnergy(energy.msToNextEnergy),
       pokeballCQty,
+      pokemonEssence: user.pokemonEssence || "0",
       captureCooldownRemainingMs,
       captureCooldownText: captureCooldownRemainingMs > 0 ? formatRemaining(captureCooldownRemainingMs) : 'pronto',
     },

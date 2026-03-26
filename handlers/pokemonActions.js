@@ -2,6 +2,21 @@ const { createLogger } = require("../utils/logger");
 const { getUserItems } = require('../services/inventoryService');
 const { PROFILE_OPEN_BAG_ACTION_ID } = require('../adapters/slack/renderers/sharedPokemonRenderer');
 const { buildMochilaPayload } = require('../commands/pokemon/mochila');
+const { POKEID_OPEN_STATS_ACTION_ID } = require('../commands/pokemon/pokeid');
+const {
+  TSHINY_CONFIRM_ACTION_ID,
+  TSHINY_CANCEL_ACTION_ID,
+  buildTshinyResultMessage,
+} = require('../commands/pokemon/tshiny');
+const { getOwnedPokemonById } = require('../services/pokemonLookupService');
+const {
+  upgradePokemonExtraStat,
+  transferShiny,
+  parseActionValue,
+  EXTRA_STAT_CONFIG,
+  EXTRA_STAT_UPGRADE_GOLD_COST,
+  EXTRA_STAT_UPGRADE_ESSENCE_COST,
+} = require('../services/pokemonEnhancementService');
 const {
   EVOLVE_CONFIRM_ACTION_ID,
   EVOLVE_CANCEL_ACTION_ID,
@@ -22,6 +37,54 @@ const {
 
 const logger = createLogger("handler:pokemon-actions");
 const APPLY_ITEM_ACTION_PATTERN = new RegExp(`^${APPLY_ITEM_ACTION_ID}(?:_.+)?$`);
+const POKEID_BACK_ACTION_ID = "pokeid_back_main";
+const POKEID_UPGRADE_ACTION_IDS = [
+  "pokeid_upgrade_extra_crit",
+  "pokeid_upgrade_extra_dodge",
+  "pokeid_upgrade_extra_elemental",
+];
+const POKEID_UPGRADE_ACTION_PATTERN = /^pokeid_upgrade_extra_(crit|dodge|elemental)$/;
+
+function pct(value) {
+  return `${Number(value || 0).toFixed(1)}%`;
+}
+
+function buildPokeidStatsBlocks({ pokemon }) {
+  const critLevel = Number(pokemon.crit_level || 0);
+  const dodgeLevel = Number(pokemon.dodge_level || 0);
+  const elementalLevel = Number(pokemon.elemental_level || 0);
+  const mk = (label, level, perPoint, cap) => `• *${label}:* Lv ${level}/10 — ${pct(level * perPoint)} / ${pct(cap)}`;
+  return [
+    { type: 'header', text: { type: 'plain_text', text: '📊 Stats extras', emoji: true } },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text:
+          `*Pokémon:* ${pokemon.pokemon_species?.name || 'Pokémon'} (#${pokemon.id})\n` +
+          `${mk('Chance crítica', critLevel, 4, 40)}\n` +
+          `${mk('Esquiva', dodgeLevel, 1.8, 18)}\n` +
+          `${mk('Efeito elemental', elementalLevel, 3, 30)}\n\n` +
+          `💸 Upgrade por ponto: *${EXTRA_STAT_UPGRADE_GOLD_COST.toLocaleString('pt-BR')}* gold + *${EXTRA_STAT_UPGRADE_ESSENCE_COST}* essência`,
+      },
+    },
+    {
+      type: 'actions',
+      elements: [
+        { type: 'button', action_id: POKEID_UPGRADE_ACTION_IDS[0], text: { type: 'plain_text', text: '+ Crit' }, style: 'primary', value: JSON.stringify({ pokemonId: pokemon.id, statKey: 'crit', ownerSlackUserId: pokemon.slack_user_id }) },
+        { type: 'button', action_id: POKEID_UPGRADE_ACTION_IDS[1], text: { type: 'plain_text', text: '+ Esquiva' }, value: JSON.stringify({ pokemonId: pokemon.id, statKey: 'dodge', ownerSlackUserId: pokemon.slack_user_id }) },
+        { type: 'button', action_id: POKEID_UPGRADE_ACTION_IDS[2], text: { type: 'plain_text', text: '+ Elemental' }, value: JSON.stringify({ pokemonId: pokemon.id, statKey: 'elemental', ownerSlackUserId: pokemon.slack_user_id }) },
+      ],
+    },
+    {
+      type: 'actions',
+      elements: [
+        { type: 'button', action_id: POKEID_BACK_ACTION_ID, text: { type: 'plain_text', text: 'Voltar' }, value: JSON.stringify({ pokemonId: pokemon.id, ownerSlackUserId: pokemon.slack_user_id }) },
+      ],
+    },
+  ];
+}
+
 
 function buildUpdatedMessage(text) {
   return {
@@ -330,7 +393,9 @@ function registerPokemonActions(app) {
 ${pokemonSummary}
 
 💰 Valor recebido: *${result.goldReceived}* gold
-💳 Gold atual: *${result.currentGold}*`,
+🧪 Essência recebida: *${result.essenceReceived || "0"}*
+💳 Gold atual: *${result.currentGold}*
+🎒 Essência total: *${result.currentEssence || "0"}*`,
       );
       await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
 
@@ -355,6 +420,105 @@ ${pokemonSummary}
     const updated = buildUpdatedMessage(`🛑 Venda cancelada por <@${actorUserId}> para o(s) Pokémon(s) ID *${pokemonIds.join(", ")}*.`);
     await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
   });
+
+
+  app.action(POKEID_OPEN_STATS_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parseActionValue(action?.value);
+    if (!payload?.pokemonId) {
+      await respond({ response_type: 'ephemeral', text: 'Não consegui abrir os stats.' });
+      return;
+    }
+    const pokemon = await getOwnedPokemonById(payload.pokemonId);
+    if (!pokemon || pokemon.slack_user_id !== actorUserId) {
+      await respond({ response_type: 'ephemeral', text: 'Você só pode abrir stats dos seus Pokémons.' });
+      return;
+    }
+
+    const updated = {
+      text: `Stats extras do Pokémon #${pokemon.id}`,
+      blocks: buildPokeidStatsBlocks({ pokemon }),
+    };
+    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+  });
+
+  app.action(POKEID_UPGRADE_ACTION_PATTERN, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parseActionValue(action?.value);
+    if (!payload?.pokemonId || !payload?.statKey || !EXTRA_STAT_CONFIG[payload.statKey]) {
+      await respond({ response_type: 'ephemeral', text: 'Upgrade inválido.' });
+      return;
+    }
+
+    const result = await upgradePokemonExtraStat({ slackUserId: actorUserId, pokemonId: payload.pokemonId, statKey: payload.statKey });
+    if (!result.ok) {
+      const map = {
+        pokemon_not_owned: 'Pokémon não encontrado ou não pertence a você.',
+        invalid_stat: 'Atributo inválido.',
+        stat_maxed: 'Esse atributo já está no nível máximo.',
+        insufficient_gold: 'Gold insuficiente para o upgrade.',
+        insufficient_essence: 'Essência insuficiente para o upgrade.',
+      };
+      await respond({ response_type: 'ephemeral', text: map[result.reason] || 'Não consegui aplicar o upgrade.' });
+      return;
+    }
+
+    const pokemon = await getOwnedPokemonById(payload.pokemonId);
+    const updated = {
+      text: `Stats extras do Pokémon #${payload.pokemonId}`,
+      blocks: buildPokeidStatsBlocks({ pokemon }),
+    };
+    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+  });
+
+  app.action(POKEID_BACK_ACTION_ID, async ({ ack, respond }) => {
+    await ack();
+    await respond({ response_type: 'ephemeral', text: 'Use `!pokeid <id>` para voltar ao HUD principal.' });
+  });
+
+  app.action(TSHINY_CONFIRM_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parseActionValue(action?.value);
+    if (!payload?.slackUserId || !payload?.sourcePokemonId || !payload?.targetPokemonId) {
+      await respond({ response_type: 'ephemeral', text: 'Não consegui validar essa confirmação de transferência shiny.' });
+      return;
+    }
+
+    if (actorUserId !== payload.slackUserId) {
+      await respond(buildUnauthorizedActionMessage(payload.slackUserId));
+      return;
+    }
+
+    const result = await transferShiny({
+      slackUserId: actorUserId,
+      sourcePokemonId: payload.sourcePokemonId,
+      targetPokemonId: payload.targetPokemonId,
+    });
+
+    const updated = buildUpdatedMessage(buildTshinyResultMessage({
+      sourcePokemonId: payload.sourcePokemonId,
+      targetPokemonId: payload.targetPokemonId,
+      result,
+    }));
+    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+  });
+
+  app.action(TSHINY_CANCEL_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parseActionValue(action?.value);
+    if (payload?.slackUserId && actorUserId !== payload.slackUserId) {
+      await respond(buildUnauthorizedActionMessage(payload.slackUserId));
+      return;
+    }
+
+    const updated = buildUpdatedMessage(`🛑 Transferência shiny cancelada por <@${actorUserId}>.`);
+    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+  });
+
 
   app.action(PROFILE_OPEN_BAG_ACTION_ID, async ({ ack, body, action, client, respond }) => {
     await ack();
