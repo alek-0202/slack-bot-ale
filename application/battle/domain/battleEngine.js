@@ -15,32 +15,46 @@ function calculateBattleHp(baseHp) {
   return Math.max(1, Math.round(safeBaseHp * BATTLE_HP_MULTIPLIER));
 }
 
-function calculateDamage({ attackerAttack, defenderDefense, d6Roll, d20Roll }) {
+function calculateDamage({ attackerAttack, defenderDefense, attackerCritChance = 0, defenderDodgeChance = 0, varianceRoll }) {
   const attack = Math.max(1, Number(attackerAttack) || 1);
   const defense = Math.max(0, Number(defenderDefense) || 0);
-  const baseRoll = d6Roll || rollDie(6);
-  const critRoll = d20Roll || rollDie(20);
+  const damageVariance = varianceRoll || ((Math.random() * 0.28) + 0.86);
 
-  const normalDamage = attack + baseRoll;
-  const isCritical = attack - defense + critRoll > 17;
-  const criticalDamage = isCritical ? normalDamage * 1.6 : normalDamage;
+  const baseDamage = Math.max(1, Math.round((attack * damageVariance) - (defense * 0.42)));
+  const critChance = Math.max(0, Math.min(0.4, Number(attackerCritChance) || 0));
+  const dodgeChance = Math.max(0, Math.min(0.18, Number(defenderDodgeChance) || 0));
+  const dodgeRoll = Math.random();
+  const dodged = dodgeRoll < dodgeChance;
 
-  let finalDamage = criticalDamage;
-
-  if (defense > criticalDamage * 2) {
-    finalDamage = 0;
-  } else if (defense === Math.round(criticalDamage)) {
-    finalDamage = criticalDamage * 0.5;
-  } else if (defense <= criticalDamage / 2) {
-    finalDamage = criticalDamage * 1.15;
+  if (dodged) {
+    return {
+      isCritical: false,
+      dodged: true,
+      normalDamage: baseDamage,
+      finalDamage: 0,
+      critChance,
+      dodgeChance,
+      varianceRoll: Number(damageVariance.toFixed(4)),
+      critRoll: null,
+      dodgeRoll: Number(dodgeRoll.toFixed(4)),
+    };
   }
 
+  const critRoll = Math.random();
+  const isCritical = critRoll < critChance;
+  const critMultiplier = isCritical ? 1.65 : 1;
+  const finalDamage = Math.max(1, Math.round(baseDamage * critMultiplier));
+
   return {
-    d6Roll: baseRoll,
-    d20Roll: critRoll,
     isCritical,
-    normalDamage: Math.round(normalDamage),
-    finalDamage: Math.max(0, Math.round(finalDamage)),
+    dodged: false,
+    normalDamage: baseDamage,
+    finalDamage,
+    critChance,
+    dodgeChance,
+    varianceRoll: Number(damageVariance.toFixed(4)),
+    critRoll: Number(critRoll.toFixed(4)),
+    dodgeRoll: Number(dodgeRoll.toFixed(4)),
   };
 }
 
@@ -95,6 +109,8 @@ function resolveAttackTurn({ attacker, defender }) {
   const result = calculateDamage({
     attackerAttack: attacker.stats.attack,
     defenderDefense: defender.stats.defense,
+    attackerCritChance: attacker.stats.critChance,
+    defenderDodgeChance: defender.stats.dodgeChance,
   });
 
   defender.battleHp.current = Math.max(0, defender.battleHp.current - result.finalDamage);

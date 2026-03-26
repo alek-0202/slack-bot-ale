@@ -1,6 +1,7 @@
 const { getSupabaseClient } = require("../database/supabase");
 const { getUser, createUserIfMissing } = require("./userService");
 const { addGold, assertNonNegativeGold, formatGold, toDatabaseGold, toGoldBigInt } = require("../utils/gold");
+const { addItem } = require("./inventoryService");
 
 const DAILY_REWARD_TIERS = [
   { chance: 0.00001, min: 5000, max: 10000 },
@@ -9,6 +10,9 @@ const DAILY_REWARD_TIERS = [
   { chance: 0.05, min: 700, max: 1000 },
   { chance: 0.18, min: 500, max: 700 },
 ];
+
+const DAILY_ESSENCE_REWARD = 1000;
+const DAILY_ANCIENT_BOOKS_REWARD = 5;
 
 function getCurrentDayKey(referenceDate = new Date()) {
   const year = referenceDate.getFullYear();
@@ -56,15 +60,19 @@ async function claimDaily(slackUserId) {
   }
 
   const goldReward = generateDailyGoldReward();
+  const pokeballReward = randomIntInclusive(1, 3);
   const nowIso = new Date().toISOString();
   const previousGold = toGoldBigInt(user.gold);
   const nextGold = assertNonNegativeGold(addGold(previousGold, goldReward));
+  const currentEssence = Math.max(0, Number(user.pokemonEssence || 0));
+  const nextEssence = currentEssence + DAILY_ESSENCE_REWARD;
 
   const { error: updateUserError } = await supabase
     .from("users")
     .update({
       last_claim_at: nowIso,
       gold: toDatabaseGold(nextGold),
+      pokemon_essence: nextEssence,
     })
     .eq("slack_user_id", slackUserId);
 
@@ -78,14 +86,23 @@ async function claimDaily(slackUserId) {
 
   if (trxError) throw trxError;
 
+  await addItem(slackUserId, "pokeball_c", pokeballReward);
+  await addItem(slackUserId, "ancient_book", DAILY_ANCIENT_BOOKS_REWARD);
+
   return {
     ok: true,
     goldReward: formatGold(goldReward),
+    pokeballReward,
+    ancientBookReward: DAILY_ANCIENT_BOOKS_REWARD,
+    essenceReward: DAILY_ESSENCE_REWARD,
+    totalEssence: String(nextEssence),
   };
 }
 
 module.exports = {
   DAILY_REWARD_TIERS,
+  DAILY_ESSENCE_REWARD,
+  DAILY_ANCIENT_BOOKS_REWARD,
   getCurrentDayKey,
   hasClaimedDailyToday,
   pickDailyRewardTier,

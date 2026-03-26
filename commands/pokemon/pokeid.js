@@ -10,6 +10,8 @@ const {
 
 const logger = createLogger("command:pokeid");
 
+const POKEID_OPEN_STATS_ACTION_ID = "pokeid_open_stats";
+
 module.exports = {
   name: "pokeid",
   async execute({ args, say }) {
@@ -42,7 +44,8 @@ module.exports = {
         hasAccessory: Boolean(visualBlocks.accessory),
         accessoryImage: summarizeImageReference(visualBlocks.accessory?.image_url),
       });
-      const shinyLabel = pokemon.shiny ? "\n✨ *Shiny*" : "";
+      const shinyType = pokemon.shiny ? (pokemon.shiny_type === "prime" ? "prime" : "normal") : null;
+      const shinyLabel = pokemon.shiny ? `\n✨ *Shiny (${shinyType})*` : "";
       const rarityLabel = species.rarity ? `\n🏅 *Raridade:* ${species.rarity}` : "";
       const typesLabel = buildPokemonTypesLabel(species.element_types)
         ? `\n🧪 ${buildPokemonTypesLabel(species.element_types)}`
@@ -82,6 +85,17 @@ module.exports = {
             ...(visualBlocks.accessory ? { accessory: visualBlocks.accessory } : {}),
           },
           ...visualBlocks.blocks,
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                action_id: POKEID_OPEN_STATS_ACTION_ID,
+                text: { type: "plain_text", text: "Stats", emoji: true },
+                value: JSON.stringify({ pokemonId: pokemon.id, ownerSlackUserId: pokemon.slack_user_id }),
+              },
+            ],
+          },
         ],
       });
     } catch (error) {
@@ -90,3 +104,5 @@ module.exports = {
     }
   },
 };
+
+module.exports.POKEID_OPEN_STATS_ACTION_ID = POKEID_OPEN_STATS_ACTION_ID;
