@@ -18,7 +18,11 @@ module.exports = {
               "• *1000 a 2000 gold* → 0,3%\n" +
               "• *700 a 1000 gold* → 5%\n" +
               "• *500 a 700 gold* → 18%\n" +
-              "• *150 a 500 gold* → restante",
+              "• *150 a 500 gold* → restante\n\n" +
+              "*Recompensas fixas adicionais:*\n" +
+              "• *Pokebola (!c):* +1 a +3\n" +
+              "• *Livro Ancião:* +5\n" +
+              "• *Essência Pokémon:* +1000",
           },
         },
       ],

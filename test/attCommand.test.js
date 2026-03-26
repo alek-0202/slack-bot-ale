@@ -15,12 +15,13 @@ test('!att envia changelog da versão atual com novidades principais', async () 
   const text = payload.text;
 
   assert.match(text, /Atualização de Produção/);
-  assert.match(text, /!dungeon/);
-  assert.match(text, /Dungeon diária.*manutenção/i);
-  assert.match(text, /1 dungeon = 1 energia/);
-  assert.match(text, /recarga de 1 energia a cada 2h/i);
+  assert.match(text, /Essência Pokémon/);
+  assert.match(text, /!sell/);
+  assert.match(text, /!daily/);
+  assert.match(text, /!tshiny/);
+  assert.match(text, /shiny normal/i);
+  assert.match(text, /shiny prime/i);
+  assert.match(text, /botão \*Stats\*/i);
   assert.match(text, /!mochila/);
-  assert.match(text, /!c/);
-  assert.match(text, /!profile/);
-  assert.match(text, /Pokebola/);
+  assert.match(text, /fundo roxo/i);
 });
