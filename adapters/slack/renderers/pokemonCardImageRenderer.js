@@ -58,7 +58,7 @@ function buildPokemonLayeredImageUrl({ spriteUrl, level = 1, shiny = false }) {
     </filter>
     <filter id="spriteShadow" x="-30%" y="-30%" width="160%" height="180%">
       <feDropShadow dx="0" dy="3" stdDeviation="2.4" flood-color="#000000" flood-opacity="0.28" />
-      <feDropShadow dx="0" dy="0" stdDeviation="${spriteShadowBlur / 2}" flood-color="${shiny ? "#E9D5FF" : "#FFFFFF"}" flood-opacity="${shiny ? "0.22" : "0"}" />
+      <feDropShadow dx="0" dy="0" stdDeviation="${spriteShadowBlur / 2}" flood-color="${shiny ? "#B026FF" : "#FFFFFF"}" flood-opacity="${shiny ? "0.20" : "0"}" />
     </filter>
   </defs>
 

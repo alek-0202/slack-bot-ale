@@ -3,8 +3,20 @@ const { getUserItems } = require('../services/inventoryService');
 const { PROFILE_OPEN_BAG_ACTION_ID } = require('../adapters/slack/renderers/sharedPokemonRenderer');
 const { buildMochilaPayload } = require('../commands/pokemon/mochila');
 const { POKEID_OPEN_STATS_ACTION_ID } = require('../commands/pokemon/pokeid');
+const {
+  TSHINY_CONFIRM_ACTION_ID,
+  TSHINY_CANCEL_ACTION_ID,
+  buildTshinyResultMessage,
+} = require('../commands/pokemon/tshiny');
 const { getOwnedPokemonById } = require('../services/pokemonLookupService');
-const { upgradePokemonExtraStat, parseActionValue, EXTRA_STAT_CONFIG, EXTRA_STAT_UPGRADE_GOLD_COST, EXTRA_STAT_UPGRADE_ESSENCE_COST } = require('../services/pokemonEnhancementService');
+const {
+  upgradePokemonExtraStat,
+  transferShiny,
+  parseActionValue,
+  EXTRA_STAT_CONFIG,
+  EXTRA_STAT_UPGRADE_GOLD_COST,
+  EXTRA_STAT_UPGRADE_ESSENCE_COST,
+} = require('../services/pokemonEnhancementService');
 const {
   EVOLVE_CONFIRM_ACTION_ID,
   EVOLVE_CANCEL_ACTION_ID,
@@ -26,7 +38,12 @@ const {
 const logger = createLogger("handler:pokemon-actions");
 const APPLY_ITEM_ACTION_PATTERN = new RegExp(`^${APPLY_ITEM_ACTION_ID}(?:_.+)?$`);
 const POKEID_BACK_ACTION_ID = "pokeid_back_main";
-const POKEID_UPGRADE_ACTION_ID = "pokeid_upgrade_extra";
+const POKEID_UPGRADE_ACTION_IDS = [
+  "pokeid_upgrade_extra_crit",
+  "pokeid_upgrade_extra_dodge",
+  "pokeid_upgrade_extra_elemental",
+];
+const POKEID_UPGRADE_ACTION_PATTERN = /^pokeid_upgrade_extra_(crit|dodge|elemental)$/;
 
 function pct(value) {
   return `${Number(value || 0).toFixed(1)}%`;
@@ -54,9 +71,9 @@ function buildPokeidStatsBlocks({ pokemon }) {
     {
       type: 'actions',
       elements: [
-        { type: 'button', action_id: POKEID_UPGRADE_ACTION_ID, text: { type: 'plain_text', text: '+ Crit' }, style: 'primary', value: JSON.stringify({ pokemonId: pokemon.id, statKey: 'crit', ownerSlackUserId: pokemon.slack_user_id }) },
-        { type: 'button', action_id: POKEID_UPGRADE_ACTION_ID, text: { type: 'plain_text', text: '+ Esquiva' }, value: JSON.stringify({ pokemonId: pokemon.id, statKey: 'dodge', ownerSlackUserId: pokemon.slack_user_id }) },
-        { type: 'button', action_id: POKEID_UPGRADE_ACTION_ID, text: { type: 'plain_text', text: '+ Elemental' }, value: JSON.stringify({ pokemonId: pokemon.id, statKey: 'elemental', ownerSlackUserId: pokemon.slack_user_id }) },
+        { type: 'button', action_id: POKEID_UPGRADE_ACTION_IDS[0], text: { type: 'plain_text', text: '+ Crit' }, style: 'primary', value: JSON.stringify({ pokemonId: pokemon.id, statKey: 'crit', ownerSlackUserId: pokemon.slack_user_id }) },
+        { type: 'button', action_id: POKEID_UPGRADE_ACTION_IDS[1], text: { type: 'plain_text', text: '+ Esquiva' }, value: JSON.stringify({ pokemonId: pokemon.id, statKey: 'dodge', ownerSlackUserId: pokemon.slack_user_id }) },
+        { type: 'button', action_id: POKEID_UPGRADE_ACTION_IDS[2], text: { type: 'plain_text', text: '+ Elemental' }, value: JSON.stringify({ pokemonId: pokemon.id, statKey: 'elemental', ownerSlackUserId: pokemon.slack_user_id }) },
       ],
     },
     {
@@ -426,7 +443,7 @@ ${pokemonSummary}
     await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
   });
 
-  app.action(POKEID_UPGRADE_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+  app.action(POKEID_UPGRADE_ACTION_PATTERN, async ({ ack, body, action, client, respond }) => {
     await ack();
     const actorUserId = body.user?.id;
     const payload = parseActionValue(action?.value);
@@ -459,6 +476,47 @@ ${pokemonSummary}
   app.action(POKEID_BACK_ACTION_ID, async ({ ack, respond }) => {
     await ack();
     await respond({ response_type: 'ephemeral', text: 'Use `!pokeid <id>` para voltar ao HUD principal.' });
+  });
+
+  app.action(TSHINY_CONFIRM_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parseActionValue(action?.value);
+    if (!payload?.slackUserId || !payload?.sourcePokemonId || !payload?.targetPokemonId) {
+      await respond({ response_type: 'ephemeral', text: 'Não consegui validar essa confirmação de transferência shiny.' });
+      return;
+    }
+
+    if (actorUserId !== payload.slackUserId) {
+      await respond(buildUnauthorizedActionMessage(payload.slackUserId));
+      return;
+    }
+
+    const result = await transferShiny({
+      slackUserId: actorUserId,
+      sourcePokemonId: payload.sourcePokemonId,
+      targetPokemonId: payload.targetPokemonId,
+    });
+
+    const updated = buildUpdatedMessage(buildTshinyResultMessage({
+      sourcePokemonId: payload.sourcePokemonId,
+      targetPokemonId: payload.targetPokemonId,
+      result,
+    }));
+    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+  });
+
+  app.action(TSHINY_CANCEL_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parseActionValue(action?.value);
+    if (payload?.slackUserId && actorUserId !== payload.slackUserId) {
+      await respond(buildUnauthorizedActionMessage(payload.slackUserId));
+      return;
+    }
+
+    const updated = buildUpdatedMessage(`🛑 Transferência shiny cancelada por <@${actorUserId}>.`);
+    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
   });
 
 

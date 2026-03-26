@@ -11,6 +11,7 @@ const EXTRA_STAT_CONFIG = Object.freeze({
 
 const EXTRA_STAT_UPGRADE_GOLD_COST = 10000;
 const EXTRA_STAT_UPGRADE_ESSENCE_COST = 500;
+const SHINY_TRANSFER_GOLD_COST = 5000000;
 
 function parseActionValue(value) {
   try { return JSON.parse(value); } catch { return null; }
@@ -28,6 +29,38 @@ async function transferShiny({ slackUserId, sourcePokemonId, targetPokemonId }) 
   if (!result) return { ok: false, reason: 'unknown' };
   logger.info('Transferência de shiny processada', { slackUserId, sourcePokemonId, targetPokemonId, ok: result.ok, reason: result.reason || null });
   return result;
+}
+
+async function getShinyTransferPreview({ slackUserId, sourcePokemonId, targetPokemonId }) {
+  if (sourcePokemonId === targetPokemonId) return { ok: false, reason: 'same_pokemon' };
+  const supabase = getSupabaseClient();
+
+  const [{ data: user, error: userError }, { data: pokemons, error: pokemonError }] = await Promise.all([
+    supabase.from('users').select('gold').eq('slack_user_id', slackUserId).maybeSingle(),
+    supabase
+      .from('user_pokemons')
+      .select('id, slack_user_id, shiny, pokemon_species(name)')
+      .in('id', [sourcePokemonId, targetPokemonId]),
+  ]);
+
+  if (userError) throw userError;
+  if (pokemonError) throw pokemonError;
+
+  const source = (pokemons || []).find((row) => Number(row.id) === Number(sourcePokemonId));
+  const target = (pokemons || []).find((row) => Number(row.id) === Number(targetPokemonId));
+  if (!source || !target || source.slack_user_id !== slackUserId || target.slack_user_id !== slackUserId) {
+    return { ok: false, reason: 'pokemon_not_owned' };
+  }
+  if (!source.shiny) return { ok: false, reason: 'source_not_shiny' };
+  if (target.shiny) return { ok: false, reason: 'target_already_shiny' };
+  if (Number(user?.gold || 0) < SHINY_TRANSFER_GOLD_COST) return { ok: false, reason: 'insufficient_gold' };
+
+  return {
+    ok: true,
+    sourceName: source.pokemon_species?.name || 'Pokémon',
+    targetName: target.pokemon_species?.name || 'Pokémon',
+    currentGold: Number(user?.gold || 0),
+  };
 }
 
 async function upgradePokemonExtraStat({ slackUserId, pokemonId, statKey }) {
@@ -48,7 +81,9 @@ module.exports = {
   EXTRA_STAT_CONFIG,
   EXTRA_STAT_UPGRADE_GOLD_COST,
   EXTRA_STAT_UPGRADE_ESSENCE_COST,
+  SHINY_TRANSFER_GOLD_COST,
   parseActionValue,
+  getShinyTransferPreview,
   transferShiny,
   upgradePokemonExtraStat,
 };
