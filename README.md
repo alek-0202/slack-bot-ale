@@ -33,6 +33,8 @@ cp .env.example .env
 - `DATABASE_URL` (quando usado por scripts SQL)
 - `GIPHY_API_KEY`, `OLLAMA_HOST`, `OLLAMA_MODEL`
 - `HEALTHCHECK_PORT` (padrão 3000)
+- `RENDERED_IMAGE_PUBLIC_BASE_URL` (URL pública do serviço que expõe `/rendered-images/:id`, ex.: `http://SEU_HOST:3001`)
+- `PUBLIC_BASE_URL` (fallback legado, usado apenas quando `RENDERED_IMAGE_PUBLIC_BASE_URL` não estiver definido)
 - `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; padrão `info`)
 - `LOG_FORMAT` (`text` ou `json`; padrão `text`)
 - `CRITICAL_ALERT_WEBHOOK_URL` (opcional, para alertar falhas críticas de runtime/startup)

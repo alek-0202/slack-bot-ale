@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "test": "node --test",
+    "verify:canvas": "node -e \"const canvas=require('@napi-rs/canvas'); if (!canvas || typeof canvas.createCanvas !== 'function' || typeof canvas.loadImage !== 'function') { throw new Error('Canvas runtime inválido'); } console.log('canvas runtime ok');\"",
     "import:pokedex": "node scripts/import-pokedex.js",
     "migrate": "node scripts/runMigrations.js",
     "migrate:status": "node scripts/runMigrations.js --status",
