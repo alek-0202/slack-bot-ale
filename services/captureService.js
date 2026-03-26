@@ -2,7 +2,7 @@ const { pickByRarity } = require("../pokemon/rarity");
 const { getSupabaseClient } = require("../database/supabase");
 const { getUser, createUserIfMissing } = require("./userService");
 const { getAllSpecies, insertUserPokemon } = require("./pokemonService");
-const { calculatePokemonStats } = require("./pokemonStatsService");
+const { calculatePokemonStats, SHINY_TYPE, rollPokemonIvOffsets } = require("./pokemonStatsService");
 const { getGoldValueByRarityAndLevel } = require("./economyService");
 const { createLogger } = require("../utils/logger");
 const { addGold, assertNonNegativeGold, formatGold, toDatabaseGold, toGoldBigInt } = require("../utils/gold");
@@ -105,10 +105,12 @@ async function capturePokemon(slackUserId, context = {}) {
 
     const selected = pickByRarity(speciesList);
     const shiny = Math.random() < SHINY_CHANCE;
+    const shinyType = shiny ? SHINY_TYPE.PRIME : null;
     const level = 1;
+    const ivOffsets = rollPokemonIvOffsets({ shiny, shinyType });
     const goldReward = toGoldBigInt(getGoldValueByRarityAndLevel({ rarity: selected.rarity, level }));
     const nowIso = new Date().toISOString();
-    const stats = calculatePokemonStats({ species: selected, level });
+    const stats = calculatePokemonStats({ species: selected, level, ivOffsets, shiny, shinyType });
 
     logger.info("Pokémon alvo da captura definido", {
       slackUserId,
@@ -118,6 +120,8 @@ async function capturePokemon(slackUserId, context = {}) {
       rarity: selected.rarity,
       level,
       shiny,
+      shinyType,
+      ivOffsets,
       stats,
       goldReward: formatGold(goldReward),
     });
@@ -127,6 +131,8 @@ async function capturePokemon(slackUserId, context = {}) {
       speciesId: selected.id,
       level,
       shiny,
+      shinyType,
+      ivOffsets,
       stats,
       source: safeContext.source,
     });

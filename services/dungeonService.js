@@ -609,7 +609,7 @@ function formatDungeonTurnLogEntry({ battle, actionType, outcome, actorUserId, p
   }
 
   if (actionType === BATTLE_ACTION.ATTACK) {
-    return `${phase === 'turn' ? '⚔️' : '🤖'} ${actorLabel} atacou ${targetLabel} e causou *${outcome.finalDamage}* de dano${outcome.isCritical ? ' — CRÍTICO!' : ''}${hpSuffix}`;
+    return `${phase === 'turn' ? '⚔️' : '🤖'} ${actorLabel} atacou ${targetLabel} e causou *${outcome.finalDamage}* de dano${outcome.dodged ? ' — ESQUIVADO!' : ''}${outcome.isCritical ? ' — CRÍTICO!' : ''}${hpSuffix}`;
   }
 
   if (actionType === BATTLE_ACTION.MAGIC) {

@@ -270,8 +270,9 @@ async function attack({ event, say }) {
     defenderId: result.defenderId,
     damage: result.finalDamage,
     critical: result.isCritical,
-    d6: result.d6Roll,
-    d20: result.d20Roll,
+    varianceRoll: result.varianceRoll,
+    critRoll: result.critRoll,
+    dodgeRoll: result.dodgeRoll,
     speedContext: result.turnFlow || null,
   });
 

@@ -78,6 +78,11 @@ function declineInvite(battle) {
   return battle;
 }
 
+function getExtraChance(level, perPoint, cap) {
+  const safeLevel = Math.max(0, Math.min(10, Number(level) || 0));
+  return Math.max(0, Math.min(cap, safeLevel * perPoint));
+}
+
 function getExpectedPickerId(battle) {
   return battle.selectionStatus === SELECTION_STATUS.WAITING_CHALLENGER
     ? battle.challengerId
@@ -105,6 +110,12 @@ function assignSelectedPokemon(battle, userId, pokemon) {
     defense: Number(pokemon.defense) || 0,
     hp: Number(pokemon.hp) || 1,
     speed: Number(pokemon.speed) || 1,
+    critLevel: Math.max(0, Math.min(10, Number(pokemon.crit_level) || 0)),
+    dodgeLevel: Math.max(0, Math.min(10, Number(pokemon.dodge_level) || 0)),
+    elementalLevel: Math.max(0, Math.min(10, Number(pokemon.elemental_level) || 0)),
+    critChance: getExtraChance(pokemon.crit_level, 0.04, 0.4),
+    dodgeChance: getExtraChance(pokemon.dodge_level, 0.018, 0.18),
+    elementalChance: getExtraChance(pokemon.elemental_level, 0.03, 0.3),
   };
 
   const hpMax = calculateBattleHp(playerState.stats.hp);

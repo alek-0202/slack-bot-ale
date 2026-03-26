@@ -98,6 +98,8 @@ async function buildSellPreview({ slackUserId, pokemonId }) {
     ok: true,
     pokemon: result.pokemon,
     priceBreakdown: result.priceBreakdown,
+    essenceReceived: result.essenceReceived,
+    currentEssence: result.currentEssence,
   };
 }
 
@@ -154,6 +156,8 @@ async function sellPokemonBatchLegacy({ supabase, slackUserId, preview }) {
     totalUpgradeReturn: preview.totalUpgradeReturn,
     priceBreakdown: preview.priceBreakdown,
     usedLegacyFallback: true,
+    essenceReceived: "0",
+    currentEssence: "0",
   };
 }
 
@@ -201,6 +205,7 @@ async function sellPokemonBatch({ slackUserId, pokemonIds }) {
 
   const goldAfter = toGoldBigInt(result.remaining_gold);
   const goldReceived = toGoldBigInt(result.sale_price);
+  const essenceReceived = BigInt(result.essence_gained || 0);
   const goldBefore = goldAfter - goldReceived;
 
   logger.info("Venda em lote concluída", {
@@ -224,6 +229,8 @@ async function sellPokemonBatch({ slackUserId, pokemonIds }) {
     totalSellPrice: preview.totalSellPrice,
     totalUpgradeReturn: preview.totalUpgradeReturn,
     priceBreakdown: preview.priceBreakdown,
+    essenceReceived: formatGold(essenceReceived),
+    currentEssence: String(Math.max(0, Number(result.remaining_essence || 0))),
   };
 }
 
@@ -237,6 +244,8 @@ async function sellPokemon({ slackUserId, pokemonId }) {
     goldReceived: result.goldReceived,
     currentGold: result.currentGold,
     priceBreakdown: result.priceBreakdown,
+    essenceReceived: result.essenceReceived,
+    currentEssence: result.currentEssence,
   };
 }
 

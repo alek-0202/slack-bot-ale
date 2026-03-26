@@ -60,7 +60,7 @@ function renderSlackCaptureResult({ slackUserId, result }) {
     };
   }
 
-  const shinyTag = result.shiny ? '✨ SHINY!' : '';
+  const shinyTag = result.shiny ? `✨ SHINY${result.captured?.shiny_type ? ` (${result.captured.shiny_type})` : ''}!` : '';
   const text =
     `🎉 <@${slackUserId}> capturou *${result.species.name}* ${shinyTag}\n` +
     `⭐ Raridade: *${result.species.rarity}* | Lv ${result.captured.level}${buildPokemonTypesLabel(result.species.element_types) ? `\n🧪 ${buildPokemonTypesLabel(result.species.element_types)}` : ""}\n` +

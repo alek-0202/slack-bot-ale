@@ -19,7 +19,11 @@ module.exports = {
       }
 
       await say(
-        `🎁 <@${event.user}>, seu *!daily* caiu e você ganhou *${result.goldReward}* gold!`,
+        `🎁 <@${event.user}>, seu *!daily* caiu!\n` +
+        `💰 Gold: *+${result.goldReward}*\n` +
+        `🧿 Pokebola (!c): *+${result.pokeballReward || 0}*\n` +
+        `📘 Livro Ancião: *+${result.ancientBookReward || 0}*\n` +
+        `🧪 Essência Pokémon: *+${result.essenceReward || 0}* (total: *${result.totalEssence || 0}*)`,
       );
     } catch (error) {
       console.error("Erro no !daily:", error.message || error);
