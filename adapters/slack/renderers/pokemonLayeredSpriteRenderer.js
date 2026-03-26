@@ -98,28 +98,6 @@ function applyShinyAura(ctx) {
   ctx.restore();
 }
 
-function applyLevel50Aura(ctx) {
-  const center = CANVAS_SIZE / 2;
-  const gradient = ctx.createRadialGradient(center, center, 28, center, center, 112);
-  gradient.addColorStop(0, "rgba(180,90,255,0.42)");
-  gradient.addColorStop(0.65, "rgba(144,55,220,0.28)");
-  gradient.addColorStop(1, "rgba(116,42,168,0)");
-
-  ctx.save();
-  ctx.globalCompositeOperation = "screen";
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-  ctx.restore();
-
-  ctx.save();
-  ctx.strokeStyle = "rgba(162, 89, 255, 0.36)";
-  ctx.lineWidth = 6;
-  ctx.beginPath();
-  ctx.arc(center, center, 96, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.restore();
-}
-
 function applyGeneratedFrame(ctx, tierKey) {
   const color = FRAME_COLORS[tierKey] || FRAME_COLORS.cinza;
   const center = CANVAS_SIZE / 2;
@@ -201,7 +179,6 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
       level,
       tier: tierKey,
       shiny: Boolean(shiny),
-      level50: Number(level) === 50,
       assetMode: metadata.assetMode,
     });
 
@@ -210,13 +187,10 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
 
     let frameAsset = null;
     let shinyOverlay = null;
-    let level50Overlay = null;
-
     if (ASSET_RENDER_ENABLED) {
-      [frameAsset, shinyOverlay, level50Overlay] = await Promise.all([
+      [frameAsset, shinyOverlay] = await Promise.all([
         loadOptionalAsset(path.join(FRAME_ASSET_ROOT, `${tierKey}.png`), metadata, loadImage),
         shiny ? loadOptionalAsset(path.join(EFFECTS_ASSET_ROOT, "shiny", "aura.png"), metadata, loadImage) : Promise.resolve(null),
-        Number(level) === 50 ? loadOptionalAsset(path.join(EFFECTS_ASSET_ROOT, "level50", "aura.png"), metadata, loadImage) : Promise.resolve(null),
       ]);
     }
 
@@ -231,15 +205,7 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
       applyShinyAura(ctx);
     }
 
-    if (Number(level) === 50 && !level50Overlay) {
-      applyLevel50Aura(ctx);
-    }
-
     ctx.drawImage(spriteImage, SPRITE_X, SPRITE_Y, SPRITE_SIZE, SPRITE_SIZE);
-
-    if (Number(level) === 50 && level50Overlay) {
-      ctx.drawImage(level50Overlay, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
-    }
 
     if (frameAsset) {
       ctx.drawImage(frameAsset, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
@@ -257,7 +223,6 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
       level,
       tier: tierKey,
       shiny: Boolean(shiny),
-      level50: Number(level) === 50,
       loadedAssets: metadata.loadedAssets.length,
       missingAssets: metadata.missingAssets.length,
       generatedFrame: metadata.usedGeneratedFrame,
