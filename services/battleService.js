@@ -1,7 +1,7 @@
 const { extractMentionedUser } = require("../utils/helpers");
 const { parsePositiveInt } = require("../utils/number");
 const { createLogger } = require("../utils/logger");
-const { getUserPokemonById } = require("./pokemonService");
+const { getUserPokemonsByIds } = require("./pokemonService");
 const { getPokemonMagicLoadout } = require("./pokemonMagicService");
 const { assertPokemonAvailableForAction, persistBattleHp } = require("./healingStationService");
 const store = require("./battleStateStore");
@@ -11,7 +11,7 @@ const {
   acceptInvite,
   declineInvite,
   getExpectedPickerId,
-  assignSelectedPokemon,
+  assignSelectedPokemonTeam,
   advanceSelectionState,
   startBattle,
 } = require("../application/battle/domain/battleState");
@@ -28,9 +28,19 @@ const {
   renderBattleState,
   renderBattleFinished,
   renderMagicOptions,
+  renderSwitchOptions,
 } = require("./battleRenderService");
+const { getSupabaseClient } = require("../database/supabase");
 
 const logger = createLogger("battle-service");
+const PVP_ENTRY_FEE = 2000;
+const PVP_WIN_PRIZE = 4000;
+
+function parsePokemonIds(rawArgs) {
+  const tokens = String(rawArgs || "").split(/\s+/).filter(Boolean);
+  const ids = [...new Set(tokens.map((token) => parsePositiveInt(token)).filter(Boolean))];
+  return ids.slice(0, 3);
+}
 
 async function startChallenge({ event, args, say }) {
   const challengedId = extractMentionedUser(args || "");
@@ -62,6 +72,11 @@ async function startChallenge({ event, args, say }) {
     challengerId: event.user,
     challengedId,
     platform: "slack",
+    metadata: {
+      mode: "pvp",
+      pvpEntryFee: PVP_ENTRY_FEE,
+      pvpWinPrize: PVP_WIN_PRIZE,
+    },
   });
 
   store.setBattle(event.channel, battle);
@@ -115,6 +130,15 @@ async function pickPokemon({ event, args, say }) {
   const validation = validateSelection({ battle, actorUserId: event.user });
 
   if (!validation.ok) {
+    if (validation.reason === "selection_not_active" && battle?.status === "active") {
+      const switchId = parsePositiveInt(args);
+      if (!switchId) {
+        await say("Use `!bpick <id1> <id2> <id3>` na seleção ou `!bpick <idDoSeuTime>` para trocar durante sua vez.");
+        return;
+      }
+      return switchPokemon({ event, say, pokemonId: switchId });
+    }
+
     if (validation.reason === "battle_not_found") {
       await say("Não existe batalha ativa neste canal. Use `!b @player`.");
       return;
@@ -134,38 +158,47 @@ async function pickPokemon({ event, args, say }) {
     return;
   }
 
-  const pokemonId = parsePositiveInt(args);
-  if (!pokemonId) {
-    await say("Use `!bpick ID` com um ID válido da sua pokédex.");
+  const pokemonIds = parsePokemonIds(args);
+  if (!pokemonIds.length) {
+    await say("Use `!bpick <id1> <id2> <id3>` com até 3 IDs válidos da sua pokédex.");
     return;
   }
 
-  const pokemon = await getUserPokemonById(event.user, pokemonId);
-  if (!pokemon) {
-    await say("Pokémon inválido ou que não pertence a você.");
+  const pokemons = await getUserPokemonsByIds(event.user, pokemonIds);
+  if (pokemons.length !== pokemonIds.length) {
+    await say("Um ou mais IDs são inválidos ou não pertencem a você.");
     return;
   }
 
-  const availability = await assertPokemonAvailableForAction({ slackUserId: event.user, pokemonId, action: "battle" });
-  if (!availability.ok) {
-    await say("Esse Pokémon está na estação de cura e não pode batalhar agora.");
-    return;
+  for (const pokemon of pokemons) {
+    const availability = await assertPokemonAvailableForAction({ slackUserId: event.user, pokemonId: pokemon.id, action: "battle" });
+    if (!availability.ok) {
+      await say(`O Pokémon #${pokemon.id} está indisponível para batalha agora.`);
+      return;
+    }
+
+    if (pokemon.is_battle_available === false) {
+      await say(`O Pokémon #${pokemon.id} está com battleoff (use !battleon ${pokemon.id}).`);
+      return;
+    }
+
+    if (Number(pokemon.current_hp) <= 0) {
+      await say(`O Pokémon #${pokemon.id} está sem HP e precisa passar pela estação de cura.`);
+      return;
+    }
   }
 
-  if (Number(pokemon.current_hp) <= 0) {
-    await say("Esse Pokémon está sem HP e precisa passar pela estação de cura.");
-    return;
+  for (const pokemon of pokemons) {
+    const loadout = await getPokemonMagicLoadout(pokemon.id);
+    pokemon.magicSlots = Array.isArray(loadout?.spells) ? loadout.spells : [];
   }
-
-  const loadout = await getPokemonMagicLoadout(pokemonId);
-  pokemon.magicSlots = Array.isArray(loadout?.spells) ? loadout.spells : [];
-  assignSelectedPokemon(battle, event.user, pokemon);
+  assignSelectedPokemonTeam(battle, event.user, pokemons);
 
   logger.info("Pokémon selecionado para batalha", {
     channel: event.channel,
     userId: event.user,
-    pokemonId,
-    magicSlots: pokemon.magicSlots.length,
+    pokemonIds,
+    magicSlots: pokemons.reduce((sum, pokemon) => sum + pokemon.magicSlots.length, 0),
   });
 
   const expectedPickerId = getExpectedPickerId(battle);
@@ -174,9 +207,15 @@ async function pickPokemon({ event, args, say }) {
 
   if (expectedPickerId === battle.challengerId) {
     await say(
-      `✅ <@${event.user}> escolheu *${battle.players[event.user].selectedPokemon.name}* (ID ${pokemonId}).\n` +
-      `Agora <@${battle.challengedId}> deve escolher com \`!bpick ID\`.`,
+      `✅ <@${event.user}> escolheu o time: *${pokemons.map((pokemon) => `${pokemon.pokemon_species?.name || "Pokémon"} (#${pokemon.id})`).join(", ")}*.\n` +
+      `Agora <@${battle.challengedId}> deve escolher com \`!bpick ID [ID2] [ID3]\`.`,
     );
+    return;
+  }
+
+  const wager = await startPvpWager(battle);
+  if (!wager.ok) {
+    await say(`❌ Não foi possível iniciar o PvP: ${wager.message}`);
     return;
   }
 
@@ -202,6 +241,46 @@ function finalizeSelectionAndStartBattle(battle, channelId) {
   const { coinflip: result, starter } = startBattle(battle);
   store.setBattle(channelId, battle);
   return { result, starter };
+}
+
+async function startPvpWager(battle) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.rpc("start_pvp_wager", {
+    p_challenger_id: battle.challengerId,
+    p_challenged_id: battle.challengedId,
+    p_entry_fee: PVP_ENTRY_FEE,
+  });
+  if (error) {
+    logger.error("Falha ao debitar entrada do PvP", { battleId: battle.id, error });
+    return { ok: false, message: "erro interno ao validar o custo do duelo." };
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.ok) {
+    const message = row?.reason === "challenger_insufficient_gold" || row?.reason === "challenged_insufficient_gold"
+      ? "um dos jogadores não tem 2000 gold suficiente."
+      : "não consegui confirmar o custo da batalha.";
+    return { ok: false, message };
+  }
+  battle.metadata.pvpWagerStarted = true;
+  battle.metadata.pvpEntryFee = PVP_ENTRY_FEE;
+  battle.metadata.pvpWinPrize = PVP_WIN_PRIZE;
+  return { ok: true };
+}
+
+async function settlePvpRewards(battle, finalized) {
+  if (!battle?.metadata?.pvpWagerStarted || battle?.metadata?.pvpWagerSettled || !finalized?.winnerId) return;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.rpc("finish_pvp_wager", {
+    p_winner_id: finalized.winnerId,
+    p_loser_id: finalized.loserId,
+    p_prize: PVP_WIN_PRIZE,
+  });
+  if (error) {
+    logger.error("Falha ao liquidar recompensa do PvP", { battleId: battle.id, finalized, error });
+    return;
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (row?.ok) battle.metadata.pvpWagerSettled = true;
 }
 
 async function persistBattleResultHp(battle) {
@@ -280,12 +359,13 @@ async function attack({ event, say }) {
 
   if (resolution.finished) {
     await persistBattleResultHp(battle);
+    await settlePvpRewards(battle, resolution.finalized);
   }
 
   await say(
     `⚔️ <@${event.user}> atacou <@${result.defenderId}>!\n` +
-    `🎲 d6: ${result.d6Roll} | d20: ${result.d20Roll}\n` +
     `${result.isCritical ? "💥 CRÍTICO!\n" : ""}` +
+    `${result.dodged ? "💨 ESQUIVA! O dano foi evitado.\n" : ""}` +
     `Dano final: *${result.finalDamage}*\n` +
     `HP restante de <@${result.defenderId}>: *${result.defenderRemainingHp}/${battle.players[result.defenderId].battleHp.max}*`,
   );
@@ -372,6 +452,55 @@ async function showMagicOptions({ event, say }) {
   await say(renderMagicOptions({ battle, actorUserId: event.user, magicSlots: player.magicSlots }));
 }
 
+async function showSwitchOptions({ event, say }) {
+  const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.SWITCH });
+  if (!battle) return;
+  const player = battle.players[event.user];
+  const reserves = (player.team || [])
+    .filter((member, index) => index !== Number(player.activeTeamIndex || 0))
+    .filter((member) => Number(member?.battleHp?.current || 0) > 0)
+    .map((member) => ({
+      id: member.id,
+      name: member.name,
+      hpCurrent: Number(member?.battleHp?.current || 0),
+      hpMax: Number(member?.battleHp?.max || 0),
+    }));
+  await say(renderSwitchOptions({ battle, actorUserId: event.user, reserves }));
+}
+
+async function switchPokemon({ event, say, pokemonId }) {
+  const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.SWITCH });
+  if (!battle) return;
+
+  const resolution = resolveBattleTurn({
+    battle,
+    actorUserId: event.user,
+    actionType: BATTLE_ACTION.SWITCH,
+    actionPayload: { pokemonId },
+  });
+  const result = resolution.outcome;
+  if (!result.ok) {
+    if (result.reason === "pokemon_not_in_team") {
+      await say("Esse Pokémon não faz parte do seu time atual.");
+      return;
+    }
+    if (result.reason === "pokemon_already_active") {
+      await say("Esse Pokémon já está em campo.");
+      return;
+    }
+    if (result.reason === "pokemon_fainted") {
+      await say("Não é possível trocar para um Pokémon derrotado.");
+      return;
+    }
+    await say("Não consegui realizar a troca agora.");
+    return;
+  }
+
+  store.setBattle(battle.channelId, battle);
+  await say(`🔁 <@${event.user}> trocou para *${result.switchedPokemonName}* e consumiu o turno.`);
+  await say(renderBattleState(battle));
+}
+
 async function castMagic({ event, say, magicSlot }) {
   const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.MAGIC });
   if (!battle) return;
@@ -431,6 +560,7 @@ async function castMagic({ event, say, magicSlot }) {
 
   if (resolution.finished) {
     await persistBattleResultHp(battle);
+    await settlePvpRewards(battle, resolution.finalized);
   }
 
   const relationMessage = result.elemental?.hasAdvantage
@@ -458,10 +588,31 @@ async function castMagic({ event, say, magicSlot }) {
   await say(renderBattleState(battle));
 }
 
-async function defendPlaceholder({ event, say }) {
-  const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.DEFENSE });
-  if (!battle) return;
-  await say("🛡️ A mecânica de defesa ainda está em desenvolvimento e será liberada em breve.");
+async function surrenderBattle({ event, say }) {
+  const battle = store.getBattle(event.channel);
+  if (!battle || battle.status !== "active") {
+    await say("Não existe batalha PvP ativa neste canal.");
+    return;
+  }
+  if (battle.metadata?.mode === "dungeon") {
+    await say("`!surrender` só funciona em PvP.");
+    return;
+  }
+  if (![battle.challengerId, battle.challengedId].includes(event.user)) {
+    await say("Você não participa desta batalha.");
+    return;
+  }
+  const winnerId = event.user === battle.challengerId ? battle.challengedId : battle.challengerId;
+  const finalized = {
+    winnerId,
+    loserId: event.user,
+  };
+  battle.status = "finished";
+  battle.finishedAt = new Date().toISOString();
+  store.setBattle(event.channel, battle);
+  await settlePvpRewards(battle, finalized);
+  await say(`🏳️ <@${event.user}> desistiu da batalha PvP.`);
+  await say(renderBattleFinished(finalized));
 }
 
 function buildBattleHelp() {
@@ -469,13 +620,14 @@ function buildBattleHelp() {
     "📘 *Battle Help*\n" +
     "• Desafio: `!b @player`\n" +
     "• O desafiado aceita/recusa no botão do convite\n" +
-    "• Após aceitar, escolha seu Pokémon com `!bpick ID` (ID da sua Pokédex)\n" +
+    "• Após aceitar, escolha até 3 Pokémon com `!bpick ID [ID2] [ID3]`\n" +
     "• Primeiro turno é definido por cara ou coroa:\n" +
     "  - Player 1 (desafiante): *cara*\n" +
     "  - Player 2 (desafiado): *coroa*\n" +
-    "• Ações principais no turno: `!ataque`, `!defesa`, `!magia`, `!pocao`\n" +
+    "• Ações principais no turno: `!ataque`, `!magia`, `!pocao` e troca com `!bpick ID`\n" +
     "• `!magia` abre as magias registradas do Pokémon atual\n" +
     "• Apenas o jogador do turno pode agir\n" +
+    "• `!surrender` encerra sua participação e concede vitória ao oponente\n" +
     "• Botões da batalha seguem as mesmas regras dos comandos textuais"
   );
 }
@@ -487,7 +639,9 @@ module.exports = {
   attack,
   usePotion,
   showMagicOptions,
+  showSwitchOptions,
   castMagic,
-  defendPlaceholder,
+  switchPokemon,
+  surrenderBattle,
   buildBattleHelp,
 };

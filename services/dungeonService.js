@@ -6,7 +6,7 @@ const { getAllSpecies, getUserPokemonById, getUserPokemons, insertUserPokemon } 
 const { getPokemonMagicLoadout, buildMagicEntriesFromElements } = require('./pokemonMagicService');
 const { assertPokemonAvailableForAction, persistBattleHp, isPokemonInActiveBattle } = require('./healingStationService');
 const { getSupabaseClient } = require('../database/supabase');
-const { createUserIfMissing } = require('./userService');
+const { createUserIfMissing, getUser } = require('./userService');
 const { addItem } = require('./inventoryService');
 const { grantAccountXp } = require('./accountProgressionService');
 const { consumeDungeonEnergy } = require('./energyService');
@@ -14,7 +14,7 @@ const { formatGold } = require('../utils/gold');
 const { createLogger } = require('../utils/logger');
 const battleStore = require('./battleStateStore');
 
-const FARM_LEVELS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
+const FARM_LEVELS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60];
 const DUNGEON_ENEMY_USER_ID = '__dungeon_enemy__';
 const DUNGEON_ALLOWED_ENEMY_RARITIES = new Set(['common', 'uncommon', 'rare', 'epic']);
 const DUNGEON_REWARDS = {
@@ -38,6 +38,7 @@ function mapDungeonFailureReason(reason) {
     pokemon_not_owned: 'Esse Pokémon não pertence a você.',
     pokemon_in_healing_station: 'Pokémon na heal station não pode entrar em dungeons.',
     pokemon_fainted: 'Esse Pokémon está com HP zerado.',
+    pokemon_battle_unavailable: 'Esse Pokémon está marcado como indisponível para batalha (use !battleon).',
     pokemon_in_active_battle: 'Esse Pokémon já está em outra batalha ou sessão.',
     already_used_today: 'Você já usou essa dungeon diária hoje.',
     daily_disabled: 'Dungeon diária em manutenção.',
@@ -48,7 +49,6 @@ function mapDungeonFailureReason(reason) {
     actor_not_in_battle: 'Você não participa desta batalha de dungeon.',
     not_actor_turn: 'Ainda não é o seu turno na dungeon.',
     unsupported_action: 'Ação de dungeon inválida.',
-    defense_not_available: 'A ação de defesa ainda não está disponível na dungeon.',
     magic_not_found: 'Não encontrei essa magia no loadout atual.',
     magic_on_cooldown: 'Sua magia ainda está em cooldown.',
     defeat: 'Seu Pokémon foi derrotado na dungeon.',
@@ -62,6 +62,7 @@ async function validateDungeonPokemonSelection({ slackUserId, pokemonId }) {
   const availability = await assertPokemonAvailableForAction({ slackUserId, pokemonId, action: 'dungeon' });
   if (!availability.ok) return { ok: false, reason: availability.reason || 'pokemon_in_healing_station' };
 
+  if (pokemon.is_battle_available === false) return { ok: false, reason: 'pokemon_battle_unavailable', pokemon };
   if (Number(pokemon.current_hp) <= 0) return { ok: false, reason: 'pokemon_fainted', pokemon };
   if (isPokemonInActiveBattle({ slackUserId, pokemonId })) return { ok: false, reason: 'pokemon_in_active_battle', pokemon };
 
@@ -83,6 +84,9 @@ async function getEligibleDungeonPokemons(slackUserId) {
 
 function getFarmReward(level) {
   const safe = Number(level);
+  if (safe === 60) {
+    return { gold: 50000, accountXp: 6000, ancientBookQty: 50, pokeballCQty: 10, pokemonEssenceQty: 1000 };
+  }
   const pokeballCQty = safe <= 30
     ? (1 + Math.floor(Math.random() * 3))
     : (2 + Math.floor(Math.random() * 4));
@@ -135,16 +139,26 @@ function filterDungeonEnemySpecies(speciesList = []) {
   return speciesList.filter((species) => DUNGEON_ALLOWED_ENEMY_RARITIES.has(String(species?.rarity || '').toLowerCase()));
 }
 
-function pickDungeonEnemySpecies(speciesList = []) {
-  const eligibleSpecies = filterDungeonEnemySpecies(speciesList);
+function pickDungeonEnemySpecies(speciesList = [], options = {}) {
+  const onlyRarity = options.onlyRarity ? String(options.onlyRarity).toLowerCase() : null;
+  const eligibleSpecies = filterDungeonEnemySpecies(speciesList).filter((species) => !onlyRarity || String(species?.rarity || "").toLowerCase() === onlyRarity);
   if (!eligibleSpecies.length) return null;
   return eligibleSpecies[Math.floor(Math.random() * eligibleSpecies.length)] || null;
 }
 
-function buildEnemyPokemon(species, level) {
+function buildEnemyPokemon(species, level, options = {}) {
   const baseStats = calculatePokemonStats({ species, level });
   const balance = balanceDungeonEnemyStats(baseStats, species?.rarity);
-  const stats = balance.stats;
+  const stats = { ...balance.stats };
+  if (options.hpBuffPercent || options.statBuffPercent) {
+    const statBuff = Number(options.statBuffPercent || 0);
+    const hpBuff = Number(options.hpBuffPercent || 0);
+    stats.attack = Math.max(1, Math.floor(stats.attack * (1 + statBuff)));
+    stats.magic = Math.max(1, Math.floor(stats.magic * (1 + statBuff)));
+    stats.defense = Math.max(1, Math.floor(stats.defense * (1 + statBuff)));
+    stats.speed = Math.max(1, Math.floor(stats.speed * (1 + statBuff)));
+    stats.hp = Math.max(1, Math.floor(stats.hp * (1 + hpBuff)));
+  }
 
   return {
     id: `enemy-${species.id}-${level}-${Math.random().toString(36).slice(2, 7)}`,
@@ -339,6 +353,16 @@ async function grantDungeonRewards({ slackUserId, reward, transactionType, captu
     });
   }
 
+  if (reward.pokemonEssenceQty) {
+    const user = await getUser(slackUserId);
+    const currentEssence = Math.max(0, Number(user?.pokemonEssence || 0));
+    const { error: essenceError } = await supabase
+      .from("users")
+      .update({ pokemon_essence: currentEssence + Number(reward.pokemonEssenceQty || 0) })
+      .eq("slack_user_id", slackUserId);
+    if (essenceError) throw essenceError;
+  }
+
   let captured = null;
   if (capturedSpecies) {
     const stats = calculatePokemonStats({ species: capturedSpecies, level: enemyLevel || 1 });
@@ -421,8 +445,9 @@ async function startFarmDungeon({ slackUserId, pokemonId, level }) {
   playerPokemon.magicSlots = loadout?.spells || [];
 
   const speciesList = await getAllSpecies();
-  const enemySpecies = pickDungeonEnemySpecies(speciesList);
-  const enemy = buildEnemyPokemon(enemySpecies, Number(level));
+  const isDungeon60 = Number(level) === 60;
+  const enemySpecies = pickDungeonEnemySpecies(speciesList, isDungeon60 ? { onlyRarity: "epic" } : {});
+  const enemy = buildEnemyPokemon(enemySpecies, Number(level), isDungeon60 ? { statBuffPercent: 0.30, hpBuffPercent: 0.75 } : {});
 
   logger.info('Inimigo de dungeon farm gerado', {
     ...context,
@@ -840,6 +865,11 @@ async function finalizeDungeonBattle(battle) {
     capturedSpecies = weightedPickByConfiguredChances(speciesList, DAILY_CHANCES[battle.metadata.dailyMode]);
   }
 
+  if (battle.metadata?.dungeonType === 'farm' && Number(battle.metadata?.dungeonLevel) === 60) {
+    const speciesList = await getAllSpecies();
+    capturedSpecies = weightedPickByConfiguredChances(speciesList, { epic: 95, legendary: 4, mythical: 1 });
+  }
+
   const rewards = await grantDungeonRewards({
     slackUserId: playerUserId,
     reward: battle.metadata.reward,
@@ -869,9 +899,6 @@ async function finalizeDungeonBattle(battle) {
 async function processDungeonTurn({ channelId, actorUserId, actionType, actionPayload = {} }) {
   const battle = getDungeonBattle(channelId);
   if (!battle) return { ok: false, reason: 'battle_not_found' };
-  if (actionType === BATTLE_ACTION.DEFENSE) {
-    return { ok: false, reason: 'defense_not_available', battle };
-  }
   const ownerUserId = getDungeonOwnerUserId(battle);
   if (ownerUserId !== actorUserId) {
     return { ok: false, reason: 'not_dungeon_owner', battle, ownerUserId };
@@ -908,9 +935,6 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
     const roundBeforeResolution = lockedBattle.round;
     const playerResolution = resolveBattleTurn({ battle: lockedBattle, actorUserId, actionType, actionPayload });
     if (!playerResolution?.outcome?.ok) {
-      if (playerResolution?.outcome?.reason === 'not_implemented' && playerResolution?.outcome?.type === 'defense') {
-        return { ok: false, reason: 'defense_not_available', battle: lockedBattle };
-      }
       return { ok: false, reason: playerResolution.outcome.reason || 'unsupported_action', battle: lockedBattle };
     }
     lockedBattle.metadata.lastResolution = playerResolution;

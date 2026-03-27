@@ -1,17 +1,19 @@
 const { createLogger } = require("../utils/logger");
-const { decideInvite, attack, usePotion, showMagicOptions, castMagic, defendPlaceholder } = require("../services/battleService");
+const { decideInvite, attack, usePotion, showMagicOptions, castMagic, showSwitchOptions, switchPokemon } = require("../services/battleService");
 const { upsertPokemonMagicLoadout, getPendingMagicSelection, clearPendingMagicSelection, storePendingMagicSelection, buildMagicSummary } = require("../services/pokemonMagicService");
 const {
   BATTLE_ACCEPT_ACTION_ID,
   BATTLE_DECLINE_ACTION_ID,
   BATTLE_TURN_ACTION_ID,
   BATTLE_MAGIC_ACTION_ID,
+  BATTLE_SWITCH_ACTION_ID,
   MAGIC_REGISTER_REMOVE_ACTION_ID,
   renderMagicRegisterElementPrompt,
 } = require("../services/battleRenderService");
 
 const BATTLE_TURN_ACTION_PATTERN = new RegExp(`^${BATTLE_TURN_ACTION_ID}_.+$`);
 const BATTLE_MAGIC_ACTION_PATTERN = new RegExp(`^${BATTLE_MAGIC_ACTION_ID}_.+$`);
+const BATTLE_SWITCH_ACTION_PATTERN = new RegExp(`^${BATTLE_SWITCH_ACTION_ID}_.+$`);
 const MAGIC_REGISTER_REMOVE_ACTION_PATTERN = new RegExp(`^${MAGIC_REGISTER_REMOVE_ACTION_ID}_.+$`);
 
 const logger = createLogger("battle-actions");
@@ -65,8 +67,7 @@ function registerBattleActions(app) {
     if (payload.action === "attack") return attack({ event, say: reply });
     if (payload.action === "potion") return usePotion({ event, say: reply });
     if (payload.action === "magic") return showMagicOptions({ event, say: reply });
-    if (payload.action === "defense") return defendPlaceholder({ event, say: reply });
-
+    if (payload.action === "switch") return showSwitchOptions({ event, say: reply });
     await reply("Ação de batalha inválida.");
   };
 
@@ -121,10 +122,19 @@ function registerBattleActions(app) {
     );
   };
 
+  const switchActionHandler = async ({ ack, action, body, say, respond }) => {
+    await ack();
+    const payload = parseValue(action?.value);
+    const channelId = payload.channelId || body.channel?.id;
+    const event = { channel: channelId, user: body.user?.id };
+    return switchPokemon({ event, say: buildSayAdapter({ say, respond }), pokemonId: payload.pokemonId });
+  };
+
   app.action(BATTLE_ACCEPT_ACTION_ID, inviteHandler);
   app.action(BATTLE_DECLINE_ACTION_ID, inviteHandler);
   app.action(BATTLE_TURN_ACTION_PATTERN, turnActionHandler);
   app.action(BATTLE_MAGIC_ACTION_PATTERN, magicActionHandler);
+  app.action(BATTLE_SWITCH_ACTION_PATTERN, switchActionHandler);
   app.action(MAGIC_REGISTER_REMOVE_ACTION_PATTERN, magicRegisterHandler);
 }
 

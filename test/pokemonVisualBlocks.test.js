@@ -71,7 +71,7 @@ test('buildPokedexMessage usa accessory no section principal e remove linha text
 
   assert.equal(message.blocks[0].type, 'section');
   assert.equal(message.blocks[0].accessory?.type, 'image');
-  assert.match(message.blocks[0].accessory?.image_url || '', /^data:image\/svg\+xml/);
+  assert.match(message.blocks[0].accessory?.image_url || '', /^(data:image\/svg\+xml|https:\/\/)/);
   assert.ok(!Object.hasOwn(message.blocks[0].accessory, 'title'));
   assert.ok(!message.blocks[0].text.text.includes('Moldura:'));
 });

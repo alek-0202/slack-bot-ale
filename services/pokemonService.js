@@ -42,8 +42,10 @@ async function insertUserPokemon({
       current_hp: stats.currentHp ?? stats.hp,
       speed: stats.speed,
       source,
+      is_battle_available: true,
+      is_favorite: false,
     })
-    .select("id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed")
+    .select("id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite")
     .single();
 
   if (error) throw error;
@@ -81,11 +83,12 @@ async function getUserPokemonPage(slackUserId, index) {
   const { data, count, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, pokemon_species(id, name, sprite_url, rarity, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
+      "id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, pokemon_species(id, name, sprite_url, rarity, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
       
       { count: "exact" },
     )
     .eq("slack_user_id", slackUserId)
+    .order("is_favorite", { ascending: false })
     .order("captured_at", { ascending: false })
     .order("id", { ascending: false })
     .range(clampedIndex, clampedIndex);
@@ -104,7 +107,7 @@ async function getUserPokemonById(slackUserId, pokemonId) {
   const { data, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, slack_user_id, species_id, level, shiny, attack, magic, defense, hp, current_hp, speed, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
+      "id, slack_user_id, species_id, level, shiny, attack, magic, defense, hp, current_hp, speed, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
     )
     .eq("id", pokemonId)
     .eq("slack_user_id", slackUserId)
@@ -122,7 +125,7 @@ async function getUserPokemonsByIds(slackUserId, pokemonIds) {
   const { data, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, slack_user_id, species_id, level, shiny, attack, magic, defense, hp, current_hp, speed, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
+      "id, slack_user_id, species_id, level, shiny, attack, magic, defense, hp, current_hp, speed, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
     )
     .eq("slack_user_id", slackUserId)
     .in("id", safeIds);
@@ -136,9 +139,10 @@ async function getUserPokemons(slackUserId) {
   const { data, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, pokemon_species(id, name, sprite_url, rarity, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
+      "id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, pokemon_species(id, name, sprite_url, rarity, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
     )
     .eq("slack_user_id", slackUserId)
+    .order("is_favorite", { ascending: false })
     .order("captured_at", { ascending: false })
     .order("id", { ascending: false });
 
@@ -185,6 +189,63 @@ function buildPokedexDisplayEntries(pokemons) {
   return entries;
 }
 
+
+
+function normalizePokemonFilter(rawFilter = {}) {
+  const filter = rawFilter || {};
+  const rarity = filter.rarity ? String(filter.rarity).toLowerCase() : null;
+  const element = filter.element ? String(filter.element).toLowerCase() : null;
+  return { rarity, element };
+}
+
+function matchesPokemonFilter(pokemon, filter = {}) {
+  const normalized = normalizePokemonFilter(filter);
+  if (normalized.rarity && String(pokemon?.pokemon_species?.rarity || '').toLowerCase() !== normalized.rarity) return false;
+  if (normalized.element) {
+    const types = Array.isArray(pokemon?.pokemon_species?.element_types)
+      ? pokemon.pokemon_species.element_types.map((type) => String(type).toLowerCase())
+      : [];
+    if (!types.includes(normalized.element)) return false;
+  }
+  return true;
+}
+
+function filterUserPokemons(pokemons = [], filter = {}) {
+  const normalized = normalizePokemonFilter(filter);
+  if (!normalized.rarity && !normalized.element) return pokemons;
+  return pokemons.filter((pokemon) => matchesPokemonFilter(pokemon, normalized));
+}
+
+async function updatePokemonBattleAvailability(slackUserId, pokemonId, isBattleAvailable) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("user_pokemons")
+    .update({ is_battle_available: Boolean(isBattleAvailable) })
+    .eq("id", pokemonId)
+    .eq("slack_user_id", slackUserId)
+    .select("id, is_battle_available")
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function togglePokemonFavorite(slackUserId, pokemonId) {
+  const pokemon = await getUserPokemonById(slackUserId, pokemonId);
+  if (!pokemon) return null;
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("user_pokemons")
+    .update({ is_favorite: !pokemon.is_favorite })
+    .eq("id", pokemonId)
+    .eq("slack_user_id", slackUserId)
+    .select("id, is_favorite")
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
 module.exports = {
   getAllSpecies,
   insertUserPokemon,
@@ -194,4 +255,8 @@ module.exports = {
   getUserPokemonsByIds,
   getUserPokemons,
   buildPokedexDisplayEntries,
+  normalizePokemonFilter,
+  filterUserPokemons,
+  updatePokemonBattleAvailability,
+  togglePokemonFavorite,
 };

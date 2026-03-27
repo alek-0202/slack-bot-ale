@@ -187,6 +187,7 @@ function buildRewardLines(result) {
   const lines = [];
   if (result?.rewards?.goldReward) lines.push(`💰 Gold: +${result.rewards.goldReward}`);
   if (result?.rewards?.xpResult?.grantedXp != null) lines.push(`✨ XP da conta: +${result.rewards.xpResult.grantedXp}`);
+  if (result?.battle?.metadata?.reward?.pokemonEssenceQty) lines.push(`🧬 Essência Pokémon: +${result.battle.metadata.reward.pokemonEssenceQty}`);
   if (result?.rewards?.items?.length) {
     for (const item of result.rewards.items) {
       lines.push(`📚 ${item.itemName || item.item_name || 'Item'}: +${item.quantity || 0}`);
@@ -195,8 +196,13 @@ function buildRewardLines(result) {
   const speciesName = result?.capturedSpecies?.name || result?.rewards?.captured?.pokemon_species?.name;
   if (speciesName) lines.push(`🎁 Pokémon recebido: *${speciesName}*`);
   if (result?.rewards?.xpResult?.leveledUp) {
-    const currentLevel = result.rewards.xpResult.current?.level || result.rewards.xpResult.current_level;
-    lines.push(`🆙 Level up! Agora você está no nível *${currentLevel}*.`);
+    const xpResult = result.rewards.xpResult;
+    const currentLevel = xpResult.current?.level || xpResult.current_level;
+    const rewardParts = [];
+    if (Number(xpResult.goldRewardGranted || 0) > 0) rewardParts.push(`💰 +${xpResult.goldRewardGranted} gold`);
+    if (Number(xpResult.pokeballCGranted || 0) > 0) rewardParts.push(`🧿 +${xpResult.pokeballCGranted} Pokebola (!c)`);
+    lines.push(`🆙 Você subiu para o nível *${currentLevel}*.`);
+    if (rewardParts.length) lines.push(`🎁 Recompensas de nível: ${rewardParts.join(' | ')}`);
   }
   return lines;
 }

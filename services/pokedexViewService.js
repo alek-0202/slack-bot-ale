@@ -1,5 +1,5 @@
 const { calculatePokemonSellPrice } = require("./sellService");
-const { getUserPokemons, buildPokedexDisplayEntries } = require("./pokemonService");
+const { getUserPokemons, buildPokedexDisplayEntries, filterUserPokemons, normalizePokemonFilter } = require("./pokemonService");
 const { buildPokemonTypesLabel } = require("./pokemonTypeService");
 const {
   buildPokemonVisualBlocks,
@@ -14,8 +14,8 @@ const PA_NAV_PREV_ACTION_ID = "pa_navigate_prev";
 const PA_NAV_NEXT_ACTION_ID = "pa_navigate_next";
 const logger = createLogger("service:pokedex-view");
 
-function createNavValue({ ownerSlackUserId, index, mode = "pokedex" }) {
-  return JSON.stringify({ ownerSlackUserId, index, mode });
+function createNavValue({ ownerSlackUserId, index, mode = "pokedex", filter = {} }) {
+  return JSON.stringify({ ownerSlackUserId, index, mode, filter: normalizePokemonFilter(filter) });
 }
 
 function parseNavValue(value) {
@@ -25,12 +25,14 @@ function parseNavValue(value) {
       ownerSlackUserId: parsed.ownerSlackUserId,
       mode: parsed.mode || "pokedex",
       index: Number.isInteger(parsed.index) ? parsed.index : Number(parsed.index) || 0,
+      filter: normalizePokemonFilter(parsed.filter || {}),
     };
   } catch {
     return {
       ownerSlackUserId: null,
       mode: "pokedex",
       index: 0,
+      filter: normalizePokemonFilter({}),
     };
   }
 }
@@ -44,14 +46,16 @@ function normalizeIndex(index, total) {
   return normalized;
 }
 
-async function getPokedexView(slackUserId, rawIndex) {
+async function getPokedexView(slackUserId, rawIndex, filter = {}) {
   const pokemons = await getUserPokemons(slackUserId);
-  const entries = buildPokedexDisplayEntries(pokemons);
+  const filtered = filterUserPokemons(pokemons, filter);
+  const entries = buildPokedexDisplayEntries(filtered);
 
   if (!entries.length) {
     return {
       total: 0,
       index: 0,
+      filter: normalizePokemonFilter({}),
       entry: null,
     };
   }
@@ -73,6 +77,7 @@ async function buildPokedexMessage({
   slackClient = null,
   channelId = null,
   commandName = null,
+  filter = {},
 }) {
   const isAttributesMode = mode === "pa";
   const prevActionId = isAttributesMode ? PA_NAV_PREV_ACTION_ID : POKEDEX_NAV_PREV_ACTION_ID;
@@ -98,6 +103,7 @@ async function buildPokedexMessage({
   const sellPrice = calculatePokemonSellPrice({ baseValue: species.base_value, rarity: species.rarity, upgradeSpentGold: entry.upgrade_spent_gold }).finalPrice;
   const positionText = `${index + 1}/${total}`;
   const shinyTag = entry.shiny ? "\n✨ *Shiny*" : "";
+  const favoriteTag = entry.is_favorite ? "\n⭐ *Favorito*" : "";
   const quantitySuffix = entry.quantity > 1 ? ` (x${entry.quantity})` : "";
   const idsText = entry.quantity > 1 ? entry.pokemonIds.join(", ") : `${entry.id}`;
 
@@ -119,12 +125,13 @@ async function buildPokedexMessage({
     `${buildPokemonTypesLabel(species.element_types) ? `🧪 ${buildPokemonTypesLabel(species.element_types)}\n` : ""}` +
     `🏷️ Origem: *${entry.source || "capture"}*\n` +
     `${entry.grouped ? "📦 Grupo: *instâncias equivalentes (Lv 1)*\n" : ""}` +
-    `🎯 Captura #${entry.id}${shinyTag}${attributesText}`;
+    `🎯 Captura #${entry.id}${shinyTag}${favoriteTag}${attributesText}`;
 
   const visualBlocks = await buildPokemonVisualBlocks({
     species,
     level: entry.level,
     shiny: entry.shiny,
+    shinyType: entry.shiny_type,
     slackClient,
     channelId,
     commandName: commandName || mode,
@@ -180,7 +187,7 @@ async function buildPokedexMessage({
               emoji: true,
             },
             action_id: prevActionId,
-            value: createNavValue({ ownerSlackUserId: slackUserId, index: index - 1, mode }),
+            value: createNavValue({ ownerSlackUserId: slackUserId, index: index - 1, mode, filter }),
             style: "primary",
           },
           {
@@ -191,7 +198,7 @@ async function buildPokedexMessage({
               emoji: true,
             },
             action_id: nextActionId,
-            value: createNavValue({ ownerSlackUserId: slackUserId, index: index + 1, mode }),
+            value: createNavValue({ ownerSlackUserId: slackUserId, index: index + 1, mode, filter }),
             style: "primary",
           },
         ],

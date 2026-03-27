@@ -1,39 +1,23 @@
 const { normalizeLevel } = require("../../../services/pokemonProgressionService");
+const { getBackgroundByRarity, getBorderByState } = require("./pokemonRarityVisualTheme");
+const { getLevelBorderStyle } = require("./pokemonVisualTier");
 
 const CARD_SIZE = 256;
 const PADDING = 14;
 const BORDER_WIDTH = 14;
 
-const LEVEL_THEME = Object.freeze({
-  default: {
-    frameInner: "#D1D5DB",
-    frameOuter: "#94A3B8",
-    backgroundCenter: "#334155",
-    backgroundEdge: "#0F172A",
-    aura: "#A855F7",
-  },
-  shiny: {
-    frameInner: "#D8B4FE",
-    frameOuter: "#7E22CE",
-    backgroundCenter: "#8A2BE2",
-    backgroundEdge: "#4B0082",
-    aura: "#B026FF",
-  },
-});
-
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function getTheme({ shiny = false }) {
-  return shiny ? LEVEL_THEME.shiny : LEVEL_THEME.default;
-}
-
-function buildPokemonLayeredImageUrl({ spriteUrl, level = 1, shiny = false }) {
+function buildPokemonLayeredImageUrl({ spriteUrl, level = 1, shiny = false, shinyType = null, rarity = null }) {
   if (!spriteUrl) return null;
 
   normalizeLevel(level);
-  const theme = getTheme({ shiny });
+  const theme = getBackgroundByRarity({ rarity });
+  const borderTheme = getBorderByState({ shiny, shinyType });
+  const border = getLevelBorderStyle(level);
+  const borderColor = border.hex || "#D1D5DB";
   const spriteShadowBlur = shiny ? 8 : 5;
   const haloOpacity = shiny ? 0.22 : 0;
 
@@ -49,28 +33,29 @@ function buildPokemonLayeredImageUrl({ spriteUrl, level = 1, shiny = false }) {
       <stop offset="100%" stop-color="${theme.backgroundEdge}" stop-opacity="1" />
     </radialGradient>
     <linearGradient id="frameGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="${theme.frameOuter}" />
-      <stop offset="52%" stop-color="${theme.frameInner}" />
-      <stop offset="100%" stop-color="${theme.frameOuter}" />
+      <stop offset="0%" stop-color="${borderTheme.frameStart || borderColor}" />
+      <stop offset="52%" stop-color="${borderTheme.frameMid}" />
+      <stop offset="100%" stop-color="${borderTheme.frameEnd || borderColor}" />
     </linearGradient>
     <filter id="frameGlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="${theme.frameInner}" flood-opacity="0.25" />
+      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="${borderTheme.frameGlow || borderColor}" flood-opacity="${borderTheme.frameGlowOpacity}" />
     </filter>
     <filter id="spriteShadow" x="-30%" y="-30%" width="160%" height="180%">
       <feDropShadow dx="0" dy="3" stdDeviation="2.4" flood-color="#000000" flood-opacity="0.28" />
-      <feDropShadow dx="0" dy="0" stdDeviation="${spriteShadowBlur / 2}" flood-color="${shiny ? "#B026FF" : "#FFFFFF"}" flood-opacity="${shiny ? "0.20" : "0"}" />
+      <feDropShadow dx="0" dy="0" stdDeviation="${spriteShadowBlur / 2}" flood-color="${borderTheme.frameGlow || "#FFFFFF"}" flood-opacity="${shiny ? "0.20" : "0"}" />
     </filter>
   </defs>
 
   <rect x="0" y="0" width="${CARD_SIZE}" height="${CARD_SIZE}" fill="url(#bgGradient)" rx="24" />
-  <circle cx="128" cy="128" r="78" fill="${theme.aura}" opacity="${haloOpacity}" filter="url(#frameGlow)" />
+  <circle cx="128" cy="128" r="78" fill="${theme.aura}" opacity="${borderTheme.isPrime ? "0.08" : haloOpacity}" filter="url(#frameGlow)" />
+  ${borderTheme.isPrime ? `<g opacity="${borderTheme.accentDotsOpacity}"><circle cx="30" cy="38" r="2" fill="${borderTheme.accentDotsColor}"/><circle cx="226" cy="52" r="2" fill="${borderTheme.accentDotsColor}"/><circle cx="46" cy="218" r="2" fill="${borderTheme.accentDotsColor}"/><circle cx="210" cy="204" r="2" fill="${borderTheme.accentDotsColor}"/><circle cx="128" cy="30" r="2" fill="${borderTheme.accentDotsColor}"/><circle cx="144" cy="226" r="2" fill="${borderTheme.accentDotsColor}"/></g>` : ""}
 
   <g filter="url(#spriteShadow)">
     <image href="${spriteUrl}" x="${spriteInset}" y="${spriteInset - 2}" width="${CARD_SIZE - spriteInset * 2}" height="${CARD_SIZE - spriteInset * 2}" preserveAspectRatio="xMidYMid meet" />
   </g>
 
   <rect x="${borderInset}" y="${borderInset}" width="${CARD_SIZE - borderInset * 2}" height="${CARD_SIZE - borderInset * 2}" rx="18" fill="none" stroke="url(#frameGradient)" stroke-width="${BORDER_WIDTH}" filter="url(#frameGlow)" />
-  <rect x="${innerFrameInset}" y="${innerFrameInset}" width="${CARD_SIZE - innerFrameInset * 2}" height="${CARD_SIZE - innerFrameInset * 2}" rx="12" fill="none" stroke="#FFF8CC" stroke-opacity="0.45" stroke-width="1.5" />
+  <rect x="${innerFrameInset}" y="${innerFrameInset}" width="${CARD_SIZE - innerFrameInset * 2}" height="${CARD_SIZE - innerFrameInset * 2}" rx="12" fill="none" stroke="${borderTheme.innerStroke}" stroke-opacity="${borderTheme.innerStrokeOpacity}" stroke-width="1.5" />
 </svg>`;
 
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;

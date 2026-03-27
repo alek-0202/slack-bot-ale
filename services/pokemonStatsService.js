@@ -31,6 +31,7 @@ const SHINY_TYPE = Object.freeze({
 const SHINY_MULTIPLIER = 1.15;
 const SHINY_PRIME_BONUS = 10;
 const LEGENDARY_BASE_BONUS = 15;
+const MYTHICAL_BASE_BONUS = 20;
 
 function hasCompleteBaseStats(species = {}) {
   return SPECIES_STAT_FIELDS.every((field) => toPositiveInteger(species[field], 0) > 0);
@@ -90,9 +91,16 @@ function getSpeciesBaseStats(species = {}, options = {}) {
     speed: toPositiveInteger(species.base_speed, safeFallback.speed),
   };
 
-  if (["legendary", "mythical"].includes(String(species.rarity || "").toLowerCase())) {
+  const rarity = String(species.rarity || "").toLowerCase();
+  const rarityBonus = rarity === "mythical"
+    ? MYTHICAL_BASE_BONUS
+    : rarity === "legendary"
+      ? LEGENDARY_BASE_BONUS
+      : 0;
+
+  if (rarityBonus > 0) {
     for (const key of Object.keys(baseStats)) {
-      baseStats[key] += LEGENDARY_BASE_BONUS;
+      baseStats[key] += rarityBonus;
     }
   }
 
@@ -210,6 +218,7 @@ module.exports = {
   SHINY_MULTIPLIER,
   SHINY_PRIME_BONUS,
   LEGENDARY_BASE_BONUS,
+  MYTHICAL_BASE_BONUS,
   hasCompleteBaseStats,
   rollPokemonIvOffsets,
   normalizeIvOffsets,

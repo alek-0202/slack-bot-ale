@@ -5,6 +5,7 @@ const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
 const BATTLE_DECLINE_ACTION_ID = "battle_decline_invite";
 const BATTLE_TURN_ACTION_ID = "battle_turn_action";
 const BATTLE_MAGIC_ACTION_ID = "battle_magic_action";
+const BATTLE_SWITCH_ACTION_ID = "battle_switch_action";
 const MAGIC_REGISTER_REMOVE_ACTION_ID = "magic_register_remove_element";
 
 function buildBattleTurnActionId(action) {
@@ -13,6 +14,10 @@ function buildBattleTurnActionId(action) {
 
 function buildBattleMagicActionId(slot) {
   return `${BATTLE_MAGIC_ACTION_ID}_${slot}`;
+}
+
+function buildBattleSwitchActionId(selection = "select") {
+  return `${BATTLE_SWITCH_ACTION_ID}_${selection}`;
 }
 
 function buildMagicRegisterRemoveActionId(element) {
@@ -27,7 +32,7 @@ function renderBattleInvite({ challengerId, challengedId, channelId }) {
     text:
       `⚔️ <@${challengerId}> desafiou <@${challengedId}> para um duelo PvP!\n` +
       "Use os botões abaixo para aceitar ou recusar.\n" +
-      "Após aceitar, cada jogador deve escolher seu Pokémon com `!bpick ID`.",
+      "Após aceitar, cada jogador deve escolher até 3 Pokémon com `!bpick ID [ID2] [ID3]`.",
     blocks: [
       {
         type: "section",
@@ -64,7 +69,7 @@ function renderBattleInvite({ challengerId, challengedId, channelId }) {
 function renderSelectionPrompt({ challengerId, challengedId }) {
   return (
     `✅ <@${challengedId}> aceitou o desafio de <@${challengerId}>!\n` +
-    "Agora escolham os Pokémon da sua coleção com `!bpick ID`.\n" +
+    "Agora escolham até 3 Pokémon da sua coleção com `!bpick ID [ID2] [ID3]`.\n" +
     `Ordem de escolha: <@${challengerId}> primeiro, depois <@${challengedId}>.`
   );
 }
@@ -102,6 +107,15 @@ function renderBattleState(battle, options = {}) {
           type: "mrkdwn",
           text: options.battleContextText,
         },
+      } : null,
+      view.pvpEconomy?.entryFee > 0 || view.pvpEconomy?.winnerPrize > 0 ? {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `💸 Entrada: *${view.pvpEconomy.entryFee} gold/jogador* | 🏆 Recompensa: *${view.pvpEconomy.winnerPrize} gold*`,
+          },
+        ],
       } : null,
       {
         type: "section",
@@ -155,12 +169,14 @@ function buildBattleActionBlock(battle, options = {}) {
   if (battle.status !== "active") return null;
   const currentPlayer = battle.players[battle.currentTurnUserId];
   const magicOnCooldown = (currentPlayer?.magicCooldown?.blockedOwnTurnsRemaining || 0) > 0;
+  const aliveReserves = (currentPlayer?.team || [])
+    .filter((member, index) => index !== Number(currentPlayer.activeTeamIndex || 0))
+    .filter((member) => Number(member?.battleHp?.current || 0) > 0);
 
   return {
     type: "actions",
     elements: [
       buildTurnButton({ battle, label: "⚔️ Ataque", action: "attack", style: "primary", actionIdBuilder: options.turnActionIdBuilder }),
-      buildTurnButton({ battle, label: "🛡️ Defesa", action: "defense", actionIdBuilder: options.turnActionIdBuilder }),
       buildTurnButton({
         battle,
         label: magicOnCooldown
@@ -171,7 +187,10 @@ function buildBattleActionBlock(battle, options = {}) {
         actionIdBuilder: options.turnActionIdBuilder,
       }),
       buildTurnButton({ battle, label: "🧪 Poção", action: "potion", actionIdBuilder: options.turnActionIdBuilder }),
-    ],
+      aliveReserves.length
+        ? buildTurnButton({ battle, label: "🔁 Trocar", action: "switch", actionIdBuilder: options.turnActionIdBuilder })
+        : null,
+    ].filter(Boolean),
   };
 }
 
@@ -291,8 +310,16 @@ function renderPokemonBlock(player) {
     `💨 SPD ${player.speed} | ⚡ Iniciativa ${player.initiativeGauge}/${player.initiativeThreshold}\n` +
     `🧪 Poções: ${player.potionsRemaining}\n` +
     `⏳ Cooldown magia: ${player.magicCooldownRemaining}\n` +
-    `✨ Magias:\n${magicText}`
+    `✨ Magias:\n${magicText}\n` +
+    `🔁 Reservas:\n${renderReserveLines(player)}`
   );
+}
+
+function renderReserveLines(player) {
+  if (!Array.isArray(player.reserves) || !player.reserves.length) return "_Sem reservas_";
+  return player.reserves
+    .map((reserve) => `• ${reserve.name} (${reserve.hpCurrent}/${reserve.hpMax})${reserve.isAlive ? "" : " 💀"}`)
+    .join("\n");
 }
 
 function renderPokemonLine(player) {
@@ -305,19 +332,58 @@ function renderBattleFinished({ winnerId, loserId }) {
   return `🏁 Batalha encerrada!\n🏆 Vencedor: <@${winnerId}>\n💀 Derrotado: <@${loserId}>`;
 }
 
+function renderSwitchOptions({ battle, actorUserId, reserves = [] }) {
+  if (!reserves.length) {
+    return {
+      text: "Você não tem reservas vivas para trocar.",
+      blocks: [
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: "🔁 Você não possui reservas vivas para trocar agora." },
+        },
+      ],
+    };
+  }
+
+  return {
+    text: "Escolha um Pokémon para trocar",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `🔁 *Escolha a troca de <@${actorUserId}>*`,
+        },
+      },
+      {
+        type: "actions",
+        elements: reserves.map((reserve) => ({
+          type: "button",
+          action_id: buildBattleSwitchActionId(`select_${reserve.id}`),
+          text: { type: "plain_text", text: `${reserve.name} (${reserve.hpCurrent}/${reserve.hpMax})`.slice(0, 75) },
+          value: JSON.stringify({ channelId: battle.channelId, pokemonId: reserve.id }),
+        })),
+      },
+    ],
+  };
+}
+
 module.exports = {
   BATTLE_ACCEPT_ACTION_ID,
   BATTLE_DECLINE_ACTION_ID,
   BATTLE_TURN_ACTION_ID,
   BATTLE_MAGIC_ACTION_ID,
+  BATTLE_SWITCH_ACTION_ID,
   MAGIC_REGISTER_REMOVE_ACTION_ID,
   buildBattleTurnActionId,
   buildBattleMagicActionId,
+  buildBattleSwitchActionId,
   buildMagicRegisterRemoveActionId,
   renderBattleInvite,
   renderSelectionPrompt,
   renderBattleState,
   renderMagicOptions,
+  renderSwitchOptions,
   renderMagicRegisterElementPrompt,
   renderBattleFinished,
 };

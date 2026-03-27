@@ -13,6 +13,10 @@ function buildBattleViewModel(battle) {
     challengerId: battle.challengerId,
     challengedId: battle.challengedId,
     initiative: battle.initiative || null,
+    pvpEconomy: {
+      entryFee: Number(battle?.metadata?.pvpEntryFee || 0),
+      winnerPrize: Number(battle?.metadata?.pvpWinPrize || 0),
+    },
     players: [
       buildPlayerViewModel(battle.challengerId, challenger, battle.initiative),
       buildPlayerViewModel(battle.challengedId, challenged, battle.initiative),
@@ -23,6 +27,7 @@ function buildBattleViewModel(battle) {
 function buildPlayerViewModel(userId, playerState, initiative) {
   return {
     userId,
+    activePokemonId: playerState.selectedPokemon?.id || null,
     selectedPokemonName: playerState.selectedPokemon?.name || null,
     selectedPokemonTypes: playerState.selectedPokemon?.elementTypes || [],
     level: playerState.selectedPokemon?.level || null,
@@ -39,6 +44,16 @@ function buildPlayerViewModel(userId, playerState, initiative) {
     potionsRemaining: Math.max(0, MAX_POTIONS_PER_BATTLE - (playerState.potionsUsed || 0)),
     magicCooldownRemaining: Math.max(0, playerState.magicCooldown?.blockedOwnTurnsRemaining || 0),
     magicSlots: Array.isArray(playerState.magicSlots) ? playerState.magicSlots : [],
+    reserves: (playerState.team || [])
+      .map((member, index) => ({
+        id: member.id,
+        name: member.name,
+        hpCurrent: Number(member?.battleHp?.current || 0),
+        hpMax: Number(member?.battleHp?.max || 0),
+        isActive: index === Number(playerState.activeTeamIndex || 0),
+        isAlive: Number(member?.battleHp?.current || 0) > 0,
+      }))
+      .filter((member) => !member.isActive),
   };
 }
 

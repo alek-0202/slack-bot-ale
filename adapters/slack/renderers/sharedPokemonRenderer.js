@@ -13,7 +13,8 @@ function renderSlackProfileSummary({ slackUserId, profile }) {
     `🧿 Pokebola (!c): *${profile.pokeballCQty || 0}*\n` +
     `🕒 Cooldown !capture: *${profile.captureCooldownText || 'pronto'}*\n` +
     `🎯 Total capturado: *${profile.totalCaptured}*\n` +
-    `📘 Pokédex descoberta: *${profile.uniqueCount}*`
+    `📘 Pokédex descoberta: *${profile.uniqueCount}*\n` +
+    `🏆 Vitórias PvP: *${profile.pvpWins || 0}*`
   );
 
   return {
@@ -62,7 +63,7 @@ function renderSlackCaptureResult({ slackUserId, result }) {
 
   const shinyTag = result.shiny ? `✨ SHINY${result.captured?.shiny_type ? ` (${result.captured.shiny_type})` : ''}!` : '';
   const rarity = String(result.species?.rarity || '').toLowerCase();
-  const legendaryBaseBonus = ['legendary', 'mythical'].includes(rarity) ? 15 : 0;
+  const rarityBaseBonus = rarity === 'mythical' ? 20 : rarity === 'legendary' ? 15 : 0;
   const statLines = [
     ['ATK', 'base_attack', 'attack_iv'],
     ['DEF', 'base_defense', 'defense_iv'],
@@ -74,7 +75,7 @@ function renderSlackCaptureResult({ slackUserId, result }) {
       const baseValue = Number(result.species?.[baseKey]);
       const ivValue = Number(result.captured?.[ivKey] || 0);
       if (!Number.isFinite(baseValue)) return null;
-      const effectiveBase = baseValue + legendaryBaseBonus;
+      const effectiveBase = baseValue + rarityBaseBonus;
       const sign = ivValue >= 0 ? '+' : '';
       return `• ${label}: ${effectiveBase} (${sign}${ivValue})`;
     })
@@ -85,7 +86,8 @@ function renderSlackCaptureResult({ slackUserId, result }) {
     `🆔 ID da captura: *${result.captured.id}*\n` +
     `${statLines.length ? `📊 Base + IV\n${statLines.join('\n')}\n` : ''}` +
     `💰 Recompensa: +${result.goldReward} gold\n` +
-    `✨ XP da conta: +${result.accountXpReward || 0}`;
+    `✨ XP da conta: +${result.accountXpReward || 0}` +
+    `${buildLevelUpSummary(result.accountXpResult)}`;
 
   const message = {
     text,
@@ -110,6 +112,18 @@ function renderSlackCaptureResult({ slackUserId, result }) {
   };
 
   return message;
+}
+
+function buildLevelUpSummary(xpResult) {
+  if (!xpResult?.leveledUp) return '';
+  const level = xpResult.current?.level || '?';
+  const rewards = [];
+  if (Number(xpResult.goldRewardGranted || 0) > 0) rewards.push(`💰 +${xpResult.goldRewardGranted} gold`);
+  if (Number(xpResult.pokeballCGranted || 0) > 0) rewards.push(`🧿 +${xpResult.pokeballCGranted} Pokebola (!c)`);
+  return (
+    `\n\n🆙 *Você subiu para o nível ${level}*` +
+    `${rewards.length ? `\n🎁 Recompensas: ${rewards.join(' | ')}` : ''}`
+  );
 }
 
 function renderSlackUpgradeResult({ result, slackUserId, maxLevel, getNextUpgradeCost }) {

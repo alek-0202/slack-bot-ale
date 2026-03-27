@@ -33,7 +33,6 @@ const {
 
 const logger = createLogger('handler:dungeon-actions');
 const DUNGEON_OWNER_ONLY_MESSAGE = 'Você não pode interagir na dungeon de outro jogador';
-const DUNGEON_DEFENSE_NOT_READY_MESSAGE = 'Defesa ainda está em desenvolvimento.';
 const DUNGEON_ACTION_PROCESSING_MESSAGE = '⏳ Já estou processando sua ação anterior na dungeon.';
 const DUNGEON_ACTION_MAP = {
   attack: BATTLE_ACTION.ATTACK,
@@ -232,11 +231,6 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
   const ownerUserId = getDungeonOwnerUserId(battle);
   if (ownerUserId !== actorUserId) {
     await respondEphemeral(respond, DUNGEON_OWNER_ONLY_MESSAGE);
-    return;
-  }
-
-  if (actionName === 'defense') {
-    await respondEphemeral(respond, DUNGEON_DEFENSE_NOT_READY_MESSAGE);
     return;
   }
 

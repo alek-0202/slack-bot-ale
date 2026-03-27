@@ -3,6 +3,7 @@ const fs = require("fs/promises");
 const axios = require("axios");
 const { createLogger } = require("../../../utils/logger");
 const { getLevelBorderStyle } = require("./pokemonVisualTier");
+const { getBackgroundByRarity, getBorderByState } = require("./pokemonRarityVisualTheme");
 
 const logger = createLogger("renderer:pokemon-layered-sprite");
 
@@ -76,10 +77,20 @@ async function loadOptionalAsset(assetPath, metadata, loadImage) {
   }
 }
 
-function applyBaseLayer(ctx) {
-  const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_SIZE);
-  gradient.addColorStop(0, "rgba(17, 24, 39, 0.22)");
-  gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+function hexToRgba(hex, alpha) {
+  if (typeof hex !== "string") return `rgba(17, 24, 39, ${alpha})`;
+  const normalized = hex.replace("#", "");
+  const valid = normalized.length === 6 ? normalized : "111827";
+  const r = parseInt(valid.slice(0, 2), 16);
+  const g = parseInt(valid.slice(2, 4), 16);
+  const b = parseInt(valid.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function applyBaseLayer(ctx, theme) {
+  const gradient = ctx.createRadialGradient(CANVAS_SIZE / 2, CANVAS_SIZE * 0.42, 18, CANVAS_SIZE / 2, CANVAS_SIZE / 2, CANVAS_SIZE * 0.74);
+  gradient.addColorStop(0, hexToRgba(theme.backgroundCenter, 0.96));
+  gradient.addColorStop(1, hexToRgba(theme.backgroundEdge, 1));
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 }
@@ -95,6 +106,40 @@ function applyShinyAura(ctx) {
   ctx.globalCompositeOperation = "screen";
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  ctx.restore();
+}
+
+function applyPrimeSpecialFrame(ctx) {
+  ctx.save();
+  ctx.strokeStyle = "#0B0B0B";
+  ctx.shadowColor = "rgba(255, 35, 35, 0.45)";
+  ctx.shadowBlur = 10;
+  ctx.lineWidth = 12;
+  ctx.strokeRect(8, 8, CANVAS_SIZE - 16, CANVAS_SIZE - 16);
+
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(255, 70, 70, 0.72)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(16, 16, CANVAS_SIZE - 32, CANVAS_SIZE - 32);
+
+  const accents = [
+    [18, 18, 44, 18],
+    [18, 18, 18, 44],
+    [CANVAS_SIZE - 44, 18, CANVAS_SIZE - 18, 18],
+    [CANVAS_SIZE - 18, 18, CANVAS_SIZE - 18, 44],
+    [18, CANVAS_SIZE - 18, 44, CANVAS_SIZE - 18],
+    [18, CANVAS_SIZE - 44, 18, CANVAS_SIZE - 18],
+    [CANVAS_SIZE - 44, CANVAS_SIZE - 18, CANVAS_SIZE - 18, CANVAS_SIZE - 18],
+    [CANVAS_SIZE - 18, CANVAS_SIZE - 44, CANVAS_SIZE - 18, CANVAS_SIZE - 18],
+  ];
+  ctx.strokeStyle = "rgba(255, 70, 70, 0.84)";
+  ctx.lineWidth = 3;
+  accents.forEach(([x1, y1, x2, y2]) => {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  });
   ctx.restore();
 }
 
@@ -126,7 +171,31 @@ function applyGeneratedFrame(ctx, tierKey) {
   ctx.restore();
 }
 
-async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = false, commandName = "unknown" }) {
+function applySpecialOverlay(ctx, { shiny = false, shinyType = null } = {}) {
+  const isShinyPrime = Boolean(shiny) && String(shinyType || "").toLowerCase() === "prime";
+  if (isShinyPrime) {
+    ctx.save();
+    ctx.fillStyle = "rgba(255, 42, 42, 0.12)";
+    [
+      [28, 36],
+      [CANVAS_SIZE - 30, 48],
+      [42, CANVAS_SIZE - 38],
+      [CANVAS_SIZE - 44, CANVAS_SIZE - 52],
+      [CANVAS_SIZE / 2, 30],
+      [CANVAS_SIZE / 2 + 18, CANVAS_SIZE - 28],
+    ].forEach(([x, y]) => {
+      ctx.beginPath();
+      ctx.arc(x, y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+    return;
+  }
+
+  if (shiny) applyShinyAura(ctx);
+}
+
+async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = false, shinyType = null, commandName = "unknown" }) {
   const metadata = {
     commandName,
     level,
@@ -171,6 +240,9 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
 
   try {
     const { key: tierKey, border } = resolveVisualTier(level);
+    const theme = getBackgroundByRarity({ rarity: species?.rarity });
+    const borderTheme = getBorderByState({ shiny, shinyType });
+    const isShinyPrime = borderTheme.isPrime;
     metadata.tier = tierKey;
 
     logger.info("Iniciando render em camadas do card/pokemon", {
@@ -179,6 +251,8 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
       level,
       tier: tierKey,
       shiny: Boolean(shiny),
+      shinyType: shinyType || null,
+      shinyPrime: isShinyPrime,
       assetMode: metadata.assetMode,
     });
 
@@ -189,7 +263,7 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
     let shinyOverlay = null;
     if (ASSET_RENDER_ENABLED) {
       [frameAsset, shinyOverlay] = await Promise.all([
-        loadOptionalAsset(path.join(FRAME_ASSET_ROOT, `${tierKey}.png`), metadata, loadImage),
+        isShinyPrime ? Promise.resolve(null) : loadOptionalAsset(path.join(FRAME_ASSET_ROOT, `${tierKey}.png`), metadata, loadImage),
         shiny ? loadOptionalAsset(path.join(EFFECTS_ASSET_ROOT, "shiny", "aura.png"), metadata, loadImage) : Promise.resolve(null),
       ]);
     }
@@ -197,17 +271,20 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
     const canvas = createCanvas(CANVAS_SIZE, CANVAS_SIZE);
     const ctx = canvas.getContext("2d");
 
-    applyBaseLayer(ctx);
+    applyBaseLayer(ctx, theme);
 
-    if (shinyOverlay) {
+    if (shinyOverlay && !isShinyPrime) {
       ctx.drawImage(shinyOverlay, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
-    } else if (shiny) {
-      applyShinyAura(ctx);
+    } else {
+      applySpecialOverlay(ctx, { shiny, shinyType });
     }
 
     ctx.drawImage(spriteImage, SPRITE_X, SPRITE_Y, SPRITE_SIZE, SPRITE_SIZE);
 
-    if (frameAsset) {
+    if (isShinyPrime) {
+      metadata.usedGeneratedFrame = true;
+      applyPrimeSpecialFrame(ctx);
+    } else if (frameAsset) {
       ctx.drawImage(frameAsset, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
     } else {
       metadata.usedGeneratedFrame = true;

@@ -42,7 +42,7 @@ function calculateDamage({ attackerAttack, defenderDefense, attackerCritChance =
 
   const critRoll = Math.random();
   const isCritical = critRoll < critChance;
-  const critMultiplier = isCritical ? 1.65 : 1;
+  const critMultiplier = isCritical ? 1.6 : 1;
   const finalDamage = Math.max(1, Math.round(baseDamage * critMultiplier));
 
   return {

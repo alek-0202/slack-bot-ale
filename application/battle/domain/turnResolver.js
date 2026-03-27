@@ -1,19 +1,48 @@
 const { resolveAttackTurn, resolvePotionTurn, resolveMagicTurn } = require("./battleEngine");
 const { BATTLE_ACTION } = require("./actionResolver");
-const { getOpponentId, passTurn, finishBattle } = require("./battleState");
+const {
+  getOpponentId,
+  passTurn,
+  finishBattle,
+  autoSwitchToNextAlivePokemon,
+  hasAnyAlivePokemon,
+  switchActivePokemonById,
+} = require("./battleState");
 
 function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {} }) {
-  if (actionType === BATTLE_ACTION.DEFENSE) {
+  if (actionType === BATTLE_ACTION.SWITCH) {
+    const player = battle.players[actorUserId];
+    const switched = switchActivePokemonById(player, actionPayload.pokemonId);
+
+    if (!switched.ok) {
+      return {
+        battle,
+        actionType,
+        outcome: {
+          ok: false,
+          reason: switched.reason || "switch_failed",
+          type: "switch",
+          actorUserId,
+        },
+        finished: false,
+        shouldPassTurn: false,
+      };
+    }
+
+    const turnFlow = passTurn(battle, actorUserId);
     return {
       battle,
       actionType,
       outcome: {
-        ok: false,
-        reason: "not_implemented",
-        type: "defense",
+        ok: true,
+        type: "switch",
+        actorUserId,
+        switchedPokemonId: player.selectedPokemon?.id || null,
+        switchedPokemonName: player.selectedPokemon?.name || null,
+        turnFlow,
       },
       finished: false,
-      shouldPassTurn: false,
+      shouldPassTurn: true,
     };
   }
 
@@ -62,19 +91,22 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     };
 
     if (defender.battleHp.current <= 0) {
-      const finalized = finishBattle(battle, actorUserId);
-      return {
-        battle,
-        actionType,
-        outcome: {
-          ...result,
-          type: "magic",
-          actorUserId,
-          defenderId,
-        },
-        finished: true,
-        finalized,
-      };
+      const switched = autoSwitchToNextAlivePokemon(defender);
+      if (!switched || !hasAnyAlivePokemon(defender)) {
+        const finalized = finishBattle(battle, actorUserId);
+        return {
+          battle,
+          actionType,
+          outcome: {
+            ...result,
+            type: "magic",
+            actorUserId,
+            defenderId,
+          },
+          finished: true,
+          finalized,
+        };
+      }
     }
 
     const turnFlow = passTurn(battle, actorUserId, { energyPenalty: result.energyConsumed });
@@ -100,20 +132,23 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     const result = resolveAttackTurn({ attacker, defender });
 
     if (defender.battleHp.current <= 0) {
-      const finalized = finishBattle(battle, actorUserId);
-      return {
-        battle,
-        actionType,
-        outcome: {
-          ok: true,
-          type: "attack",
-          actorUserId,
-          defenderId,
-          ...result,
-        },
-        finished: true,
-        finalized,
-      };
+      const switched = autoSwitchToNextAlivePokemon(defender);
+      if (!switched || !hasAnyAlivePokemon(defender)) {
+        const finalized = finishBattle(battle, actorUserId);
+        return {
+          battle,
+          actionType,
+          outcome: {
+            ok: true,
+            type: "attack",
+            actorUserId,
+            defenderId,
+            ...result,
+          },
+          finished: true,
+          finalized,
+        };
+      }
     }
 
     const turnFlow = passTurn(battle, actorUserId);

@@ -16,7 +16,6 @@ test('renderDungeonBattleState reutiliza o layout de batalha com action_ids pró
   assert.ok(actionBlock);
   assert.deepEqual(actionBlock.elements.map((element) => element.action_id), [
     `${DUNGEON_BATTLE_TURN_ACTION_ID}_attack`,
-    `${DUNGEON_BATTLE_TURN_ACTION_ID}_defense`,
     `${DUNGEON_BATTLE_TURN_ACTION_ID}_magic`,
     `${DUNGEON_BATTLE_TURN_ACTION_ID}_potion`,
   ]);

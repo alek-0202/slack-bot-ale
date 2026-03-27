@@ -10,20 +10,28 @@ const {
   renderMagicRegisterElementPrompt,
 } = require("../adapters/slack/renderers/battleRenderer");
 
-test("renderBattleState gera action_ids únicos para ataque, defesa, magia e poção", () => {
+test("renderBattleState gera action_ids únicos para ataque, magia e poção", () => {
   const payload = renderBattleState(createBattleStub());
   const actionBlock = payload.blocks.find((block) => block.type === "actions");
 
   assert.ok(actionBlock);
-  assert.equal(actionBlock.elements.length, 4);
+  assert.equal(actionBlock.elements.length, 3);
   const actionIds = actionBlock.elements.map((element) => element.action_id);
 
   assert.deepEqual(actionIds, [
     `${BATTLE_TURN_ACTION_ID}_attack`,
-    `${BATTLE_TURN_ACTION_ID}_defense`,
     `${BATTLE_TURN_ACTION_ID}_magic`,
     `${BATTLE_TURN_ACTION_ID}_potion`,
   ]);
+  assert.equal(new Set(actionIds).size, actionIds.length);
+});
+
+test("renderBattleState inclui botão de troca quando há reservas vivas", () => {
+  const payload = renderBattleState(createBattleStub({ withReserves: true }));
+  const actionBlock = payload.blocks.find((block) => block.type === "actions");
+  const actionIds = actionBlock.elements.map((element) => element.action_id);
+
+  assert.equal(actionIds.includes(`${BATTLE_TURN_ACTION_ID}_switch`), true);
   assert.equal(new Set(actionIds).size, actionIds.length);
 });
 
@@ -62,7 +70,7 @@ test("renderMagicRegisterElementPrompt gera action_id único por elemento remov�
   assert.equal(new Set(actionIds).size, actionIds.length);
 });
 
-function createBattleStub() {
+function createBattleStub({ withReserves = false } = {}) {
   return {
     channelId: "C-battle",
     status: "active",
@@ -71,13 +79,13 @@ function createBattleStub() {
     challengerId: "U1",
     challengedId: "U2",
     players: {
-      U1: createPlayerStub({ userId: "U1", pokemonId: 25, name: "Pikachu", types: ["electric"] }),
+      U1: createPlayerStub({ userId: "U1", pokemonId: 25, name: "Pikachu", types: ["electric"], withReserves }),
       U2: createPlayerStub({ userId: "U2", pokemonId: 4, name: "Charmander", types: ["fire"] }),
     },
   };
 }
 
-function createPlayerStub({ userId, pokemonId, name, types }) {
+function createPlayerStub({ userId, pokemonId, name, types, withReserves = false }) {
   return {
     userId,
     selectedPokemon: {
@@ -92,6 +100,13 @@ function createPlayerStub({ userId, pokemonId, name, types }) {
     stats: { attack: 40, defense: 25, speed: 18 },
     potionsUsed: 1,
     magicSlots: [{ slot: 1, name: `${name} Spell`, icon: "✦", element: types[0] }],
+    team: withReserves
+      ? [
+        { id: pokemonId, name, battleHp: { current: 120, max: 150 } },
+        { id: pokemonId + 100, name: `${name} B`, battleHp: { current: 95, max: 130 } },
+      ]
+      : [{ id: pokemonId, name, battleHp: { current: 120, max: 150 } }],
+    activeTeamIndex: 0,
     initiativeGauge: 50,
     initiativeThreshold: 100,
   };

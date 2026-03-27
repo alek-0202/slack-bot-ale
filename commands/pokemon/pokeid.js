@@ -62,7 +62,12 @@ module.exports = {
       const displayedCurrentHp = Math.max(0, Math.min(recalculatedHp, Math.round(recalculatedHp * hpRatio)));
 
       const visual = buildPokemonVisualSummary({ species, level: pokemon.level });
-      const visualBlocks = await buildPokemonVisualBlocks({ species, level: pokemon.level, shiny: pokemon.shiny });
+      const visualBlocks = await buildPokemonVisualBlocks({
+        species,
+        level: pokemon.level,
+        shiny: pokemon.shiny,
+        shinyType: pokemon.shiny_type,
+      });
       logger.info("Payload visual do !pokeid preparado", {
         command: "pokeid",
         builder: "buildPokemonVisualBlocks",
