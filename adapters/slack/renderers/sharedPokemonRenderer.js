@@ -61,6 +61,8 @@ function renderSlackCaptureResult({ slackUserId, result }) {
   }
 
   const shinyTag = result.shiny ? `✨ SHINY${result.captured?.shiny_type ? ` (${result.captured.shiny_type})` : ''}!` : '';
+  const rarity = String(result.species?.rarity || '').toLowerCase();
+  const legendaryBaseBonus = ['legendary', 'mythical'].includes(rarity) ? 15 : 0;
   const statLines = [
     ['ATK', 'base_attack', 'attack_iv'],
     ['DEF', 'base_defense', 'defense_iv'],
@@ -72,8 +74,9 @@ function renderSlackCaptureResult({ slackUserId, result }) {
       const baseValue = Number(result.species?.[baseKey]);
       const ivValue = Number(result.captured?.[ivKey] || 0);
       if (!Number.isFinite(baseValue)) return null;
+      const effectiveBase = baseValue + legendaryBaseBonus;
       const sign = ivValue >= 0 ? '+' : '';
-      return `• ${label}: ${baseValue} (${sign}${ivValue})`;
+      return `• ${label}: ${effectiveBase} (${sign}${ivValue})`;
     })
     .filter(Boolean);
   const text =
