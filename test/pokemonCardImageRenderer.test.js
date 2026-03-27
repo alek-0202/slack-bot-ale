@@ -70,7 +70,8 @@ test('buildPokemonLayeredImageUrl aplica visual especial para shiny prime', () =
   });
 
   const svg = decodeURIComponent(url || '');
-  assert.match(svg, /#5B0000/);
+  assert.match(svg, /#1F2937/);
   assert.match(svg, /#0B0B0B/);
-  assert.match(svg, /#FF3B3B/);
+  assert.match(svg, /#EF4444/);
+  assert.doesNotMatch(svg, /M18 34 L238 34/);
 });

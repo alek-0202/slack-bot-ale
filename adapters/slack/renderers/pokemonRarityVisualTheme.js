@@ -15,8 +15,8 @@ const POKEMON_VISUAL_THEME = Object.freeze({
     aura: "#FBBF24",
   },
   shinyPrime: {
-    backgroundCenter: "#5B0000",
-    backgroundEdge: "#1A0000",
+    backgroundCenter: "#1F2937",
+    backgroundEdge: "#0B1220",
     aura: "#FF2A2A",
   },
 });

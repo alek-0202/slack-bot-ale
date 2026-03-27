@@ -35,11 +35,11 @@ function buildPokemonLayeredImageUrl({ spriteUrl, level = 1, shiny = false, shin
     </radialGradient>
     <linearGradient id="frameGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="${isShinyPrime ? "#0B0B0B" : borderColor}" />
-      <stop offset="52%" stop-color="${isShinyPrime ? "#2A0000" : "#FFFFFF"}" />
+      <stop offset="52%" stop-color="${isShinyPrime ? "#B91C1C" : "#FFFFFF"}" />
       <stop offset="100%" stop-color="${isShinyPrime ? "#0B0B0B" : borderColor}" />
     </linearGradient>
     <filter id="frameGlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="${isShinyPrime ? "#FF2A2A" : borderColor}" flood-opacity="0.25" />
+      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="${isShinyPrime ? "#FF2A2A" : borderColor}" flood-opacity="${isShinyPrime ? "0.18" : "0.25"}" />
     </filter>
     <filter id="spriteShadow" x="-30%" y="-30%" width="160%" height="180%">
       <feDropShadow dx="0" dy="3" stdDeviation="2.4" flood-color="#000000" flood-opacity="0.28" />
@@ -48,15 +48,15 @@ function buildPokemonLayeredImageUrl({ spriteUrl, level = 1, shiny = false, shin
   </defs>
 
   <rect x="0" y="0" width="${CARD_SIZE}" height="${CARD_SIZE}" fill="url(#bgGradient)" rx="24" />
-  <circle cx="128" cy="128" r="78" fill="${theme.aura}" opacity="${haloOpacity}" filter="url(#frameGlow)" />
-  ${isShinyPrime ? '<g opacity="0.35"><path d="M18 34 L238 34" stroke="#FF3B3B" stroke-width="2"/><path d="M18 54 L238 54" stroke="#FF3B3B" stroke-width="2"/><path d="M18 74 L238 74" stroke="#FF3B3B" stroke-width="2"/><path d="M18 94 L238 94" stroke="#FF3B3B" stroke-width="2"/><path d="M18 114 L238 114" stroke="#FF3B3B" stroke-width="2"/><path d="M18 134 L238 134" stroke="#FF3B3B" stroke-width="2"/><path d="M18 154 L238 154" stroke="#FF3B3B" stroke-width="2"/><path d="M18 174 L238 174" stroke="#FF3B3B" stroke-width="2"/><path d="M18 194 L238 194" stroke="#FF3B3B" stroke-width="2"/><path d="M18 214 L238 214" stroke="#FF3B3B" stroke-width="2"/></g>' : ""}
+  <circle cx="128" cy="128" r="78" fill="${theme.aura}" opacity="${isShinyPrime ? "0.08" : haloOpacity}" filter="url(#frameGlow)" />
+  ${isShinyPrime ? '<g opacity="0.28"><circle cx="30" cy="38" r="2" fill="#FF4D4D"/><circle cx="226" cy="52" r="2" fill="#FF4D4D"/><circle cx="46" cy="218" r="2" fill="#FF4D4D"/><circle cx="210" cy="204" r="2" fill="#FF4D4D"/><circle cx="128" cy="30" r="2" fill="#FF4D4D"/><circle cx="144" cy="226" r="2" fill="#FF4D4D"/></g>' : ""}
 
   <g filter="url(#spriteShadow)">
     <image href="${spriteUrl}" x="${spriteInset}" y="${spriteInset - 2}" width="${CARD_SIZE - spriteInset * 2}" height="${CARD_SIZE - spriteInset * 2}" preserveAspectRatio="xMidYMid meet" />
   </g>
 
   <rect x="${borderInset}" y="${borderInset}" width="${CARD_SIZE - borderInset * 2}" height="${CARD_SIZE - borderInset * 2}" rx="18" fill="none" stroke="url(#frameGradient)" stroke-width="${BORDER_WIDTH}" filter="url(#frameGlow)" />
-  <rect x="${innerFrameInset}" y="${innerFrameInset}" width="${CARD_SIZE - innerFrameInset * 2}" height="${CARD_SIZE - innerFrameInset * 2}" rx="12" fill="none" stroke="${isShinyPrime ? "#FF5A5A" : "#FFF8CC"}" stroke-opacity="0.45" stroke-width="1.5" />
+  <rect x="${innerFrameInset}" y="${innerFrameInset}" width="${CARD_SIZE - innerFrameInset * 2}" height="${CARD_SIZE - innerFrameInset * 2}" rx="12" fill="none" stroke="${isShinyPrime ? "#EF4444" : "#FFF8CC"}" stroke-opacity="${isShinyPrime ? "0.65" : "0.45"}" stroke-width="1.5" />
 </svg>`;
 
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
