@@ -1,57 +1,19 @@
 const { normalizeLevel } = require("../../../services/pokemonProgressionService");
+const { getPokemonVisualTheme } = require("./pokemonRarityVisualTheme");
 
 const CARD_SIZE = 256;
 const PADDING = 14;
 const BORDER_WIDTH = 14;
 
-const LEVEL_THEME = Object.freeze({
-  default: {
-    frameInner: "#D1D5DB",
-    frameOuter: "#94A3B8",
-    backgroundCenter: "#334155",
-    backgroundEdge: "#0F172A",
-    aura: "#A855F7",
-  },
-  legendary: {
-    frameInner: "#C4B5FD",
-    frameOuter: "#6D28D9",
-    backgroundCenter: "#7C3AED",
-    backgroundEdge: "#2E1065",
-    aura: "#C084FC",
-  },
-  mythical: {
-    frameInner: "#FDE68A",
-    frameOuter: "#B45309",
-    backgroundCenter: "#F59E0B",
-    backgroundEdge: "#7C2D12",
-    aura: "#FBBF24",
-  },
-  shiny: {
-    frameInner: "#D8B4FE",
-    frameOuter: "#7E22CE",
-    backgroundCenter: "#8A2BE2",
-    backgroundEdge: "#4B0082",
-    aura: "#B026FF",
-  },
-});
-
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
-}
-
-function getTheme({ shiny = false, rarity = null }) {
-  if (shiny) return LEVEL_THEME.shiny;
-  const safeRarity = String(rarity || "").toLowerCase();
-  if (safeRarity === "legendary") return LEVEL_THEME.legendary;
-  if (safeRarity === "mythical") return LEVEL_THEME.mythical;
-  return LEVEL_THEME.default;
 }
 
 function buildPokemonLayeredImageUrl({ spriteUrl, level = 1, shiny = false, rarity = null }) {
   if (!spriteUrl) return null;
 
   normalizeLevel(level);
-  const theme = getTheme({ shiny, rarity });
+  const theme = getPokemonVisualTheme({ shiny, rarity });
   const spriteShadowBlur = shiny ? 8 : 5;
   const haloOpacity = shiny ? 0.22 : 0;
 
@@ -76,7 +38,7 @@ function buildPokemonLayeredImageUrl({ spriteUrl, level = 1, shiny = false, rari
     </filter>
     <filter id="spriteShadow" x="-30%" y="-30%" width="160%" height="180%">
       <feDropShadow dx="0" dy="3" stdDeviation="2.4" flood-color="#000000" flood-opacity="0.28" />
-      <feDropShadow dx="0" dy="0" stdDeviation="${spriteShadowBlur / 2}" flood-color="${shiny ? "#B026FF" : "#FFFFFF"}" flood-opacity="${shiny ? "0.20" : "0"}" />
+      <feDropShadow dx="0" dy="0" stdDeviation="${spriteShadowBlur / 2}" flood-color="${theme.shinyGlow}" flood-opacity="${shiny ? "0.20" : "0"}" />
     </filter>
   </defs>
 
