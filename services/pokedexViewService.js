@@ -131,6 +131,7 @@ async function buildPokedexMessage({
     species,
     level: entry.level,
     shiny: entry.shiny,
+    shinyType: entry.shiny_type,
     slackClient,
     channelId,
     commandName: commandName || mode,

@@ -109,8 +109,28 @@ function applyShinyAura(ctx) {
   ctx.restore();
 }
 
-function applyGeneratedFrame(ctx, tierKey, theme) {
-  const color = theme?.frameOuter || FRAME_COLORS[tierKey] || FRAME_COLORS.cinza;
+function applyPrimeSpecialFrame(ctx) {
+  ctx.save();
+  ctx.strokeStyle = "#0B0B0B";
+  ctx.shadowColor = "rgba(255, 35, 35, 0.88)";
+  ctx.shadowBlur = 16;
+  ctx.lineWidth = 12;
+  ctx.strokeRect(8, 8, CANVAS_SIZE - 16, CANVAS_SIZE - 16);
+
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(255, 70, 70, 0.8)";
+  ctx.lineWidth = 2;
+  for (let y = 20; y < CANVAS_SIZE - 20; y += 12) {
+    ctx.beginPath();
+    ctx.moveTo(20, y);
+    ctx.lineTo(CANVAS_SIZE - 20, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function applyGeneratedFrame(ctx, tierKey) {
+  const color = FRAME_COLORS[tierKey] || FRAME_COLORS.cinza;
   const center = CANVAS_SIZE / 2;
 
   const outer = ctx.createLinearGradient(0, 0, CANVAS_SIZE, CANVAS_SIZE);
@@ -137,7 +157,25 @@ function applyGeneratedFrame(ctx, tierKey, theme) {
   ctx.restore();
 }
 
-async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = false, commandName = "unknown" }) {
+function applySpecialOverlay(ctx, { shiny = false, shinyType = null } = {}) {
+  const isShinyPrime = Boolean(shiny) && String(shinyType || "").toLowerCase() === "prime";
+  if (isShinyPrime) {
+    const center = CANVAS_SIZE / 2;
+    const pulse = ctx.createRadialGradient(center, center, 30, center, center, 118);
+    pulse.addColorStop(0, "rgba(255, 40, 40, 0.28)");
+    pulse.addColorStop(0.7, "rgba(185, 0, 0, 0.14)");
+    pulse.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.save();
+    ctx.fillStyle = pulse;
+    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.restore();
+    return;
+  }
+
+  if (shiny) applyShinyAura(ctx);
+}
+
+async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = false, shinyType = null, commandName = "unknown" }) {
   const metadata = {
     commandName,
     level,
@@ -182,7 +220,8 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
 
   try {
     const { key: tierKey, border } = resolveVisualTier(level);
-    const theme = getPokemonVisualTheme({ rarity: species?.rarity, shiny });
+    const isShinyPrime = Boolean(shiny) && String(shinyType || "").toLowerCase() === "prime";
+    const theme = getPokemonVisualTheme({ rarity: species?.rarity, shiny, shinyType });
     metadata.tier = tierKey;
 
     logger.info("Iniciando render em camadas do card/pokemon", {
@@ -191,6 +230,8 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
       level,
       tier: tierKey,
       shiny: Boolean(shiny),
+      shinyType: shinyType || null,
+      shinyPrime: isShinyPrime,
       assetMode: metadata.assetMode,
     });
 
@@ -201,7 +242,7 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
     let shinyOverlay = null;
     if (ASSET_RENDER_ENABLED) {
       [frameAsset, shinyOverlay] = await Promise.all([
-        loadOptionalAsset(path.join(FRAME_ASSET_ROOT, `${tierKey}.png`), metadata, loadImage),
+        isShinyPrime ? Promise.resolve(null) : loadOptionalAsset(path.join(FRAME_ASSET_ROOT, `${tierKey}.png`), metadata, loadImage),
         shiny ? loadOptionalAsset(path.join(EFFECTS_ASSET_ROOT, "shiny", "aura.png"), metadata, loadImage) : Promise.resolve(null),
       ]);
     }
@@ -211,19 +252,22 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
 
     applyBaseLayer(ctx, theme);
 
-    if (shinyOverlay) {
+    if (shinyOverlay && !isShinyPrime) {
       ctx.drawImage(shinyOverlay, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
-    } else if (shiny) {
-      applyShinyAura(ctx);
+    } else {
+      applySpecialOverlay(ctx, { shiny, shinyType });
     }
 
     ctx.drawImage(spriteImage, SPRITE_X, SPRITE_Y, SPRITE_SIZE, SPRITE_SIZE);
 
-    if (frameAsset) {
+    if (isShinyPrime) {
+      metadata.usedGeneratedFrame = true;
+      applyPrimeSpecialFrame(ctx);
+    } else if (frameAsset) {
       ctx.drawImage(frameAsset, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
     } else {
       metadata.usedGeneratedFrame = true;
-      applyGeneratedFrame(ctx, tierKey, theme);
+      applyGeneratedFrame(ctx, tierKey);
     }
 
     const pngBuffer = canvas.toBuffer("image/png");

@@ -11,12 +11,18 @@ test('getPokemonVisualTheme aplica tema lendário', () => {
 
 test('getPokemonVisualTheme aplica tema mítico', () => {
   const theme = getPokemonVisualTheme({ rarity: 'mythical', shiny: false });
-  assert.equal(theme.backgroundCenter, '#F59E0B');
-  assert.equal(theme.backgroundEdge, '#7C2D12');
+  assert.equal(theme.backgroundCenter, '#EA9A2A');
+  assert.equal(theme.backgroundEdge, '#7A3E00');
 });
 
-test('getPokemonVisualTheme prioriza shiny sobre raridade', () => {
-  const theme = getPokemonVisualTheme({ rarity: 'mythical', shiny: true });
-  assert.equal(theme.backgroundCenter, '#8A2BE2');
-  assert.equal(theme.backgroundEdge, '#4B0082');
+test('getPokemonVisualTheme prioriza shiny prime sobre raridade', () => {
+  const theme = getPokemonVisualTheme({ rarity: 'mythical', shiny: true, shinyType: 'prime' });
+  assert.equal(theme.backgroundCenter, '#5B0000');
+  assert.equal(theme.backgroundEdge, '#1A0000');
+});
+
+test('getPokemonVisualTheme mantém raridade quando shiny não é prime', () => {
+  const theme = getPokemonVisualTheme({ rarity: 'legendary', shiny: true, shinyType: 'normal' });
+  assert.equal(theme.backgroundCenter, '#7C3AED');
+  assert.equal(theme.backgroundEdge, '#2E1065');
 });

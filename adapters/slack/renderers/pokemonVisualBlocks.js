@@ -321,6 +321,7 @@ async function buildAccessoryImage({
   species = {},
   level = 1,
   shiny = false,
+  shinyType = null,
   commandName = "unknown",
 }) {
   if (!species.sprite_url) return undefined;
@@ -328,7 +329,7 @@ async function buildAccessoryImage({
   const border = getLevelBorderStyle(level);
   const frameEmojis = border.hasBorder ? `${border.emoji} ${border.emoji}` : "▫️ ▫️";
 
-  const layeredRender = await renderLayeredPokemonSprite({ species, level, shiny, commandName });
+  const layeredRender = await renderLayeredPokemonSprite({ species, level, shiny, shinyType, commandName });
 
   if (!layeredRender.ok) {
     logger.warn("Falha no render em camadas: mantendo sprite original", {
@@ -450,6 +451,7 @@ async function buildPokemonVisualBlocks({
   species = {},
   level = 1,
   shiny = false,
+  shinyType = null,
   commandName = "unknown",
 }) {
   const visual = buildPokemonVisualSummary({ species, level });
@@ -482,7 +484,7 @@ async function buildPokemonVisualBlocks({
 
   return {
     ...visual,
-    accessory: await buildAccessoryImage({ species, level, shiny, commandName }),
+    accessory: await buildAccessoryImage({ species, level, shiny, shinyType, commandName }),
     blocks,
   };
 }
