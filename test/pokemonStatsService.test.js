@@ -6,6 +6,9 @@ const {
   calculatePokemonStats,
   getPokemonProgressionSnapshot,
   getPokemonStars,
+  rollPokemonIvOffsets,
+  SHINY_TYPE,
+  IV_STAT_RANGES,
 } = require("../services/pokemonStatsService");
 const { deriveBaseStats } = require("../services/pokedexImportService");
 
@@ -60,4 +63,33 @@ test("snapshot de progressão expõe estrelas e marcos corretamente", () => {
   assert.equal(getPokemonStars(9), 0);
   assert.equal(getPokemonStars(10), 1);
   assert.equal(getPokemonStars(50), 5);
+});
+
+test("IV passa a escalar com o nível por ser somado na base antes da progressão", () => {
+  const species = {
+    base_attack: 20,
+    base_magic: 20,
+    base_defense: 20,
+    base_hp: 20,
+    base_speed: 20,
+  };
+  const ivOffsets = { attack_iv: 10, magic_iv: 10, defense_iv: 10, hp_iv: 10, speed_iv: 10 };
+
+  const level1Base = calculatePokemonStats({ species, level: 1 });
+  const level1WithIv = calculatePokemonStats({ species, level: 1, ivOffsets });
+  const level10Base = calculatePokemonStats({ species, level: 10 });
+  const level10WithIv = calculatePokemonStats({ species, level: 10, ivOffsets });
+
+  assert.equal(level1WithIv.attack - level1Base.attack, 10);
+  assert.ok(level10WithIv.attack - level10Base.attack > 10);
+});
+
+test("shiny prime aplica cap de IV com +10 sobre o máximo normal", () => {
+  const iv = rollPokemonIvOffsets({ shiny: true, shinyType: SHINY_TYPE.PRIME });
+
+  assert.equal(iv.attack_iv, IV_STAT_RANGES.attack.max + 10);
+  assert.equal(iv.defense_iv, IV_STAT_RANGES.defense.max + 10);
+  assert.equal(iv.magic_iv, IV_STAT_RANGES.magic.max + 10);
+  assert.equal(iv.hp_iv, IV_STAT_RANGES.hp.max + 10);
+  assert.equal(iv.speed_iv, IV_STAT_RANGES.speed.max + 10);
 });
