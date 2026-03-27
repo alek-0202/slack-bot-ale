@@ -2,6 +2,7 @@ const { parsePositiveInt } = require("../../utils/number");
 const { createLogger } = require("../../utils/logger");
 const { getOwnedPokemonById } = require("../../services/pokemonLookupService");
 const { buildPokemonTypesLabel } = require("../../services/pokemonTypeService");
+const { calculatePokemonStats } = require("../../services/pokemonStatsService");
 const {
   buildPokemonVisualBlocks,
   buildPokemonVisualSummary,
@@ -34,6 +35,32 @@ module.exports = {
       }
 
       const species = pokemon.pokemon_species || {};
+      const recalculatedStats = calculatePokemonStats({
+        species,
+        level: pokemon.level,
+        fallbackStats: {
+          attack: pokemon.attack,
+          magic: pokemon.magic,
+          defense: pokemon.defense,
+          hp: pokemon.hp,
+          speed: pokemon.speed,
+        },
+        ivOffsets: {
+          attack_iv: pokemon.attack_iv,
+          magic_iv: pokemon.magic_iv,
+          defense_iv: pokemon.defense_iv,
+          hp_iv: pokemon.hp_iv,
+          speed_iv: pokemon.speed_iv,
+        },
+        shiny: Boolean(pokemon.shiny),
+        shinyType: pokemon.shiny_type,
+      });
+      const storedHp = Number(pokemon.hp || 0);
+      const storedCurrentHp = Number(pokemon.current_hp ?? storedHp);
+      const recalculatedHp = Number(recalculatedStats.hp || storedHp || 1);
+      const hpRatio = storedHp > 0 ? Math.min(1, Math.max(0, storedCurrentHp / storedHp)) : 1;
+      const displayedCurrentHp = Math.max(0, Math.min(recalculatedHp, Math.round(recalculatedHp * hpRatio)));
+
       const visual = buildPokemonVisualSummary({ species, level: pokemon.level });
       const visualBlocks = await buildPokemonVisualBlocks({ species, level: pokemon.level, shiny: pokemon.shiny });
       logger.info("Payload visual do !pokeid preparado", {
@@ -72,8 +99,8 @@ module.exports = {
                 `*${species.name || "Pokémon"}* (#${species.id || "?"})\n` +
                 `🆔 *ID da coleção:* ${pokemon.id}\n` +
                 `🎚️ *Level:* ${pokemon.level}\n` +
-                `⚔️ *ATK:* ${pokemon.attack || 0} | ✨ *MAG:* ${pokemon.magic ?? pokemon.attack ?? 0}\n` +
-                `🛡️ *DEF:* ${pokemon.defense || 0} | ❤️ *HP:* ${pokemon.current_hp ?? pokemon.hp ?? 0}/${pokemon.hp || 0} | 💨 *SPD:* ${pokemon.speed || 0}\n` +
+                `⚔️ *ATK:* ${recalculatedStats.attack || 0} | ✨ *MAG:* ${recalculatedStats.magic || 0}\n` +
+                `🛡️ *DEF:* ${recalculatedStats.defense || 0} | ❤️ *HP:* ${displayedCurrentHp}/${recalculatedStats.hp || 0} | 💨 *SPD:* ${recalculatedStats.speed || 0}\n` +
                 `⭐ *Estrelas:* ${visual.starsLabel}\n` +
                 `👤 *Dono:* <@${pokemon.slack_user_id}>` +
                 bookBonusLabel +
