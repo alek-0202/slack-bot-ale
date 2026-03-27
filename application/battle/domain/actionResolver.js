@@ -2,7 +2,6 @@ const { BATTLE_STATUS, getExpectedPickerId } = require("./battleState");
 
 const BATTLE_ACTION = {
   ATTACK: "attack",
-  DEFENSE: "defense",
   POTION: "potion",
   MAGIC: "magic",
 };

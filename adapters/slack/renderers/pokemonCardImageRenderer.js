@@ -12,6 +12,20 @@ const LEVEL_THEME = Object.freeze({
     backgroundEdge: "#0F172A",
     aura: "#A855F7",
   },
+  legendary: {
+    frameInner: "#C4B5FD",
+    frameOuter: "#6D28D9",
+    backgroundCenter: "#7C3AED",
+    backgroundEdge: "#2E1065",
+    aura: "#C084FC",
+  },
+  mythical: {
+    frameInner: "#FDE68A",
+    frameOuter: "#B45309",
+    backgroundCenter: "#F59E0B",
+    backgroundEdge: "#7C2D12",
+    aura: "#FBBF24",
+  },
   shiny: {
     frameInner: "#D8B4FE",
     frameOuter: "#7E22CE",
@@ -25,15 +39,19 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function getTheme({ shiny = false }) {
-  return shiny ? LEVEL_THEME.shiny : LEVEL_THEME.default;
+function getTheme({ shiny = false, rarity = null }) {
+  if (shiny) return LEVEL_THEME.shiny;
+  const safeRarity = String(rarity || "").toLowerCase();
+  if (safeRarity === "legendary") return LEVEL_THEME.legendary;
+  if (safeRarity === "mythical") return LEVEL_THEME.mythical;
+  return LEVEL_THEME.default;
 }
 
-function buildPokemonLayeredImageUrl({ spriteUrl, level = 1, shiny = false }) {
+function buildPokemonLayeredImageUrl({ spriteUrl, level = 1, shiny = false, rarity = null }) {
   if (!spriteUrl) return null;
 
   normalizeLevel(level);
-  const theme = getTheme({ shiny });
+  const theme = getTheme({ shiny, rarity });
   const spriteShadowBlur = shiny ? 8 : 5;
   const haloOpacity = shiny ? 0.22 : 0;
 

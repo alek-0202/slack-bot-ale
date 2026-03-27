@@ -10,17 +10,16 @@ const {
   renderMagicRegisterElementPrompt,
 } = require("../adapters/slack/renderers/battleRenderer");
 
-test("renderBattleState gera action_ids únicos para ataque, defesa, magia e poção", () => {
+test("renderBattleState gera action_ids únicos para ataque, magia e poção", () => {
   const payload = renderBattleState(createBattleStub());
   const actionBlock = payload.blocks.find((block) => block.type === "actions");
 
   assert.ok(actionBlock);
-  assert.equal(actionBlock.elements.length, 4);
+  assert.equal(actionBlock.elements.length, 3);
   const actionIds = actionBlock.elements.map((element) => element.action_id);
 
   assert.deepEqual(actionIds, [
     `${BATTLE_TURN_ACTION_ID}_attack`,
-    `${BATTLE_TURN_ACTION_ID}_defense`,
     `${BATTLE_TURN_ACTION_ID}_magic`,
     `${BATTLE_TURN_ACTION_ID}_potion`,
   ]);
