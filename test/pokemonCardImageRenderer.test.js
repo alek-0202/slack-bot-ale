@@ -60,7 +60,7 @@ test('buildPokemonLayeredImageUrl usa fundo alaranjado/dourado para mítico não
   assert.match(svg, /#7A3E00/);
 });
 
-test('buildPokemonLayeredImageUrl aplica visual especial para shiny prime', () => {
+test('buildPokemonLayeredImageUrl mantém fundo de raridade e aplica borda prime no shiny prime', () => {
   const url = buildPokemonLayeredImageUrl({
     spriteUrl: 'https://example.com/mew.png',
     level: 50,
@@ -70,8 +70,25 @@ test('buildPokemonLayeredImageUrl aplica visual especial para shiny prime', () =
   });
 
   const svg = decodeURIComponent(url || '');
-  assert.match(svg, /#1F2937/);
+  assert.match(svg, /#EA9A2A/);
+  assert.match(svg, /#7A3E00/);
   assert.match(svg, /#0B0B0B/);
   assert.match(svg, /#EF4444/);
   assert.doesNotMatch(svg, /M18 34 L238 34/);
+});
+
+test('buildPokemonLayeredImageUrl mantém fundo lendário com borda shiny prime', () => {
+  const url = buildPokemonLayeredImageUrl({
+    spriteUrl: 'https://example.com/mewtwo.png',
+    level: 45,
+    shiny: true,
+    shinyType: 'prime',
+    rarity: 'legendary',
+  });
+
+  const svg = decodeURIComponent(url || '');
+  assert.match(svg, /#7C3AED/);
+  assert.match(svg, /#2E1065/);
+  assert.match(svg, /#0B0B0B/);
+  assert.match(svg, /#EF4444/);
 });
