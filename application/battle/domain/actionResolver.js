@@ -4,6 +4,7 @@ const BATTLE_ACTION = {
   ATTACK: "attack",
   POTION: "potion",
   MAGIC: "magic",
+  SWITCH: "switch",
 };
 
 function validateInviteDecision({ battle, actorUserId }) {

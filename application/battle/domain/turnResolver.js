@@ -1,8 +1,51 @@
 const { resolveAttackTurn, resolvePotionTurn, resolveMagicTurn } = require("./battleEngine");
 const { BATTLE_ACTION } = require("./actionResolver");
-const { getOpponentId, passTurn, finishBattle, autoSwitchToNextAlivePokemon, hasAnyAlivePokemon } = require("./battleState");
+const {
+  getOpponentId,
+  passTurn,
+  finishBattle,
+  autoSwitchToNextAlivePokemon,
+  hasAnyAlivePokemon,
+  switchActivePokemonById,
+} = require("./battleState");
 
 function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {} }) {
+  if (actionType === BATTLE_ACTION.SWITCH) {
+    const player = battle.players[actorUserId];
+    const switched = switchActivePokemonById(player, actionPayload.pokemonId);
+
+    if (!switched.ok) {
+      return {
+        battle,
+        actionType,
+        outcome: {
+          ok: false,
+          reason: switched.reason || "switch_failed",
+          type: "switch",
+          actorUserId,
+        },
+        finished: false,
+        shouldPassTurn: false,
+      };
+    }
+
+    const turnFlow = passTurn(battle, actorUserId);
+    return {
+      battle,
+      actionType,
+      outcome: {
+        ok: true,
+        type: "switch",
+        actorUserId,
+        switchedPokemonId: player.selectedPokemon?.id || null,
+        switchedPokemonName: player.selectedPokemon?.name || null,
+        turnFlow,
+      },
+      finished: false,
+      shouldPassTurn: true,
+    };
+  }
+
   if (actionType === BATTLE_ACTION.MAGIC) {
     const attacker = battle.players[actorUserId];
     const defenderId = getOpponentId(battle, actorUserId);

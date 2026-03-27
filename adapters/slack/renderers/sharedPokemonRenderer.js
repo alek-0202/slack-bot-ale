@@ -86,7 +86,8 @@ function renderSlackCaptureResult({ slackUserId, result }) {
     `🆔 ID da captura: *${result.captured.id}*\n` +
     `${statLines.length ? `📊 Base + IV\n${statLines.join('\n')}\n` : ''}` +
     `💰 Recompensa: +${result.goldReward} gold\n` +
-    `✨ XP da conta: +${result.accountXpReward || 0}`;
+    `✨ XP da conta: +${result.accountXpReward || 0}` +
+    `${buildLevelUpSummary(result.accountXpResult)}`;
 
   const message = {
     text,
@@ -111,6 +112,18 @@ function renderSlackCaptureResult({ slackUserId, result }) {
   };
 
   return message;
+}
+
+function buildLevelUpSummary(xpResult) {
+  if (!xpResult?.leveledUp) return '';
+  const level = xpResult.current?.level || '?';
+  const rewards = [];
+  if (Number(xpResult.goldRewardGranted || 0) > 0) rewards.push(`💰 +${xpResult.goldRewardGranted} gold`);
+  if (Number(xpResult.pokeballCGranted || 0) > 0) rewards.push(`🧿 +${xpResult.pokeballCGranted} Pokebola (!c)`);
+  return (
+    `\n\n🆙 *Você subiu para o nível ${level}*` +
+    `${rewards.length ? `\n🎁 Recompensas: ${rewards.join(' | ')}` : ''}`
+  );
 }
 
 function renderSlackUpgradeResult({ result, slackUserId, maxLevel, getNextUpgradeCost }) {

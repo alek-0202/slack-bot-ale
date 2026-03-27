@@ -12,10 +12,8 @@ const {
   declineInvite,
   getExpectedPickerId,
   assignSelectedPokemonTeam,
-  switchActivePokemonById,
   advanceSelectionState,
   startBattle,
-  passTurn,
 } = require("../application/battle/domain/battleState");
 const {
   BATTLE_ACTION,
@@ -30,6 +28,7 @@ const {
   renderBattleState,
   renderBattleFinished,
   renderMagicOptions,
+  renderSwitchOptions,
 } = require("./battleRenderService");
 const { getSupabaseClient } = require("../database/supabase");
 
@@ -73,6 +72,11 @@ async function startChallenge({ event, args, say }) {
     challengerId: event.user,
     challengedId,
     platform: "slack",
+    metadata: {
+      mode: "pvp",
+      pvpEntryFee: PVP_ENTRY_FEE,
+      pvpWinPrize: PVP_WIN_PRIZE,
+    },
   });
 
   store.setBattle(event.channel, battle);
@@ -132,46 +136,7 @@ async function pickPokemon({ event, args, say }) {
         await say("Use `!bpick <id1> <id2> <id3>` na seleção ou `!bpick <idDoSeuTime>` para trocar durante sua vez.");
         return;
       }
-
-      if (battle.currentTurnUserId !== event.user) {
-        await say(`Não é seu turno. Agora é a vez de <@${battle.currentTurnUserId}>.`);
-        return;
-      }
-
-      const player = battle.players[event.user];
-      const switched = switchActivePokemonById(player, switchId);
-      if (!switched.ok) {
-        await say("Não consegui trocar para esse Pokémon (verifique se ele está no seu time, vivo e não ativo).");
-        return;
-      }
-
-      const enemyId = event.user === battle.challengerId ? battle.challengedId : battle.challengerId;
-      const actorSpeed = Number(player.stats?.speed || 0);
-      const enemySpeed = Number(battle.players[enemyId]?.stats?.speed || 0);
-
-      if (actorSpeed > enemySpeed) {
-        const resolution = resolveBattleTurn({
-          battle,
-          actorUserId: event.user,
-          actionType: BATTLE_ACTION.ATTACK,
-        });
-        store.setBattle(event.channel, battle);
-        await say(`🔁 <@${event.user}> trocou de Pokémon para *${player.selectedPokemon?.name}* e ganhou a iniciativa, atacando imediatamente!`);
-        if (resolution.finished) {
-          await persistBattleResultHp(battle);
-          await settlePvpRewards(battle, resolution.finalized);
-          await say(renderBattleFinished(resolution.finalized));
-          return;
-        }
-        await say(renderBattleState(battle));
-        return;
-      }
-
-      passTurn(battle, event.user);
-      store.setBattle(event.channel, battle);
-      await say(`🔁 <@${event.user}> trocou de Pokémon para *${player.selectedPokemon?.name}* e cedeu a rodada.`);
-      await say(renderBattleState(battle));
-      return;
+      return switchPokemon({ event, say, pokemonId: switchId });
     }
 
     if (validation.reason === "battle_not_found") {
@@ -297,6 +262,8 @@ async function startPvpWager(battle) {
     return { ok: false, message };
   }
   battle.metadata.pvpWagerStarted = true;
+  battle.metadata.pvpEntryFee = PVP_ENTRY_FEE;
+  battle.metadata.pvpWinPrize = PVP_WIN_PRIZE;
   return { ok: true };
 }
 
@@ -397,8 +364,8 @@ async function attack({ event, say }) {
 
   await say(
     `⚔️ <@${event.user}> atacou <@${result.defenderId}>!\n` +
-    `🎲 d6: ${result.d6Roll} | d20: ${result.d20Roll}\n` +
     `${result.isCritical ? "💥 CRÍTICO!\n" : ""}` +
+    `${result.dodged ? "💨 ESQUIVA! O dano foi evitado.\n" : ""}` +
     `Dano final: *${result.finalDamage}*\n` +
     `HP restante de <@${result.defenderId}>: *${result.defenderRemainingHp}/${battle.players[result.defenderId].battleHp.max}*`,
   );
@@ -483,6 +450,55 @@ async function showMagicOptions({ event, say }) {
   }
 
   await say(renderMagicOptions({ battle, actorUserId: event.user, magicSlots: player.magicSlots }));
+}
+
+async function showSwitchOptions({ event, say }) {
+  const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.SWITCH });
+  if (!battle) return;
+  const player = battle.players[event.user];
+  const reserves = (player.team || [])
+    .filter((member, index) => index !== Number(player.activeTeamIndex || 0))
+    .filter((member) => Number(member?.battleHp?.current || 0) > 0)
+    .map((member) => ({
+      id: member.id,
+      name: member.name,
+      hpCurrent: Number(member?.battleHp?.current || 0),
+      hpMax: Number(member?.battleHp?.max || 0),
+    }));
+  await say(renderSwitchOptions({ battle, actorUserId: event.user, reserves }));
+}
+
+async function switchPokemon({ event, say, pokemonId }) {
+  const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.SWITCH });
+  if (!battle) return;
+
+  const resolution = resolveBattleTurn({
+    battle,
+    actorUserId: event.user,
+    actionType: BATTLE_ACTION.SWITCH,
+    actionPayload: { pokemonId },
+  });
+  const result = resolution.outcome;
+  if (!result.ok) {
+    if (result.reason === "pokemon_not_in_team") {
+      await say("Esse Pokémon não faz parte do seu time atual.");
+      return;
+    }
+    if (result.reason === "pokemon_already_active") {
+      await say("Esse Pokémon já está em campo.");
+      return;
+    }
+    if (result.reason === "pokemon_fainted") {
+      await say("Não é possível trocar para um Pokémon derrotado.");
+      return;
+    }
+    await say("Não consegui realizar a troca agora.");
+    return;
+  }
+
+  store.setBattle(battle.channelId, battle);
+  await say(`🔁 <@${event.user}> trocou para *${result.switchedPokemonName}* e consumiu o turno.`);
+  await say(renderBattleState(battle));
 }
 
 async function castMagic({ event, say, magicSlot }) {
@@ -623,7 +639,9 @@ module.exports = {
   attack,
   usePotion,
   showMagicOptions,
+  showSwitchOptions,
   castMagic,
+  switchPokemon,
   surrenderBattle,
   buildBattleHelp,
 };

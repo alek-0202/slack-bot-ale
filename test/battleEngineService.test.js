@@ -30,13 +30,14 @@ test("calculateDamage aplica crítico e arredondamento", () => {
   const result = calculateDamage({
     attackerAttack: 10,
     defenderDefense: 5,
-    d6Roll: 6,
-    d20Roll: 20,
+    attackerCritChance: 1,
+    varianceRoll: 1,
   });
 
   assert.equal(result.isCritical, true);
-  assert.equal(result.normalDamage, 16);
-  assert.ok(result.finalDamage >= 1);
+  assert.equal(result.normalDamage, 8);
+  assert.equal(result.finalDamage, 13);
+  assert.equal(result.dodged, false);
 });
 
 test("calculateMagicDamage aplica vantagem elemental com crítico garantido", () => {
@@ -70,15 +71,22 @@ test("calculateMagicDamage aplica fallback para attack e desvantagem elemental",
   assert.equal(result.finalDamage, 15);
 });
 
-test("calculateDamage permite bloqueio total quando defesa excede 2x dano", () => {
-  const result = calculateDamage({
-    attackerAttack: 1,
-    defenderDefense: 50,
-    d6Roll: 1,
-    d20Roll: 1,
-  });
+test("calculateDamage respeita esquiva e zera o dano quando ativada", () => {
+  const originalRandom = Math.random;
+  Math.random = () => 0.01;
+  try {
+    const result = calculateDamage({
+      attackerAttack: 100,
+      defenderDefense: 1,
+      defenderDodgeChance: 0.18,
+      varianceRoll: 1,
+    });
 
-  assert.equal(result.finalDamage, 0);
+    assert.equal(result.finalDamage, 0);
+    assert.equal(result.dodged, true);
+  } finally {
+    Math.random = originalRandom;
+  }
 });
 
 test("resolvePotionTurn limita em 5 poções e não passa HP máximo", () => {
@@ -240,19 +248,27 @@ test("cooldown de magia bloqueia as próximas duas ações do próprio jogador",
   assert.equal(availableAgain.outcome.ok, true);
 });
 
-test("turn resolver mantém defesa como placeholder sem passar turno", () => {
+test("turn resolver troca Pokémon e consome o turno", () => {
   const battle = createReadyBattle();
   battle.currentTurnUserId = "U1";
+  battle.players.U1.team.push({
+    ...battle.players.U1.team[0],
+    id: 99,
+    name: "Raichu",
+    battleHp: { ...battle.players.U1.team[0].battleHp, current: 10 },
+  });
 
   const resolution = resolveBattleTurn({
     battle,
     actorUserId: "U1",
-    actionType: BATTLE_ACTION.DEFENSE,
+    actionType: BATTLE_ACTION.SWITCH,
+    actionPayload: { pokemonId: 99 },
   });
 
-  assert.equal(resolution.outcome.ok, false);
-  assert.equal(resolution.outcome.reason, "not_implemented");
-  assert.equal(resolution.shouldPassTurn, false);
+  assert.equal(resolution.outcome.ok, true);
+  assert.equal(resolution.outcome.type, "switch");
+  assert.equal(battle.players.U1.selectedPokemon.id, 99);
+  assert.equal(resolution.shouldPassTurn, true);
   assert.equal(battle.status, "active");
 });
 
