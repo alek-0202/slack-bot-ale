@@ -42,12 +42,23 @@ function randomIntInclusive(min, max) {
 
 function rollPokemonIvOffsets({ shiny = false, shinyType = null } = {}) {
   const isPrime = shiny && shinyType === SHINY_TYPE.PRIME;
+  const primeBoost = isPrime ? SHINY_PRIME_BONUS : 0;
   return {
-    attack_iv: isPrime ? IV_STAT_RANGES.attack.max : randomIntInclusive(IV_STAT_RANGES.attack.min, IV_STAT_RANGES.attack.max),
-    defense_iv: isPrime ? IV_STAT_RANGES.defense.max : randomIntInclusive(IV_STAT_RANGES.defense.min, IV_STAT_RANGES.defense.max),
-    magic_iv: isPrime ? IV_STAT_RANGES.magic.max : randomIntInclusive(IV_STAT_RANGES.magic.min, IV_STAT_RANGES.magic.max),
-    hp_iv: isPrime ? IV_STAT_RANGES.hp.max : randomIntInclusive(IV_STAT_RANGES.hp.min, IV_STAT_RANGES.hp.max),
-    speed_iv: isPrime ? IV_STAT_RANGES.speed.max : randomIntInclusive(IV_STAT_RANGES.speed.min, IV_STAT_RANGES.speed.max),
+    attack_iv: isPrime
+      ? IV_STAT_RANGES.attack.max + primeBoost
+      : randomIntInclusive(IV_STAT_RANGES.attack.min, IV_STAT_RANGES.attack.max),
+    defense_iv: isPrime
+      ? IV_STAT_RANGES.defense.max + primeBoost
+      : randomIntInclusive(IV_STAT_RANGES.defense.min, IV_STAT_RANGES.defense.max),
+    magic_iv: isPrime
+      ? IV_STAT_RANGES.magic.max + primeBoost
+      : randomIntInclusive(IV_STAT_RANGES.magic.min, IV_STAT_RANGES.magic.max),
+    hp_iv: isPrime
+      ? IV_STAT_RANGES.hp.max + primeBoost
+      : randomIntInclusive(IV_STAT_RANGES.hp.min, IV_STAT_RANGES.hp.max),
+    speed_iv: isPrime
+      ? IV_STAT_RANGES.speed.max + primeBoost
+      : randomIntInclusive(IV_STAT_RANGES.speed.min, IV_STAT_RANGES.speed.max),
   };
 }
 
@@ -98,13 +109,12 @@ function getSpeciesBaseStats(species = {}, options = {}) {
 
 function applyIvAndShinyModifiers({ baseStats = {}, ivOffsets = {}, shiny = false, shinyType = null } = {}) {
   const normalizedOffsets = normalizeIvOffsets(ivOffsets);
-  const isPrime = shiny && shinyType === SHINY_TYPE.PRIME;
+  const isPrime = shinyType === SHINY_TYPE.PRIME;
+  const primeBonus = isPrime ? SHINY_PRIME_BONUS : 0;
 
   return STAT_FIELDS.reduce((acc, statKey) => {
-    let value = Math.max(1, Number(baseStats[statKey] || 0) + Number(normalizedOffsets[statKey] || 0));
-    if (shiny) value = Math.round(value * SHINY_MULTIPLIER);
-    if (isPrime) value += SHINY_PRIME_BONUS;
-    acc[statKey] = Math.max(1, Math.round(value));
+    const value = Math.max(1, Number(baseStats[statKey] || 0) + Number(normalizedOffsets[statKey] || 0) + primeBonus);
+    acc[statKey] = Math.max(1, Math.round(shiny ? value * SHINY_MULTIPLIER : value));
     return acc;
   }, {});
 }
@@ -121,8 +131,14 @@ function getLevelStatMultiplier(level = 1) {
 
 function calculatePokemonStats({ species = {}, level = 1, fallbackStats = {}, ivOffsets = {}, shiny = false, shinyType = null, log = false, context = {} } = {}) {
   const baseStats = getSpeciesBaseStats(species, { fallbackStats });
-  const progression = calculateProgressedStats({
+  const baseStatsWithIvPrime = applyIvAndShinyModifiers({
     baseStats,
+    ivOffsets,
+    shiny: false,
+    shinyType: shiny ? shinyType : null,
+  });
+  const progression = calculateProgressedStats({
+    baseStats: baseStatsWithIvPrime,
     level,
     log,
     context: {
@@ -134,16 +150,22 @@ function calculatePokemonStats({ species = {}, level = 1, fallbackStats = {}, iv
 
   return applyIvAndShinyModifiers({
     baseStats: progression.stats,
-    ivOffsets,
+    ivOffsets: {},
     shiny,
-    shinyType,
+    shinyType: null,
   });
 }
 
 function getPokemonProgressionSnapshot({ species = {}, level = 1, fallbackStats = {}, ivOffsets = {}, shiny = false, shinyType = null, log = false, context = {} } = {}) {
   const baseStats = getSpeciesBaseStats(species, { fallbackStats });
-  const progression = calculateProgressedStats({
+  const baseStatsWithIvPrime = applyIvAndShinyModifiers({
     baseStats,
+    ivOffsets,
+    shiny: false,
+    shinyType: shiny ? shinyType : null,
+  });
+  const progression = calculateProgressedStats({
+    baseStats: baseStatsWithIvPrime,
     level,
     log,
     context: {
@@ -157,9 +179,9 @@ function getPokemonProgressionSnapshot({ species = {}, level = 1, fallbackStats 
     ...progression,
     stats: applyIvAndShinyModifiers({
       baseStats: progression.stats,
-      ivOffsets,
+      ivOffsets: {},
       shiny,
-      shinyType,
+      shinyType: null,
     }),
   };
 }
