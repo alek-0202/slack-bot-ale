@@ -3,6 +3,7 @@ const fs = require("fs/promises");
 const axios = require("axios");
 const { createLogger } = require("../../../utils/logger");
 const { getLevelBorderStyle } = require("./pokemonVisualTier");
+const { getPokemonVisualTheme } = require("./pokemonRarityVisualTheme");
 
 const logger = createLogger("renderer:pokemon-layered-sprite");
 
@@ -76,10 +77,20 @@ async function loadOptionalAsset(assetPath, metadata, loadImage) {
   }
 }
 
-function applyBaseLayer(ctx) {
-  const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_SIZE);
-  gradient.addColorStop(0, "rgba(17, 24, 39, 0.22)");
-  gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+function hexToRgba(hex, alpha) {
+  if (typeof hex !== "string") return `rgba(17, 24, 39, ${alpha})`;
+  const normalized = hex.replace("#", "");
+  const valid = normalized.length === 6 ? normalized : "111827";
+  const r = parseInt(valid.slice(0, 2), 16);
+  const g = parseInt(valid.slice(2, 4), 16);
+  const b = parseInt(valid.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function applyBaseLayer(ctx, theme) {
+  const gradient = ctx.createRadialGradient(CANVAS_SIZE / 2, CANVAS_SIZE * 0.42, 18, CANVAS_SIZE / 2, CANVAS_SIZE / 2, CANVAS_SIZE * 0.74);
+  gradient.addColorStop(0, hexToRgba(theme.backgroundCenter, 0.96));
+  gradient.addColorStop(1, hexToRgba(theme.backgroundEdge, 1));
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 }
@@ -98,8 +109,8 @@ function applyShinyAura(ctx) {
   ctx.restore();
 }
 
-function applyGeneratedFrame(ctx, tierKey) {
-  const color = FRAME_COLORS[tierKey] || FRAME_COLORS.cinza;
+function applyGeneratedFrame(ctx, tierKey, theme) {
+  const color = theme?.frameOuter || FRAME_COLORS[tierKey] || FRAME_COLORS.cinza;
   const center = CANVAS_SIZE / 2;
 
   const outer = ctx.createLinearGradient(0, 0, CANVAS_SIZE, CANVAS_SIZE);
@@ -171,6 +182,7 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
 
   try {
     const { key: tierKey, border } = resolveVisualTier(level);
+    const theme = getPokemonVisualTheme({ rarity: species?.rarity, shiny });
     metadata.tier = tierKey;
 
     logger.info("Iniciando render em camadas do card/pokemon", {
@@ -197,7 +209,7 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
     const canvas = createCanvas(CANVAS_SIZE, CANVAS_SIZE);
     const ctx = canvas.getContext("2d");
 
-    applyBaseLayer(ctx);
+    applyBaseLayer(ctx, theme);
 
     if (shinyOverlay) {
       ctx.drawImage(shinyOverlay, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
@@ -211,7 +223,7 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
       ctx.drawImage(frameAsset, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
     } else {
       metadata.usedGeneratedFrame = true;
-      applyGeneratedFrame(ctx, tierKey);
+      applyGeneratedFrame(ctx, tierKey, theme);
     }
 
     const pngBuffer = canvas.toBuffer("image/png");
