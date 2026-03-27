@@ -112,20 +112,34 @@ function applyShinyAura(ctx) {
 function applyPrimeSpecialFrame(ctx) {
   ctx.save();
   ctx.strokeStyle = "#0B0B0B";
-  ctx.shadowColor = "rgba(255, 35, 35, 0.88)";
-  ctx.shadowBlur = 16;
+  ctx.shadowColor = "rgba(255, 35, 35, 0.45)";
+  ctx.shadowBlur = 10;
   ctx.lineWidth = 12;
   ctx.strokeRect(8, 8, CANVAS_SIZE - 16, CANVAS_SIZE - 16);
 
   ctx.shadowBlur = 0;
-  ctx.strokeStyle = "rgba(255, 70, 70, 0.8)";
+  ctx.strokeStyle = "rgba(255, 70, 70, 0.72)";
   ctx.lineWidth = 2;
-  for (let y = 20; y < CANVAS_SIZE - 20; y += 12) {
+  ctx.strokeRect(16, 16, CANVAS_SIZE - 32, CANVAS_SIZE - 32);
+
+  const accents = [
+    [18, 18, 44, 18],
+    [18, 18, 18, 44],
+    [CANVAS_SIZE - 44, 18, CANVAS_SIZE - 18, 18],
+    [CANVAS_SIZE - 18, 18, CANVAS_SIZE - 18, 44],
+    [18, CANVAS_SIZE - 18, 44, CANVAS_SIZE - 18],
+    [18, CANVAS_SIZE - 44, 18, CANVAS_SIZE - 18],
+    [CANVAS_SIZE - 44, CANVAS_SIZE - 18, CANVAS_SIZE - 18, CANVAS_SIZE - 18],
+    [CANVAS_SIZE - 18, CANVAS_SIZE - 44, CANVAS_SIZE - 18, CANVAS_SIZE - 18],
+  ];
+  ctx.strokeStyle = "rgba(255, 70, 70, 0.84)";
+  ctx.lineWidth = 3;
+  accents.forEach(([x1, y1, x2, y2]) => {
     ctx.beginPath();
-    ctx.moveTo(20, y);
-    ctx.lineTo(CANVAS_SIZE - 20, y);
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
     ctx.stroke();
-  }
+  });
   ctx.restore();
 }
 
@@ -160,14 +174,20 @@ function applyGeneratedFrame(ctx, tierKey) {
 function applySpecialOverlay(ctx, { shiny = false, shinyType = null } = {}) {
   const isShinyPrime = Boolean(shiny) && String(shinyType || "").toLowerCase() === "prime";
   if (isShinyPrime) {
-    const center = CANVAS_SIZE / 2;
-    const pulse = ctx.createRadialGradient(center, center, 30, center, center, 118);
-    pulse.addColorStop(0, "rgba(255, 40, 40, 0.28)");
-    pulse.addColorStop(0.7, "rgba(185, 0, 0, 0.14)");
-    pulse.addColorStop(1, "rgba(0, 0, 0, 0)");
     ctx.save();
-    ctx.fillStyle = pulse;
-    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.fillStyle = "rgba(255, 42, 42, 0.12)";
+    [
+      [28, 36],
+      [CANVAS_SIZE - 30, 48],
+      [42, CANVAS_SIZE - 38],
+      [CANVAS_SIZE - 44, CANVAS_SIZE - 52],
+      [CANVAS_SIZE / 2, 30],
+      [CANVAS_SIZE / 2 + 18, CANVAS_SIZE - 28],
+    ].forEach(([x, y]) => {
+      ctx.beginPath();
+      ctx.arc(x, y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    });
     ctx.restore();
     return;
   }

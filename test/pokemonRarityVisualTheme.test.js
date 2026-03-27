@@ -17,8 +17,8 @@ test('getPokemonVisualTheme aplica tema mítico', () => {
 
 test('getPokemonVisualTheme prioriza shiny prime sobre raridade', () => {
   const theme = getPokemonVisualTheme({ rarity: 'mythical', shiny: true, shinyType: 'prime' });
-  assert.equal(theme.backgroundCenter, '#5B0000');
-  assert.equal(theme.backgroundEdge, '#1A0000');
+  assert.equal(theme.backgroundCenter, '#1F2937');
+  assert.equal(theme.backgroundEdge, '#0B1220');
 });
 
 test('getPokemonVisualTheme mantém raridade quando shiny não é prime', () => {
