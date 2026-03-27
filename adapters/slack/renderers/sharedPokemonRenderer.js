@@ -13,7 +13,8 @@ function renderSlackProfileSummary({ slackUserId, profile }) {
     `🧿 Pokebola (!c): *${profile.pokeballCQty || 0}*\n` +
     `🕒 Cooldown !capture: *${profile.captureCooldownText || 'pronto'}*\n` +
     `🎯 Total capturado: *${profile.totalCaptured}*\n` +
-    `📘 Pokédex descoberta: *${profile.uniqueCount}*`
+    `📘 Pokédex descoberta: *${profile.uniqueCount}*\n` +
+    `🏆 Vitórias PvP: *${profile.pvpWins || 0}*`
   );
 
   return {
@@ -62,7 +63,7 @@ function renderSlackCaptureResult({ slackUserId, result }) {
 
   const shinyTag = result.shiny ? `✨ SHINY${result.captured?.shiny_type ? ` (${result.captured.shiny_type})` : ''}!` : '';
   const rarity = String(result.species?.rarity || '').toLowerCase();
-  const legendaryBaseBonus = ['legendary', 'mythical'].includes(rarity) ? 15 : 0;
+  const rarityBaseBonus = rarity === 'mythical' ? 20 : rarity === 'legendary' ? 15 : 0;
   const statLines = [
     ['ATK', 'base_attack', 'attack_iv'],
     ['DEF', 'base_defense', 'defense_iv'],
@@ -74,7 +75,7 @@ function renderSlackCaptureResult({ slackUserId, result }) {
       const baseValue = Number(result.species?.[baseKey]);
       const ivValue = Number(result.captured?.[ivKey] || 0);
       if (!Number.isFinite(baseValue)) return null;
-      const effectiveBase = baseValue + legendaryBaseBonus;
+      const effectiveBase = baseValue + rarityBaseBonus;
       const sign = ivValue >= 0 ? '+' : '';
       return `• ${label}: ${effectiveBase} (${sign}${ivValue})`;
     })

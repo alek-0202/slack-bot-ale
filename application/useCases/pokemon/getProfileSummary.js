@@ -47,6 +47,7 @@ async function getProfileSummary({ userId, createIfMissing = false }) {
       pokemonEssence: user.pokemonEssence || "0",
       captureCooldownRemainingMs,
       captureCooldownText: captureCooldownRemainingMs > 0 ? formatRemaining(captureCooldownRemainingMs) : 'pronto',
+      pvpWins: user.pvpWins || 0,
     },
   };
 }

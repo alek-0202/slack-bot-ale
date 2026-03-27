@@ -30,6 +30,10 @@ const poketagCommand = require("./commands/pokemon/poketag");
 const elementsCommand = require("./commands/pokemon/elements");
 const balanceCommand = require("./commands/pokemon/balance");
 const paCommand = require("./commands/pokemon/pa");
+const prarityCommand = require("./commands/pokemon/prarity");
+const pelementCommand = require("./commands/pokemon/pelement");
+const battleonCommand = require("./commands/pokemon/battleon");
+const favpokeCommand = require("./commands/pokemon/favpoke");
 const upgradeCommand = require("./commands/pokemon/upgrade");
 const marketCommand = require("./commands/pokemon/market");
 const tradeCommand = require("./commands/pokemon/trade");
@@ -50,7 +54,7 @@ const bpickCommand = require("./commands/bpick");
 const ataqueCommand = require("./commands/ataque");
 const pocaoCommand = require("./commands/pocao");
 const magiaCommand = require("./commands/magia");
-const defesaCommand = require("./commands/defesa");
+const surrenderCommand = require("./commands/surrender");
 const magicregisterCommand = require("./commands/magicregister");
 const bhelpCommand = require("./commands/bhelp");
 const closeBattlesCommand = require("./commands/closebattles");
@@ -118,6 +122,10 @@ for (const commandModule of [
   elementsCommand,
   balanceCommand,
   paCommand,
+  prarityCommand,
+  pelementCommand,
+  battleonCommand,
+  favpokeCommand,
   upgradeCommand,
   marketCommand,
   tradeCommand,
@@ -138,7 +146,7 @@ for (const commandModule of [
   ataqueCommand,
   pocaoCommand,
   magiaCommand,
-  defesaCommand,
+  surrenderCommand,
   magicregisterCommand,
   bhelpCommand,
   closeBattlesCommand,

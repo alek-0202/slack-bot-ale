@@ -43,13 +43,14 @@ test("!help pokemon concentra comandos Pokémon e magicregister", async () => {
   assert.doesNotMatch(text, /!ataque/);
 });
 
-test("!help battle concentra comandos de batalha incluindo defesa", async () => {
+test("!help battle concentra comandos de batalha sem defesa", async () => {
   const payload = await runCommand(helpCommand, "battle");
   const text = payload.blocks[0].text.text;
 
   assert.match(text, /!ataque/);
-  assert.match(text, /!defesa/);
+  assert.doesNotMatch(text, /!defesa/);
   assert.match(text, /!magia/);
+  assert.match(text, /!surrender/);
   assert.match(text, /!pocao/);
   assert.match(text, /!bpick ID/);
 });

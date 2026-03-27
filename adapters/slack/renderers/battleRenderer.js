@@ -27,7 +27,7 @@ function renderBattleInvite({ challengerId, challengedId, channelId }) {
     text:
       `⚔️ <@${challengerId}> desafiou <@${challengedId}> para um duelo PvP!\n` +
       "Use os botões abaixo para aceitar ou recusar.\n" +
-      "Após aceitar, cada jogador deve escolher seu Pokémon com `!bpick ID`.",
+      "Após aceitar, cada jogador deve escolher até 3 Pokémon com `!bpick ID [ID2] [ID3]`.",
     blocks: [
       {
         type: "section",
@@ -64,7 +64,7 @@ function renderBattleInvite({ challengerId, challengedId, channelId }) {
 function renderSelectionPrompt({ challengerId, challengedId }) {
   return (
     `✅ <@${challengedId}> aceitou o desafio de <@${challengerId}>!\n` +
-    "Agora escolham os Pokémon da sua coleção com `!bpick ID`.\n" +
+    "Agora escolham até 3 Pokémon da sua coleção com `!bpick ID [ID2] [ID3]`.\n" +
     `Ordem de escolha: <@${challengerId}> primeiro, depois <@${challengedId}>.`
   );
 }
@@ -160,7 +160,6 @@ function buildBattleActionBlock(battle, options = {}) {
     type: "actions",
     elements: [
       buildTurnButton({ battle, label: "⚔️ Ataque", action: "attack", style: "primary", actionIdBuilder: options.turnActionIdBuilder }),
-      buildTurnButton({ battle, label: "🛡️ Defesa", action: "defense", actionIdBuilder: options.turnActionIdBuilder }),
       buildTurnButton({
         battle,
         label: magicOnCooldown

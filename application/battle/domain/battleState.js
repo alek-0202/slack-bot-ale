@@ -34,6 +34,8 @@ function createPlayerState(userId) {
       lastMagicName: null,
     },
     magicSlots: [],
+    team: [],
+    activeTeamIndex: 0,
   };
 }
 
@@ -89,22 +91,9 @@ function getExpectedPickerId(battle) {
     : battle.challengedId;
 }
 
-function assignSelectedPokemon(battle, userId, pokemon) {
-  const playerState = battle.players[userId];
+function buildTeamMemberFromPokemon(pokemon) {
   const level = Number(pokemon.level) || 1;
-  playerState.selectedPokemon = {
-    id: pokemon.id,
-    speciesId: pokemon.species_id,
-    name: pokemon.pokemon_species?.name || `Pokémon #${pokemon.species_id}`,
-    level,
-    stars: getPokemonStars(level),
-    starText: formatPokemonStars(level),
-    spriteUrl: pokemon.pokemon_species?.sprite_url || null,
-    elementTypes: pokemon.pokemon_species?.element_types || [],
-    baseHp: Number(pokemon.hp) || 1,
-  };
-  playerState.magicSlots = Array.isArray(pokemon.magicSlots) ? pokemon.magicSlots : [];
-  playerState.stats = {
+  const stats = {
     attack: Number(pokemon.attack) || 1,
     magic: Number(pokemon.magic) || Number(pokemon.attack) || 1,
     defense: Number(pokemon.defense) || 0,
@@ -118,19 +107,91 @@ function assignSelectedPokemon(battle, userId, pokemon) {
     elementalChance: getExtraChance(pokemon.elemental_level, 0.03, 0.3),
   };
 
-  const hpMax = calculateBattleHp(playerState.stats.hp);
+  const hpMax = calculateBattleHp(stats.hp);
   const rawPersistentCurrentHp = pokemon.current_hp;
   const persistentCurrentHp = rawPersistentCurrentHp == null
     ? Math.max(1, Number(pokemon.hp) || 1)
     : Math.max(0, Number(rawPersistentCurrentHp) || 0);
   const persistentMaxHp = Math.max(1, Number(pokemon.hp) || 1);
-  playerState.battleHp = {
-    base: playerState.stats.hp,
-    max: hpMax,
-    current: Math.max(0, Math.min(hpMax, Math.round((persistentCurrentHp / persistentMaxHp) * hpMax))),
-  };
 
+  return {
+    id: pokemon.id,
+    speciesId: pokemon.species_id,
+    name: pokemon.pokemon_species?.name || `Pokémon #${pokemon.species_id}`,
+    level,
+    stars: getPokemonStars(level),
+    starText: formatPokemonStars(level),
+    spriteUrl: pokemon.pokemon_species?.sprite_url || null,
+    elementTypes: pokemon.pokemon_species?.element_types || [],
+    stats,
+    magicSlots: Array.isArray(pokemon.magicSlots) ? pokemon.magicSlots : [],
+    battleHp: {
+      base: stats.hp,
+      max: hpMax,
+      current: Math.max(0, Math.min(hpMax, Math.round((persistentCurrentHp / persistentMaxHp) * hpMax))),
+    },
+  };
+}
+
+function syncPlayerActiveState(playerState) {
+  const active = playerState.team[playerState.activeTeamIndex] || null;
+  playerState.selectedPokemon = active ? {
+    id: active.id,
+    speciesId: active.speciesId,
+    name: active.name,
+    level: active.level,
+    stars: active.stars,
+    starText: active.starText,
+    spriteUrl: active.spriteUrl,
+    elementTypes: active.elementTypes,
+    baseHp: active.stats.hp,
+  } : null;
+  playerState.stats = active?.stats || null;
+  playerState.battleHp = active?.battleHp || null;
+  playerState.magicSlots = active?.magicSlots || [];
   return playerState;
+}
+
+function assignSelectedPokemon(battle, userId, pokemon) {
+  const playerState = battle.players[userId];
+  playerState.team = [buildTeamMemberFromPokemon(pokemon)];
+  playerState.activeTeamIndex = 0;
+  return syncPlayerActiveState(playerState);
+}
+
+function assignSelectedPokemonTeam(battle, userId, pokemons = []) {
+  const playerState = battle.players[userId];
+  playerState.team = pokemons.map((pokemon) => buildTeamMemberFromPokemon(pokemon));
+  playerState.activeTeamIndex = 0;
+  playerState.potionsUsed = 0;
+  playerState.magicCooldown = {
+    blockedOwnTurnsRemaining: 0,
+    lastAppliedAtRound: null,
+    lastMagicName: null,
+  };
+  return syncPlayerActiveState(playerState);
+}
+
+function hasAnyAlivePokemon(playerState) {
+  return (playerState?.team || []).some((member) => Number(member?.battleHp?.current || 0) > 0);
+}
+
+function autoSwitchToNextAlivePokemon(playerState) {
+  const nextIndex = (playerState.team || []).findIndex((member) => Number(member?.battleHp?.current || 0) > 0);
+  if (nextIndex < 0) return false;
+  playerState.activeTeamIndex = nextIndex;
+  syncPlayerActiveState(playerState);
+  return true;
+}
+
+function switchActivePokemonById(playerState, pokemonId) {
+  const targetIndex = (playerState.team || []).findIndex((member) => Number(member.id) === Number(pokemonId));
+  if (targetIndex < 0) return { ok: false, reason: "pokemon_not_in_team" };
+  if (targetIndex === playerState.activeTeamIndex) return { ok: false, reason: "pokemon_already_active" };
+  if (Number(playerState.team[targetIndex]?.battleHp?.current || 0) <= 0) return { ok: false, reason: "pokemon_fainted" };
+  playerState.activeTeamIndex = targetIndex;
+  syncPlayerActiveState(playerState);
+  return { ok: true };
 }
 
 function advanceSelectionState(battle) {
@@ -202,6 +263,10 @@ module.exports = {
   declineInvite,
   getExpectedPickerId,
   assignSelectedPokemon,
+  assignSelectedPokemonTeam,
+  hasAnyAlivePokemon,
+  autoSwitchToNextAlivePokemon,
+  switchActivePokemonById,
   advanceSelectionState,
   startBattle,
   getOpponentId,

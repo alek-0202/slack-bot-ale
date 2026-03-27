@@ -187,6 +187,7 @@ function buildRewardLines(result) {
   const lines = [];
   if (result?.rewards?.goldReward) lines.push(`💰 Gold: +${result.rewards.goldReward}`);
   if (result?.rewards?.xpResult?.grantedXp != null) lines.push(`✨ XP da conta: +${result.rewards.xpResult.grantedXp}`);
+  if (result?.battle?.metadata?.reward?.pokemonEssenceQty) lines.push(`🧬 Essência Pokémon: +${result.battle.metadata.reward.pokemonEssenceQty}`);
   if (result?.rewards?.items?.length) {
     for (const item of result.rewards.items) {
       lines.push(`📚 ${item.itemName || item.item_name || 'Item'}: +${item.quantity || 0}`);
