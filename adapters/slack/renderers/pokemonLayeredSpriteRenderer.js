@@ -3,7 +3,7 @@ const fs = require("fs/promises");
 const axios = require("axios");
 const { createLogger } = require("../../../utils/logger");
 const { getLevelBorderStyle } = require("./pokemonVisualTier");
-const { getPokemonVisualTheme } = require("./pokemonRarityVisualTheme");
+const { getBackgroundByRarity, getBorderByState } = require("./pokemonRarityVisualTheme");
 
 const logger = createLogger("renderer:pokemon-layered-sprite");
 
@@ -240,8 +240,9 @@ async function renderLayeredPokemonSprite({ species = {}, level = 1, shiny = fal
 
   try {
     const { key: tierKey, border } = resolveVisualTier(level);
-    const isShinyPrime = Boolean(shiny) && String(shinyType || "").toLowerCase() === "prime";
-    const theme = getPokemonVisualTheme({ rarity: species?.rarity, shiny, shinyType });
+    const theme = getBackgroundByRarity({ rarity: species?.rarity });
+    const borderTheme = getBorderByState({ shiny, shinyType });
+    const isShinyPrime = borderTheme.isPrime;
     metadata.tier = tierKey;
 
     logger.info("Iniciando render em camadas do card/pokemon", {
