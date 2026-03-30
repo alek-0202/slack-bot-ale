@@ -4,7 +4,7 @@ const { getUser } = require("./userService");
 const { getSpeciesById } = require("./pokemonLookupService");
 const { getEvolutionCost, evolvePokemon } = require("./evolutionService");
 const { MAX_LEVEL, calculateTotalUpgradeCost, upgradePokemonBatch } = require("./upgradeService");
-const { buildSellPreview, buildSellPreviewBatch, buildSellAllPreview, sellPokemon, sellPokemonBatch } = require("./sellService");
+const { buildSellPreview, buildSellPreviewBatch, buildSellAllPreview, sellPokemon, sellPokemonBatch, sellAllPokemonBatch } = require("./sellService");
 const { formatGold, isGoldGte } = require("../utils/gold");
 const { getPokemonProgressionSnapshot } = require("./pokemonStatsService");
 const { assertPokemonAvailableForAction } = require("./healingStationService");
@@ -25,6 +25,7 @@ const UP_CANCEL_ACTION_ID = "pokemon_up_cancel";
 const SELL_CONFIRM_ACTION_ID = "pokemon_sell_confirm";
 const SELL_CANCEL_ACTION_ID = "pokemon_sell_cancel";
 const APPLY_ITEM_ACTION_ID = "pokemon_applyitem_confirm";
+const SELL_BATCH_DETAIL_LIMIT = 20;
 function buildApplyItemActionId(statKey) {
   return `${APPLY_ITEM_ACTION_ID}_${statKey}`;
 }
@@ -480,6 +481,10 @@ function buildSellPreviewMessage({ slackUserId, preview }) {
         `*Valor da venda:* ${price} gold`,
         `*Investimento em upgrades:* ${preview.priceBreakdown?.totalUpgradeCost || "0"} gold`,
       ];
+  const isLargeBatch = isBatch && Number(preview.totalCount || 0) > SELL_BATCH_DETAIL_LIMIT;
+  const actionValue = preview.sellAll
+    ? buildActionValue({ type: "sell", slackUserId, sellAll: true })
+    : buildActionValue({ type: "sell", slackUserId, pokemonIds: preview.pokemonIds || [preview.pokemon.id] });
 
   return {
     text: isBatch ? `Confirmação de venda para ${preview.totalCount} Pokémons` : `Confirmação de venda para ${pokemonName}`,
@@ -491,9 +496,9 @@ function buildSellPreviewMessage({ slackUserId, preview }) {
           type: "mrkdwn",
           text: isBatch
             ? [
-              `*Pokémons selecionados (${preview.totalCount}):*`,
-              ...previewLines,
-              "",
+              isLargeBatch ? `*Pokémons elegíveis para venda em massa:* ${preview.totalCount}` : `*Pokémons selecionados (${preview.totalCount}):*`,
+              ...(isLargeBatch ? [] : previewLines),
+              ...(isLargeBatch ? [""] : []),
               `*Valor total da venda:* ${preview.totalSellPrice || "0"} gold`,
               `*Essência total prevista:* ${preview.totalEssenceReceived || "0"}`,
               preview.ignoredCount
@@ -528,7 +533,7 @@ function buildSellPreviewMessage({ slackUserId, preview }) {
             action_id: SELL_CONFIRM_ACTION_ID,
             text: { type: "plain_text", text: "Confirmar venda", emoji: true },
             style: "danger",
-            value: buildActionValue({ type: "sell", slackUserId, pokemonIds: preview.pokemonIds || [preview.pokemon.id] }),
+            value: actionValue,
           },
           {
             type: "button",
@@ -568,6 +573,7 @@ module.exports = {
   applyBookItemToPokemon,
   buildSellPreviewCard,
   buildSellPreviewMessage,
+  sellAllPokemonBatch,
   buildUnauthorizedActionMessage,
   calculateTotalUpgradeCost,
   upgradePokemonToLevel,
