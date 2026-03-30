@@ -72,16 +72,51 @@ const ELEMENT_TYPE_SET = new Set(ELEMENT_TYPES);
 function splitElementInput(value) {
   if (value == null) return [];
   if (Array.isArray(value)) return value.flatMap((entry) => splitElementInput(entry));
+  const serialized = parseSerializedElementInput(value);
+  if (serialized) return splitElementInput(serialized);
+
   return String(value)
     .split(/[\/,;|]+/g)
+    .map((entry) => cleanupElementToken(entry))
     .map((entry) => entry.trim())
     .filter(Boolean);
 }
 
 function normalizeElement(value) {
-  const raw = String(value || "").trim().toLowerCase();
+  const raw = cleanupElementToken(String(value || "")).trim().toLowerCase();
   if (!raw) return "";
   return ELEMENT_ALIASES[raw] || raw;
+}
+
+function cleanupElementToken(value) {
+  return String(value || "")
+    .replace(/^\{+|\}+$/g, "")
+    .replace(/^"+|"+$/g, "")
+    .replace(/^'+|'+$/g, "")
+    .trim();
+}
+
+function parseSerializedElementInput(value) {
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw) return null;
+
+  if (raw.startsWith("[") && raw.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  if (raw.startsWith("{") && raw.endsWith("}")) {
+    const inner = raw.slice(1, -1).trim();
+    if (!inner) return [];
+    return inner.split(",").map((entry) => cleanupElementToken(entry));
+  }
+
+  return null;
 }
 
 function isValidElement(value) {
