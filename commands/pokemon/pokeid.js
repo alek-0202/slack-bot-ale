@@ -2,7 +2,7 @@ const { parsePositiveInt } = require("../../utils/number");
 const { createLogger } = require("../../utils/logger");
 const { getOwnedPokemonById } = require("../../services/pokemonLookupService");
 const { buildPokemonTypesLabel } = require("../../services/pokemonTypeService");
-const { calculatePokemonStats } = require("../../services/pokemonStatsService");
+const { buildPokemonStatAudit } = require("../../services/pokemonStatsService");
 const {
   buildPokemonVisualBlocks,
   buildPokemonVisualSummary,
@@ -35,7 +35,7 @@ module.exports = {
       }
 
       const species = pokemon.pokemon_species || {};
-      const recalculatedStats = calculatePokemonStats({
+      const statAudit = buildPokemonStatAudit({
         species,
         level: pokemon.level,
         fallbackStats: {
@@ -54,12 +54,45 @@ module.exports = {
         },
         shiny: Boolean(pokemon.shiny),
         shinyType: pokemon.shiny_type,
+        bookBonuses: {
+          attack: pokemon.book_bonus_attack,
+          magic: pokemon.book_bonus_magic,
+          defense: pokemon.book_bonus_defense,
+          hp: pokemon.book_bonus_hp,
+          speed: pokemon.book_bonus_speed,
+        },
       });
+      const recalculatedStats = statAudit.stages.finalWithBook;
       const storedHp = Number(pokemon.hp || 0);
       const storedCurrentHp = Number(pokemon.current_hp ?? storedHp);
       const recalculatedHp = Number(recalculatedStats.hp || storedHp || 1);
       const hpRatio = storedHp > 0 ? Math.min(1, Math.max(0, storedCurrentHp / storedHp)) : 1;
       const displayedCurrentHp = Math.max(0, Math.min(recalculatedHp, Math.round(recalculatedHp * hpRatio)));
+      logger.info("Auditoria de stats do !pokeid", {
+        pokemonId: pokemon.id,
+        speciesId: species.id || null,
+        speciesName: species.name || null,
+        level: pokemon.level,
+        rarity: statAudit.rarity,
+        shiny: statAudit.shiny,
+        shinyType: statAudit.shinyType,
+        stars: statAudit.stars,
+        milestonesApplied: statAudit.milestonesApplied,
+        baseSpecies: statAudit.stages.baseSpecies,
+        withIvAndPrime: statAudit.stages.withIvAndPrime,
+        afterLevelScaling: statAudit.stages.afterLevelScaling,
+        withShiny: statAudit.stages.withShiny,
+        bookBonuses: statAudit.bookBonuses,
+        finalWithBook: statAudit.stages.finalWithBook,
+        persistedSnapshot: {
+          attack: pokemon.attack,
+          magic: pokemon.magic,
+          defense: pokemon.defense,
+          hp: pokemon.hp,
+          speed: pokemon.speed,
+          currentHp: pokemon.current_hp,
+        },
+      });
 
       const visual = buildPokemonVisualSummary({ species, level: pokemon.level });
       const visualBlocks = await buildPokemonVisualBlocks({
