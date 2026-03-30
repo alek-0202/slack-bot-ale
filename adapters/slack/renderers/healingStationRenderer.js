@@ -28,7 +28,7 @@ function renderHealingStation(view, slackUserId) {
     text: `Estação de cura de ${slackUserId}`,
     blocks: [
       { type: 'header', text: { type: 'plain_text', text: '🩺 Estação de cura', emoji: true } },
-      { type: 'section', text: { type: 'mrkdwn', text: `*Treinador:* <@${slackUserId}>\n*Nível:* ${view.station.level}/10\n*Regen:* +${formatHealingRate(view.ratePerMinute)} HP/min por slot\n*Slots:* ${view.slots.length}/${view.maxSlots}` } },
+      { type: 'section', text: { type: 'mrkdwn', text: `*Treinador:* <@${slackUserId}>\n*Nível:* ${view.station.level}/30\n*Regen:* +${formatHealingRate(view.ratePerMinute)} HP/min por slot\n*Slots:* ${view.slots.length}/${view.maxSlots}` } },
       { type: 'section', text: { type: 'mrkdwn', text: slotsText } },
       { type: 'actions', elements: [
         { type: 'button', text: { type: 'plain_text', text: 'Adicionar', emoji: true }, action_id: HEALSTATION_ADD_ACTION_ID, value: actionValue({ slackUserId }), style: 'primary' },

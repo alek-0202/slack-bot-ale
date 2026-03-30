@@ -12,6 +12,10 @@ test('healing station progression helpers are deterministic', () => {
   assert.equal(getHealingRatePerMinute(1), 0.5);
   assert.equal(getHealingRatePerMinute(2), 0.7);
   assert.equal(getHealingRatePerMinute(10), 2.3);
+  assert.equal(getHealingRatePerMinute(11), 2.7);
+  assert.equal(getHealingRatePerMinute(20), 6.3);
+  assert.equal(getHealingRatePerMinute(21), 6.9);
+  assert.equal(getHealingRatePerMinute(30), 12.3);
   assert.equal(getHealingStationUpgradeCost(1), 7000n);
   assert.equal(getHealingStationUpgradeCost(2), 10000n);
   assert.equal(getHealingStationUpgradeCost(3), 13000n);

@@ -143,9 +143,9 @@ const sharedCommandCatalog = {
   mrskill: {
     name: 'mrskill',
     category: 'pokemon',
-    summary: 'Atalho para abrir o menu de magia/skill durante batalha ativa',
-    slackUsage: '`!mrskill`',
-    discordDescription: 'Atalho de magia/skill em batalha',
+    summary: 'Configura até 2 skills características de um Pokémon (nível 50+)',
+    slackUsage: '`!mrskill <pokeid>`',
+    discordDescription: 'Configura skills características',
   },
 
   dungeon: {

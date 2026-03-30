@@ -11,7 +11,7 @@ module.exports = {
       const preview = await buildHealingStationUpgradePreview(event.user);
       if (!preview.ok) {
         const messages = {
-          max_level_reached: 'Sua estação de cura já está no nível máximo (10/10).',
+          max_level_reached: 'Sua estação de cura já está no nível máximo (30/30).',
         };
         await say(messages[preview.reason] || 'Não consegui abrir o upgrade da estação agora 😵');
         return;
