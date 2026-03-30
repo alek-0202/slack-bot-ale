@@ -206,9 +206,7 @@ async function getMrSkillSetup({ slackUserId, pokemonId }) {
     return { ok: false, reason: 'level_too_low', pokemon, minLevel: CHARACTERISTIC_SKILL_MIN_LEVEL };
   }
 
-  const rawElements = Array.isArray(pokemon.pokemon_species?.element_types)
-    ? pokemon.pokemon_species.element_types
-    : [];
+  const rawElements = pokemon.pokemon_species?.element_types;
   const allElements = normalizePokemonTypes(rawElements);
   if (!allElements.length) return { ok: false, reason: 'pokemon_without_elements', pokemon };
 
@@ -217,7 +215,7 @@ async function getMrSkillSetup({ slackUserId, pokemonId }) {
     pokemonId,
     rawElements,
     normalizedElements: allElements,
-    normalizedPerInput: rawElements.map((entry) => ({
+    normalizedPerInput: [].concat(rawElements == null ? [] : rawElements).map((entry) => ({
       raw: entry,
       normalized: normalizePokemonType(entry),
     })),
@@ -236,7 +234,18 @@ async function getMrSkillSetup({ slackUserId, pokemonId }) {
   });
 
   const availableSkills = dedupeBySkillId(buildCharacteristicSkillEntriesFromElements(allElements, pokemon.level));
-  if (!availableSkills.length) return { ok: false, reason: 'no_characteristic_skills', pokemon };
+  if (!availableSkills.length) {
+    logger.warn("MRSKILL sem skills após resolução de elementos", {
+      slackUserId,
+      pokemonId,
+      pokemonLevel: pokemon.level,
+      rawElements,
+      normalizedElements: allElements,
+      registryElements: getRegisteredElementalRules().map((entry) => entry.element),
+      enableElementalSkills: ENABLE_ELEMENTAL_SKILLS,
+    });
+    return { ok: false, reason: 'no_characteristic_skills', pokemon };
+  }
 
   const loadout = await getPokemonMagicLoadout(pokemonId);
   const selectedSkillIds = Array.isArray(loadout?.spells)

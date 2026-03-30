@@ -18,6 +18,8 @@ test('normalizeElement converte aliases e case para formato canônico', () => {
 test('normalizeElementList parseia lista composta e remove duplicados', () => {
   assert.deepEqual(normalizeElementList('Normal / Fairy, ICE | gelo'), ['normal', 'fairy', 'ice']);
   assert.deepEqual(normalizeElementList(['fire', 'Fogo', 'unknown'], { includeUnknown: false }), ['fire']);
+  assert.deepEqual(normalizeElementList('{"Psychic","Fairy"}', { includeUnknown: false }), ['psychic', 'fairy']);
+  assert.deepEqual(normalizeElementList('["Fire","Ice"]', { includeUnknown: false }), ['fire', 'ice']);
 });
 
 test('isValidElement e matchesElement validam/comparam com segurança', () => {

@@ -7,7 +7,6 @@ const ELEMENTAL_NEUTRAL_MULTIPLIER = 1;
 const MAX_ELEMENTAL_SKILL_SLOTS_PER_ELEMENT = 2;
 const ENABLE_ELEMENTAL_SKILLS = (
   String(process.env.ENABLE_ELEMENTAL_SKILLS || "").toLowerCase() === "true"
-  && String(process.env.NODE_ENV || "development").toLowerCase() !== "production"
 );
 
 const BATTLE_HOOK = {
