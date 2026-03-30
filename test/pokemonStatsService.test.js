@@ -84,18 +84,8 @@ test("IV passa a escalar com o nível por ser somado na base antes da progressã
   assert.ok(level10WithIv.attack - level10Base.attack > 10);
 });
 
-test("shiny prime aplica cap de IV com +10 sobre o máximo normal", () => {
+test("shiny prime salva apenas o cap base de IV no banco", () => {
   const iv = rollPokemonIvOffsets({ shiny: true, shinyType: SHINY_TYPE.PRIME, rarity: "epic" });
-
-  assert.equal(iv.attack_iv, IV_STAT_RANGES.attack.max + 10);
-  assert.equal(iv.defense_iv, IV_STAT_RANGES.defense.max + 10);
-  assert.equal(iv.magic_iv, IV_STAT_RANGES.magic.max + 10);
-  assert.equal(iv.hp_iv, IV_STAT_RANGES.hp.max + 10);
-  assert.equal(iv.speed_iv, IV_STAT_RANGES.speed.max + 10);
-});
-
-test("shiny prime comum não recebe cap extra de IV", () => {
-  const iv = rollPokemonIvOffsets({ shiny: true, shinyType: SHINY_TYPE.PRIME, rarity: "common" });
 
   assert.equal(iv.attack_iv, IV_STAT_RANGES.attack.max);
   assert.equal(iv.defense_iv, IV_STAT_RANGES.defense.max);
