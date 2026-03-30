@@ -1,4 +1,4 @@
-const { getAvailableMagicActions, getSkillCooldownRemaining } = require("../domain/elementalRules");
+const { ENABLE_ELEMENTAL_SKILLS, getAvailableMagicActions, getSkillCooldownRemaining } = require("../domain/elementalRules");
 const { MAX_POTIONS_PER_BATTLE } = require("../domain/battleEngine");
 
 function buildBattleViewModel(battle) {
@@ -52,18 +52,18 @@ function buildPlayerViewModel(userId, playerState, initiative, battle) {
         .filter((entry) => entry.kind === "elemental")
         .map((entry) => [entry.id, getSkillCooldownRemaining(playerState, entry.id)]),
     ),
-    activeStatuses: (playerState.elementalState?.statuses || []).map((status) => ({
+    activeStatuses: ENABLE_ELEMENTAL_SKILLS ? (playerState.elementalState?.statuses || []).map((status) => ({
       id: status.id,
       name: status.name,
       stacks: status.stacks,
       remainingRounds: status.remainingRounds,
-    })),
-    activeEffects: (playerState.elementalState?.effects || []).map((effect) => ({
+    })) : [],
+    activeEffects: ENABLE_ELEMENTAL_SKILLS ? (playerState.elementalState?.effects || []).map((effect) => ({
       id: effect.id,
       name: effect.name,
       chargesRemaining: effect.chargesRemaining,
       remainingRounds: effect.remainingRounds,
-    })),
+    })) : [],
     reserves: (playerState.team || [])
       .map((member, index) => ({
         id: member.id,

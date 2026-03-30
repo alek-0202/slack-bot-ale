@@ -4,6 +4,7 @@ const ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER = 0.3;
 const ELEMENTAL_ADVANTAGE_MULTIPLIER = 2;
 const ELEMENTAL_NEUTRAL_MULTIPLIER = 1;
 const MAX_ELEMENTAL_SKILL_SLOTS_PER_ELEMENT = 2;
+const ENABLE_ELEMENTAL_SKILLS = false;
 
 const BATTLE_HOOK = {
   BEFORE_DAMAGE: "beforeDamage",
@@ -19,6 +20,7 @@ function registerElementalRules(element, rules) {
 }
 
 function getElementalRules(element) {
+  if (!ENABLE_ELEMENTAL_SKILLS) return null;
   return elementalRegistry.get(normalizeElementName(element)) || null;
 }
 
@@ -88,6 +90,7 @@ function addOrRefreshEffect(playerState, effect) {
 }
 
 function getAvailableElementalSkills(playerState) {
+  if (!ENABLE_ELEMENTAL_SKILLS) return [];
   const byRegistration = Array.isArray(playerState?.characteristicSlots) ? playerState.characteristicSlots : [];
   if (byRegistration.length) {
     return byRegistration.map((entry) => ({
@@ -174,6 +177,7 @@ function tickRoundTimers(playerState) {
 }
 
 module.exports = {
+  ENABLE_ELEMENTAL_SKILLS,
   BATTLE_HOOK,
   ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER,
   ELEMENTAL_ADVANTAGE_MULTIPLIER,

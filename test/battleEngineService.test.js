@@ -318,7 +318,7 @@ function createReadyBattle({ u1Speed = 12, u2Speed = 12 } = {}) {
 
 
 
-test("Garras Ardentes força passagem de turno para o oponente", () => {
+test("skill elemental fica indisponível quando feature flag está desligada", () => {
   const battle = createReadyBattle();
   battle.currentTurnUserId = "U1";
   battle.players.U1.selectedPokemon.elementTypes = ["fire"];
@@ -339,7 +339,7 @@ test("Garras Ardentes força passagem de turno para o oponente", () => {
     actionPayload: { magicSlot: "elemental:fire_burning_claws" },
   });
 
-  assert.equal(resolution.outcome.ok, true);
-  assert.equal(battle.currentTurnUserId, "U2");
-  assert.equal(resolution.outcome.turnFlow.forcedTurnPass, true);
+  assert.equal(resolution.outcome.ok, false);
+  assert.equal(resolution.outcome.reason, "magic_not_found");
+  assert.equal(battle.currentTurnUserId, "U1");
 });

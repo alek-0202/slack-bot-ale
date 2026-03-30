@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const { buildMagicEntriesFromElements, buildMagicSummary, buildCharacteristicSkillEntriesFromElements, canRegisterCharacteristicSkills, MAX_MAGIC_SLOTS } = require("../services/pokemonMagicService");
 const { getRandomMagicName, getElementIcon, DEFAULT_MAGIC_NAME, DEFAULT_MAGIC_ICON } = require("../services/magicLibraryService");
+const { ENABLE_ELEMENTAL_SKILLS } = require("../application/battle/domain/elementalRules");
 
 test("getRandomMagicName usa fallback quando elemento não existe", () => {
   assert.equal(getRandomMagicName("void"), DEFAULT_MAGIC_NAME);
@@ -40,12 +41,13 @@ test("buildMagicSummary exibe emoji antes do nome", () => {
 });
 
 
-test("magias características só são geradas a partir do nível 50", () => {
+test("magias características ficam desativadas globalmente quando a flag está off", () => {
   const lowLevel = buildCharacteristicSkillEntriesFromElements(["fire", "water"], 49);
   const highLevel = buildCharacteristicSkillEntriesFromElements(["fire", "water"], 50);
 
+  assert.equal(ENABLE_ELEMENTAL_SKILLS, false);
   assert.equal(lowLevel.length, 0);
-  assert.ok(highLevel.length > 0);
+  assert.equal(highLevel.length, 0);
   assert.equal(canRegisterCharacteristicSkills({ level: 50 }), true);
   assert.equal(canRegisterCharacteristicSkills({ level: 49 }), false);
 });
