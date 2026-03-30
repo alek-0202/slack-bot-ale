@@ -51,6 +51,11 @@ function mapDungeonFailureReason(reason) {
     unsupported_action: 'Ação de dungeon inválida.',
     magic_not_found: 'Não encontrei essa magia no loadout atual.',
     magic_on_cooldown: 'Sua magia ainda está em cooldown.',
+    elemental_skill_on_cooldown: 'Sua habilidade elemental ainda está em cooldown.',
+    insufficient_skill_energy: 'Energia insuficiente para usar essa habilidade.',
+    target_not_water_nature: 'Essa habilidade só pode ser aplicada em alvo de natureza Água.',
+    invalid_target: 'Alvo inválido para essa habilidade.',
+    characteristic_skill_requires_level_50: 'Magia característica exige Pokémon nível 50.',
     defeat: 'Seu Pokémon foi derrotado na dungeon.',
   }[reason] || 'Não foi possível iniciar a dungeon agora.';
 }

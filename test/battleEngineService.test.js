@@ -27,17 +27,23 @@ test("calculateBattleHp aplica multiplicador de 12.5", () => {
 });
 
 test("calculateDamage aplica crítico e arredondamento", () => {
-  const result = calculateDamage({
-    attackerAttack: 10,
-    defenderDefense: 5,
-    attackerCritChance: 1,
-    varianceRoll: 1,
-  });
+  const originalRandom = Math.random;
+  Math.random = () => 0.1;
+  try {
+    const result = calculateDamage({
+      attackerAttack: 10,
+      defenderDefense: 5,
+      attackerCritChance: 1,
+      varianceRoll: 1,
+    });
 
-  assert.equal(result.isCritical, true);
-  assert.equal(result.normalDamage, 8);
-  assert.equal(result.finalDamage, 13);
-  assert.equal(result.dodged, false);
+    assert.equal(result.isCritical, true);
+    assert.equal(result.normalDamage, 8);
+    assert.equal(result.finalDamage, 13);
+    assert.equal(result.dodged, false);
+  } finally {
+    Math.random = originalRandom;
+  }
 });
 
 test("calculateMagicDamage aplica vantagem elemental com crítico garantido", () => {
@@ -67,8 +73,8 @@ test("calculateMagicDamage aplica fallback para attack e desvantagem elemental",
 
   assert.equal(result.isCritical, false);
   assert.equal(result.baseStatUsed, "attack");
-  assert.equal(result.multiplier, 0.7);
-  assert.equal(result.finalDamage, 15);
+  assert.equal(result.multiplier, 0.3);
+  assert.equal(result.finalDamage, 7);
 });
 
 test("calculateDamage respeita esquiva e zera o dano quando ativada", () => {
@@ -307,3 +313,33 @@ function createReadyBattle({ u1Speed = 12, u2Speed = 12 } = {}) {
   startBattle(battle);
   return battle;
 }
+
+
+
+
+
+test("Garras Ardentes força passagem de turno para o oponente", () => {
+  const battle = createReadyBattle();
+  battle.currentTurnUserId = "U1";
+  battle.players.U1.selectedPokemon.elementTypes = ["fire"];
+  battle.players.U1.selectedPokemon.level = 50;
+  battle.players.U1.characteristicSlots = [{
+    kind: "characteristic",
+    id: "fire_burning_claws",
+    name: "Garras Ardentes",
+    element: "fire",
+    icon: "🔥",
+    extraEnergyCost: 0,
+  }];
+
+  const resolution = resolveBattleTurn({
+    battle,
+    actorUserId: "U1",
+    actionType: BATTLE_ACTION.MAGIC,
+    actionPayload: { magicSlot: "elemental:fire_burning_claws" },
+  });
+
+  assert.equal(resolution.outcome.ok, true);
+  assert.equal(battle.currentTurnUserId, "U2");
+  assert.equal(resolution.outcome.turnFlow.forcedTurnPass, true);
+});

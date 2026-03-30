@@ -1,6 +1,6 @@
 const { createLogger } = require("../utils/logger");
 const { decideInvite, attack, usePotion, showMagicOptions, castMagic, showSwitchOptions, switchPokemon } = require("../services/battleService");
-const { upsertPokemonMagicLoadout, getPendingMagicSelection, clearPendingMagicSelection, storePendingMagicSelection, buildMagicSummary } = require("../services/pokemonMagicService");
+const { upsertPokemonMagicLoadout, getPendingMagicSelection, clearPendingMagicSelection, storePendingMagicSelection, buildMagicSummary, MAX_MAGIC_SLOTS } = require("../services/pokemonMagicService");
 const {
   BATTLE_ACCEPT_ACTION_ID,
   BATTLE_DECLINE_ACTION_ID,
@@ -94,13 +94,13 @@ function registerBattleActions(app) {
 
     const nextElements = pending.allElements.filter((element) => element !== payload.removeElement);
 
-    if (nextElements.length > 3) {
+    if (nextElements.length > MAX_MAGIC_SLOTS) {
       clearPendingMagicSelection({ slackUserId, pokemonId });
       storePendingMagicSelection({ slackUserId, pokemonId, allElements: nextElements });
       await reply(renderMagicRegisterElementPrompt({
         pokemon: { id: pokemonId, pokemon_species: { name: `Pokémon #${pokemonId}` } },
         elements: nextElements,
-        maxSlots: 3,
+        maxSlots: MAX_MAGIC_SLOTS,
       }));
       return;
     }

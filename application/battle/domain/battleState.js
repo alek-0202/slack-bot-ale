@@ -34,6 +34,12 @@ function createPlayerState(userId) {
       lastMagicName: null,
     },
     magicSlots: [],
+    characteristicSlots: [],
+    elementalState: {
+      statuses: [],
+      effects: [],
+      skillCooldowns: {},
+    },
     team: [],
     activeTeamIndex: 0,
   };
@@ -124,7 +130,8 @@ function buildTeamMemberFromPokemon(pokemon) {
     spriteUrl: pokemon.pokemon_species?.sprite_url || null,
     elementTypes: pokemon.pokemon_species?.element_types || [],
     stats,
-    magicSlots: Array.isArray(pokemon.magicSlots) ? pokemon.magicSlots : [],
+    magicSlots: Array.isArray(pokemon.magicSlots) ? pokemon.magicSlots.filter((entry) => entry?.kind !== "characteristic") : [],
+    characteristicSlots: Array.isArray(pokemon.magicSlots) ? pokemon.magicSlots.filter((entry) => entry?.kind === "characteristic") : [],
     battleHp: {
       base: stats.hp,
       max: hpMax,
@@ -149,6 +156,8 @@ function syncPlayerActiveState(playerState) {
   playerState.stats = active?.stats || null;
   playerState.battleHp = active?.battleHp || null;
   playerState.magicSlots = active?.magicSlots || [];
+  playerState.characteristicSlots = active?.characteristicSlots || [];
+  playerState.elementalState = playerState.elementalState || { statuses: [], effects: [], skillCooldowns: {} };
   return playerState;
 }
 
@@ -214,6 +223,15 @@ function startBattle(battle) {
     starter,
   });
 
+
+  battle.metadata = battle.metadata || {};
+  if (!battle.metadata.energyByUserId) {
+    battle.metadata.energyByUserId = {
+      [battle.challengerId]: 300,
+      [battle.challengedId]: 300,
+    };
+  }
+
   return {
     battle,
     starter,
@@ -236,6 +254,22 @@ function passTurn(battle, actorUserId = battle.currentTurnUserId, options = {}) 
       Number(playerState.magicCooldown.blockedOwnTurnsRemaining || 0) - 1,
     );
   }
+
+  const forcedNextActorUserId = options.forceNextActorUserId || null;
+  if (forcedNextActorUserId) {
+    const initiativeResult = {
+      actorUserId,
+      nextActorUserId: forcedNextActorUserId,
+      extraTurn: false,
+      forcedTurnPass: true,
+      reason: 'turn_forced_to_opponent',
+      energyPenalty: Math.max(0, Number(options.energyPenalty) || 0),
+    };
+    battle.currentTurnUserId = forcedNextActorUserId;
+    battle.round += 1;
+    return initiativeResult;
+  }
+
   const initiativeResult = resolveNextTurnBySpeed({ battle, actorUserId, energyPenalty: options.energyPenalty });
   battle.currentTurnUserId = initiativeResult.nextActorUserId;
   battle.round += 1;

@@ -1,3 +1,4 @@
+const { getAvailableMagicActions, getSkillCooldownRemaining } = require("../domain/elementalRules");
 const { MAX_POTIONS_PER_BATTLE } = require("../domain/battleEngine");
 
 function buildBattleViewModel(battle) {
@@ -18,13 +19,13 @@ function buildBattleViewModel(battle) {
       winnerPrize: Number(battle?.metadata?.pvpWinPrize || 0),
     },
     players: [
-      buildPlayerViewModel(battle.challengerId, challenger, battle.initiative),
-      buildPlayerViewModel(battle.challengedId, challenged, battle.initiative),
+      buildPlayerViewModel(battle.challengerId, challenger, battle.initiative, battle),
+      buildPlayerViewModel(battle.challengedId, challenged, battle.initiative, battle),
     ],
   };
 }
 
-function buildPlayerViewModel(userId, playerState, initiative) {
+function buildPlayerViewModel(userId, playerState, initiative, battle) {
   return {
     userId,
     activePokemonId: playerState.selectedPokemon?.id || null,
@@ -41,9 +42,28 @@ function buildPlayerViewModel(userId, playerState, initiative) {
     speed: playerState.stats?.speed ?? null,
     initiativeGauge: initiative?.gauges?.[userId] ?? null,
     initiativeThreshold: initiative?.threshold ?? null,
+    energyCurrent: battle?.metadata?.energyByUserId?.[userId] ?? null,
     potionsRemaining: Math.max(0, MAX_POTIONS_PER_BATTLE - (playerState.potionsUsed || 0)),
     magicCooldownRemaining: Math.max(0, playerState.magicCooldown?.blockedOwnTurnsRemaining || 0),
     magicSlots: Array.isArray(playerState.magicSlots) ? playerState.magicSlots : [],
+    magicActions: getAvailableMagicActions(playerState),
+    elementalCooldowns: Object.fromEntries(
+      getAvailableMagicActions(playerState)
+        .filter((entry) => entry.kind === "elemental")
+        .map((entry) => [entry.id, getSkillCooldownRemaining(playerState, entry.id)]),
+    ),
+    activeStatuses: (playerState.elementalState?.statuses || []).map((status) => ({
+      id: status.id,
+      name: status.name,
+      stacks: status.stacks,
+      remainingRounds: status.remainingRounds,
+    })),
+    activeEffects: (playerState.elementalState?.effects || []).map((effect) => ({
+      id: effect.id,
+      name: effect.name,
+      chargesRemaining: effect.chargesRemaining,
+      remainingRounds: effect.remainingRounds,
+    })),
     reserves: (playerState.team || [])
       .map((member, index) => ({
         id: member.id,

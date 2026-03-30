@@ -38,6 +38,10 @@ function clearBattle(channelId) {
   battlesByChannel.delete(channelId);
 }
 
+function getAllBattles() {
+  return Array.from(battlesByChannel.values());
+}
+
 function clearAllActiveBattles() {
   const channels = Array.from(battlesByChannel.keys());
   let clearedCount = 0;
@@ -60,5 +64,6 @@ module.exports = {
   getBattle,
   setBattle,
   clearBattle,
+  getAllBattles,
   clearAllActiveBattles,
 };

@@ -1,3 +1,4 @@
+const { getAvailableMagicActions, getSkillCooldownRemaining } = require("../../../application/battle/domain/elementalRules");
 const {
   renderBattleState,
   renderMagicOptions,
@@ -157,10 +158,15 @@ function renderDungeonBattleState(battle) {
 }
 
 function renderDungeonMagicOptions({ battle, actorUserId, magicSlots = [] }) {
+  const player = battle.players?.[actorUserId] || {};
+  const actions = getAvailableMagicActions(player).map((entry) => ({
+    ...entry,
+    cooldownRemaining: entry.kind === "elemental" ? getSkillCooldownRemaining(player, entry.id) : 0,
+  }));
   const payload = renderMagicOptions({
     battle,
     actorUserId,
-    magicSlots,
+    magicSlots: actions.length ? actions : magicSlots,
     options: {
       title: '🏰 *Escolha uma magia da dungeon*',
       magicActionIdBuilder: buildDungeonMagicActionId,
