@@ -2,9 +2,9 @@ require("../application/battle/domain/elementalEngine");
 const { getSupabaseClient } = require("../database/supabase");
 const { createLogger } = require("../utils/logger");
 const { getOwnedPokemonById } = require("./pokemonLookupService");
-const { normalizePokemonTypes } = require("./pokemonTypeService");
+const { normalizePokemonTypes, normalizePokemonType } = require("./pokemonTypeService");
 const { getRandomMagicName, getElementIcon, getElementLabel } = require("./magicLibraryService");
-const { ENABLE_ELEMENTAL_SKILLS, getElementalRules } = require("../application/battle/domain/elementalRules");
+const { ENABLE_ELEMENTAL_SKILLS, getElementalRules, getRegisteredElementalRules } = require("../application/battle/domain/elementalRules");
 
 const logger = createLogger("pokemon-magic-service");
 const MAX_MAGIC_SLOTS = 5;
@@ -206,8 +206,34 @@ async function getMrSkillSetup({ slackUserId, pokemonId }) {
     return { ok: false, reason: 'level_too_low', pokemon, minLevel: CHARACTERISTIC_SKILL_MIN_LEVEL };
   }
 
-  const allElements = normalizePokemonTypes(pokemon.pokemon_species?.element_types || []);
+  const rawElements = Array.isArray(pokemon.pokemon_species?.element_types)
+    ? pokemon.pokemon_species.element_types
+    : [];
+  const allElements = normalizePokemonTypes(rawElements);
   if (!allElements.length) return { ok: false, reason: 'pokemon_without_elements', pokemon };
+
+  logger.info("MRSKILL element normalization", {
+    slackUserId,
+    pokemonId,
+    rawElements,
+    normalizedElements: allElements,
+    normalizedPerInput: rawElements.map((entry) => ({
+      raw: entry,
+      normalized: normalizePokemonType(entry),
+    })),
+    registryElements: getRegisteredElementalRules().map((entry) => entry.element),
+  });
+
+  const registryKeys = allElements
+    .map((element) => ({
+      element,
+      hasRules: Boolean(getElementalRules(element)),
+    }));
+  logger.info("MRSKILL registry lookup", {
+    slackUserId,
+    pokemonId,
+    registryKeys,
+  });
 
   const availableSkills = dedupeBySkillId(buildCharacteristicSkillEntriesFromElements(allElements, pokemon.level));
   if (!availableSkills.length) return { ok: false, reason: 'no_characteristic_skills', pokemon };

@@ -1,44 +1,19 @@
-const TYPE_LABELS = {
-  normal: "Normal",
-  fire: "Fire",
-  water: "Water",
-  electric: "Electric",
-  grass: "Grass",
-  ice: "Ice",
-  fighting: "Fighting",
-  poison: "Poison",
-  ground: "Ground",
-  flying: "Flying",
-  psychic: "Psychic",
-  bug: "Bug",
-  rock: "Rock",
-  ghost: "Ghost",
-  dragon: "Dragon",
-  dark: "Dark",
-  steel: "Steel",
-  fairy: "Fairy",
-};
+const {
+  ELEMENT_LABELS,
+  ELEMENT_ALIASES,
+  normalizeElement,
+  normalizeElementList,
+} = require("./elementType");
+
+const TYPE_LABELS = ELEMENT_LABELS;
+const TYPE_ALIASES = ELEMENT_ALIASES;
+
+function normalizePokemonType(type) {
+  return normalizeElement(type);
+}
 
 function normalizePokemonTypes(types) {
-  if (!types) return [];
-
-  const source = Array.isArray(types)
-    ? types
-    : String(types)
-        .split(",")
-        .map((item) => item.trim());
-
-  const seen = new Set();
-  const normalized = [];
-
-  for (const rawType of source) {
-    const type = String(rawType || "").trim().toLowerCase();
-    if (!type || seen.has(type)) continue;
-    seen.add(type);
-    normalized.push(type);
-  }
-
-  return normalized;
+  return normalizeElementList(types);
 }
 
 function formatPokemonTypes(types) {
@@ -58,6 +33,8 @@ function buildPokemonTypesLabel(types) {
 
 module.exports = {
   TYPE_LABELS,
+  TYPE_ALIASES,
+  normalizePokemonType,
   normalizePokemonTypes,
   formatPokemonTypes,
   buildPokemonTypesLabel,

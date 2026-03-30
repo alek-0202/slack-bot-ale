@@ -3,13 +3,10 @@ const path = require("path");
 const magicNames = require(path.join("..", "data", "magic", "magic-names.json"));
 const elementIcons = require(path.join("..", "data", "magic", "element-icons.json"));
 const { TYPE_LABELS } = require("./pokemonTypeService");
+const { normalizeElement } = require("./elementType");
 
 const DEFAULT_MAGIC_NAME = "Ataque Elemental";
 const DEFAULT_MAGIC_ICON = "✨";
-
-function normalizeElement(element) {
-  return String(element || "").trim().toLowerCase();
-}
 
 function getMagicNameLibrary() {
   return { ...(magicNames._meta?.format || magicNames) };

@@ -10,6 +10,7 @@ const {
 test("normalizePokemonTypes remove duplicados e normaliza formatos", () => {
   assert.deepEqual(normalizePokemonTypes(["Fire", "water", "fire", ""]), ["fire", "water"]);
   assert.deepEqual(normalizePokemonTypes("grass, poison"), ["grass", "poison"]);
+  assert.deepEqual(normalizePokemonTypes(["Ice", "gelo", "Água", "agua"]), ["ice", "water"]);
 });
 
 test("formatPokemonTypes e buildPokemonTypesLabel formatam um ou dois tipos", () => {
