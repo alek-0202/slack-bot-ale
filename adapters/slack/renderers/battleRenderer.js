@@ -8,6 +8,12 @@ const BATTLE_TURN_ACTION_ID = "battle_turn_action";
 const BATTLE_MAGIC_ACTION_ID = "battle_magic_action";
 const BATTLE_SWITCH_ACTION_ID = "battle_switch_action";
 const MAGIC_REGISTER_REMOVE_ACTION_ID = "magic_register_remove_element";
+const BATTLE_ACTION_BUTTONS = {
+  attack: { label: "Ataque", emoji: "⚔️", style: "primary" },
+  magic: { label: "Magia", emoji: "✨" },
+  potion: { label: "Poção", emoji: "🧪" },
+  switch: { label: "Trocar", emoji: "🔁" },
+};
 
 function buildBattleTurnActionId(action) {
   return `${BATTLE_TURN_ACTION_ID}_${action}`;
@@ -161,7 +167,7 @@ function buildBattleLogBlock(battle, options = {}) {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `*📜 Log de combate*\n${lines.map((line) => `• ${line}`).join("\n")}`.slice(0, 2900),
+      text: `*${options.logTitle || "📜 Log de combate"}*\n${lines.map((line) => `• ${line}`).join("\n")}`.slice(0, 2900),
     },
   };
 }
@@ -179,35 +185,40 @@ function buildBattleActionBlock(battle, options = {}) {
   return {
     type: "actions",
     elements: [
-      buildTurnButton({ battle, label: "⚔️ Ataque", action: "attack", style: "primary", actionIdBuilder: options.turnActionIdBuilder }),
+      buildTurnButton({ battle, action: "attack", actionIdBuilder: options.turnActionIdBuilder }),
       buildTurnButton({
         battle,
-        label: magicOnCooldown
-          ? `✨ Magia (${currentPlayer.magicCooldown.blockedOwnTurnsRemaining})`
-          : "✨ Magia",
+        label: magicOnCooldown ? `${buildActionLabel("magic")} (${currentPlayer.magicCooldown.blockedOwnTurnsRemaining})` : buildActionLabel("magic"),
         action: "magic",
         disabled: magicOnCooldown,
         actionIdBuilder: options.turnActionIdBuilder,
       }),
-      buildTurnButton({ battle, label: "🧪 Poção", action: "potion", actionIdBuilder: options.turnActionIdBuilder }),
+      buildTurnButton({ battle, action: "potion", actionIdBuilder: options.turnActionIdBuilder }),
       aliveReserves.length
-        ? buildTurnButton({ battle, label: "🔁 Trocar", action: "switch", actionIdBuilder: options.turnActionIdBuilder })
+        ? buildTurnButton({ battle, action: "switch", actionIdBuilder: options.turnActionIdBuilder })
         : null,
     ].filter(Boolean),
   };
 }
 
+function buildActionLabel(action) {
+  const config = BATTLE_ACTION_BUTTONS[action] || { label: action, emoji: "" };
+  return `${config.emoji ? `${config.emoji} ` : ""}${config.label}`.trim();
+}
+
 function buildTurnButton({ battle, label, action, style, disabled = false, actionIdBuilder = buildBattleTurnActionId }) {
+  const config = BATTLE_ACTION_BUTTONS[action] || {};
+  const finalLabel = label || buildActionLabel(action);
   const button = {
     type: "button",
     action_id: actionIdBuilder(action),
-    text: { type: "plain_text", text: label },
+    text: { type: "plain_text", text: finalLabel },
     value: JSON.stringify({ channelId: battle.channelId, action }),
   };
 
-  if (style) button.style = style;
+  if (style || config.style) button.style = style || config.style;
   if (disabled) button.style = undefined;
-  if (disabled) button.text = { type: "plain_text", text: label.slice(0, 75) };
+  if (disabled) button.text = { type: "plain_text", text: finalLabel.slice(0, 75) };
   if (disabled) button.value = JSON.stringify({ channelId: battle.channelId, action, unavailable: true });
   if (disabled) button.confirm = {
     title: { type: "plain_text", text: "Magia em cooldown" },

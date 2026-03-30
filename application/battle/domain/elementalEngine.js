@@ -1,16 +1,25 @@
 require("./fireElementRules");
 require("./waterElementRules");
+require("./grassElementRules");
+require("./electricElementRules");
+require("./iceElementRules");
+require("./fightingElementRules");
+require("./psychicElementRules");
+require("./ghostElementRules");
 
 const {
   ENABLE_ELEMENTAL_SKILLS,
   BATTLE_HOOK,
   getElementalRules,
+  getRegisteredElementalRules,
   getAvailableMagicActions,
   getSkillCooldownRemaining,
   resolveElementalDamageRule,
   ensureElementalState,
   tickRoundTimers,
 } = require("./elementalRules");
+const { GRASS_EFFECT_SUFFOCATING_ROOTS } = require("./grassElementRules");
+const { ELECTRIC_EFFECT_SHOCK, ELECTRIC_EFFECT_OVERLOAD, ELECTRIC_EFFECT_FIELD_DEBUFF, ELECTRIC_EFFECT_FIELD } = require("./electricElementRules");
 
 function parseMagicActionSlot(rawMagicSlot) {
   const value = String(rawMagicSlot || "");
@@ -118,6 +127,15 @@ function applyOnHitHooks({ battle, attackerId, defenderId, damage }) {
     modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(waterBoost.outgoingWaterDamageMultiplier || 1)));
     logs.push('💧 Energia Vital amplificou o dano de água em 50%.');
   }
+  for (const effect of attackerEffects) {
+    if (effect?.damageFlatBonusPerStack != null && effect?.remainingRounds != null && Number(effect.remainingRounds || 0) > 0) {
+      modifiedDamage = Math.max(0, Math.round(modifiedDamage + Number(effect.damageFlatBonusPerStack || 0)));
+    }
+  }
+  const marked = attackerEffects.find((effect) => effect?.outgoingDamageVsMarkedMultiplier != null && effect?.markedTargetUserId === defenderId);
+  if (marked) {
+    modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(marked.outgoingDamageVsMarkedMultiplier || 1)));
+  }
 
   for (const element of (battle.players[attackerId]?.selectedPokemon?.elementTypes || [])) {
     const rules = getElementalRules(element);
@@ -134,6 +152,9 @@ function applyOnHitHooks({ battle, attackerId, defenderId, damage }) {
       if (hookResult?.extraDamageMultiplier != null) {
         modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(hookResult.extraDamageMultiplier || 1)));
       }
+      if (hookResult?.extraDamageFlat != null) {
+        modifiedDamage = Math.max(0, Math.round(modifiedDamage + Number(hookResult.extraDamageFlat || 0)));
+      }
       if (hookResult?.battleLog) logs.push(hookResult.battleLog);
     }
   }
@@ -147,8 +168,14 @@ function applyOnHitHooks({ battle, attackerId, defenderId, damage }) {
 function runEndOfRound({ battle }) {
   if (!ENABLE_ELEMENTAL_SKILLS) return [];
   const logs = [];
-
-  for (const element of ["fire"]) {
+  const uniqueElements = [...new Set(
+    Object.values(battle.players || {})
+      .flatMap((player) => player?.selectedPokemon?.elementTypes || [])
+      .map((entry) => String(entry || "").toLowerCase()),
+  )];
+  const fallbackRegistered = getRegisteredElementalRules().map((entry) => entry.element);
+  const runFor = [...new Set([...uniqueElements, ...fallbackRegistered])];
+  for (const element of runFor) {
     const rules = getElementalRules(element);
     const entries = rules?.hooks?.[BATTLE_HOOK.END_OF_ROUND]?.({ battle }) || [];
     if (Array.isArray(entries)) logs.push(...entries);
@@ -159,6 +186,87 @@ function runEndOfRound({ battle }) {
   }
 
   return logs;
+}
+
+function getForcedAction(playerState) {
+  const effects = ensureElementalState(playerState).effects || [];
+  return effects.find((effect) => Number(effect?.remainingRounds ?? 1) > 0 && effect?.forcedAction) || null;
+}
+
+function resolveMobilityInterception({ battle, actorId, actionType, actionPayload = {} }) {
+  if (!ENABLE_ELEMENTAL_SKILLS) return { damageTaken: 0, logs: [] };
+  const actor = battle.players?.[actorId];
+  if (!actor) return { damageTaken: 0, logs: [] };
+  const isMobilityAttempt = actionType === "switch" || actionPayload?.isMobilitySkill === true;
+  if (!isMobilityAttempt) return { damageTaken: 0, logs: [] };
+
+  const rooted = (ensureElementalState(actor).effects || []).find((effect) => effect.id === GRASS_EFFECT_SUFFOCATING_ROOTS);
+  if (!rooted || Number(rooted.remainingRounds || 0) <= 0) return { damageTaken: 0, logs: [] };
+  const extraPct = Math.max(0, Number(rooted.mobilityPunishDamagePctMaxHp || 0));
+  const penaltyDamage = Math.max(0, Math.round(Number(actor?.battleHp?.max || 0) * extraPct));
+  actor.battleHp.current = Math.max(0, Number(actor?.battleHp?.current || 0) - penaltyDamage);
+  return {
+    damageTaken: penaltyDamage,
+    logs: [`🌱 Enraizado puniu mobilidade: <@${actorId}> sofreu ${penaltyDamage} ao tentar se deslocar.`],
+  };
+}
+
+function evaluateActionStartModifiers({ battle, actorId, actionType }) {
+  if (!ENABLE_ELEMENTAL_SKILLS) return { cancelTurn: false, damageMultiplier: 1, logs: [] };
+  const actor = battle.players?.[actorId];
+  if (!actor) return { cancelTurn: false, damageMultiplier: 1, logs: [] };
+  const logs = [];
+  let damageMultiplier = 1;
+  let cancelTurn = false;
+  let initiativePenaltyMultiplier = 1;
+  let selfDamage = 0;
+
+  const effects = ensureElementalState(actor).effects || [];
+  for (const effect of effects) {
+    if (effect.forcedSkipAction) {
+      cancelTurn = true;
+      logs.push(`❄️ ${effect.name || "Congelado"} impediu a ação.`);
+      if (effect.consumeOnActionStart) effect.remainingRounds = 0;
+    }
+    if (effect.id === ELECTRIC_EFFECT_OVERLOAD && Math.random() < Number(effect.loseTurnChance || 0)) {
+      cancelTurn = true;
+      logs.push("⚡ Sobrecarga elétrica causou perda total do turno.");
+    }
+    if (effect.id === ELECTRIC_EFFECT_SHOCK && Math.random() < Number(effect.partialFailureChance || 0)) {
+      damageMultiplier *= Number(effect.partialFailureDamageMultiplier || 0.5);
+      logs.push("⚡ Choque causou falha parcial: dano reduzido pela metade.");
+    }
+    if (effect.id !== ELECTRIC_EFFECT_SHOCK && effect.partialFailureChance != null && Math.random() < Number(effect.partialFailureChance || 0)) {
+      damageMultiplier *= Number(effect.partialFailureDamageMultiplier || 0.85);
+      logs.push(`⚠️ ${effect.name || "Debuff"} causou falha leve.`);
+    }
+    if (effect.partialTurnLossMultiplier != null) {
+      initiativePenaltyMultiplier *= Number(effect.partialTurnLossMultiplier || 1);
+    }
+    if (effect.id.startsWith(ELECTRIC_EFFECT_FIELD_DEBUFF) && actionType !== "potion") {
+      if (Math.random() < Number(effect.actionShockChance || 0)) {
+        selfDamage += Math.max(0, Number(effect.actionShockDamage || 0));
+        logs.push("🧲 Campo Eletrostático disparou choque ao agir.");
+      }
+    }
+  }
+
+  if (selfDamage > 0) {
+    actor.battleHp.current = Math.max(0, Number(actor?.battleHp?.current || 0) - selfDamage);
+  }
+  return { cancelTurn, damageMultiplier, initiativePenaltyMultiplier, selfDamage, logs };
+}
+
+function getFieldAttackBonuses({ battle, actorId }) {
+  if (!ENABLE_ELEMENTAL_SKILLS) return null;
+  const actor = battle.players?.[actorId];
+  const field = (ensureElementalState(actor).effects || []).find((effect) => effect.id === ELECTRIC_EFFECT_FIELD);
+  if (!field) return null;
+  return {
+    splashChance: Number(field.splashChance || 0),
+    splashDamageMultiplier: Number(field.splashDamageMultiplier || 0),
+    reactiveHighCostDamage: Number(field.reactiveHighCostDamage || 0),
+  };
 }
 
 function getElementalSkillCooldown(playerState, skillId) {
@@ -207,4 +315,8 @@ module.exports = {
   runElementalSkillCast,
   getElementalSkillCooldown,
   resolveElementalDamageRule,
+  getForcedAction,
+  resolveMobilityInterception,
+  evaluateActionStartModifiers,
+  getFieldAttackBonuses,
 };

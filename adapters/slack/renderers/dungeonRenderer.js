@@ -11,6 +11,13 @@ const DUNGEON_START_DAILY_ACTION_ID = 'dungeon_start_daily';
 const DUNGEON_BATTLE_TURN_ACTION_ID = 'dungeon_battle_turn_action';
 const DUNGEON_BATTLE_MAGIC_ACTION_ID = 'dungeon_battle_magic_action';
 const DUNGEON_BATTLE_MAGIC_CANCEL_ACTION_ID = 'dungeon_battle_magic_cancel';
+const DUNGEON_REWARD_EMOJI = {
+  gold: '💰',
+  xp: '✨',
+  essence: '🧬',
+  item: '📚',
+  pokemon: '🎁',
+};
 
 function buildIndexedActionId(baseActionId, suffix) {
   return `${baseActionId}_${suffix}`;
@@ -146,6 +153,7 @@ function renderDungeonBattleState(battle) {
   const payload = renderBattleState(battle, {
     title: '🏰 *Batalha de Dungeon*',
     stateTextPrefix: '🏰 Dungeon em andamento',
+    logTitle: '📜 Log da dungeon',
     battleContextText: buildDungeonBattleContextText(battle),
     turnActionIdBuilder: buildDungeonTurnActionId,
     shouldShowActions: ({ battle: currentBattle }) => currentBattle.status === 'active' && currentBattle.currentTurnUserId === playerUserId,
@@ -191,16 +199,16 @@ function renderDungeonMagicOptions({ battle, actorUserId, magicSlots = [] }) {
 
 function buildRewardLines(result) {
   const lines = [];
-  if (result?.rewards?.goldReward) lines.push(`💰 Gold: +${result.rewards.goldReward}`);
-  if (result?.rewards?.xpResult?.grantedXp != null) lines.push(`✨ XP da conta: +${result.rewards.xpResult.grantedXp}`);
-  if (result?.battle?.metadata?.reward?.pokemonEssenceQty) lines.push(`🧬 Essência Pokémon: +${result.battle.metadata.reward.pokemonEssenceQty}`);
+  if (result?.rewards?.goldReward) lines.push(`${DUNGEON_REWARD_EMOJI.gold} Gold: +${result.rewards.goldReward}`);
+  if (result?.rewards?.xpResult?.grantedXp != null) lines.push(`${DUNGEON_REWARD_EMOJI.xp} XP da conta: +${result.rewards.xpResult.grantedXp}`);
+  if (result?.battle?.metadata?.reward?.pokemonEssenceQty) lines.push(`${DUNGEON_REWARD_EMOJI.essence} Essência Pokémon: +${result.battle.metadata.reward.pokemonEssenceQty}`);
   if (result?.rewards?.items?.length) {
     for (const item of result.rewards.items) {
-      lines.push(`📚 ${item.itemName || item.item_name || 'Item'}: +${item.quantity || 0}`);
+      lines.push(`${DUNGEON_REWARD_EMOJI.item} ${item.itemName || item.item_name || 'Item'}: +${item.quantity || 0}`);
     }
   }
   const speciesName = result?.capturedSpecies?.name || result?.rewards?.captured?.pokemon_species?.name;
-  if (speciesName) lines.push(`🎁 Pokémon recebido: *${speciesName}*`);
+  if (speciesName) lines.push(`${DUNGEON_REWARD_EMOJI.pokemon} Pokémon recebido: *${speciesName}*`);
   if (result?.rewards?.xpResult?.leveledUp) {
     const xpResult = result.rewards.xpResult;
     const currentLevel = xpResult.current?.level || xpResult.current_level;

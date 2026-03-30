@@ -55,6 +55,7 @@ const bpickCommand = require("./commands/bpick");
 const ataqueCommand = require("./commands/ataque");
 const pocaoCommand = require("./commands/pocao");
 const magiaCommand = require("./commands/magia");
+const mrskillCommand = require("./commands/mrskill");
 const surrenderCommand = require("./commands/surrender");
 const magicregisterCommand = require("./commands/magicregister");
 const bhelpCommand = require("./commands/bhelp");
@@ -148,6 +149,7 @@ for (const commandModule of [
   ataqueCommand,
   pocaoCommand,
   magiaCommand,
+  mrskillCommand,
   surrenderCommand,
   magicregisterCommand,
   bhelpCommand,

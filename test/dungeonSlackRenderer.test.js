@@ -36,7 +36,7 @@ test('renderDungeonBattleState inclui log textual de combate quando disponível'
     },
   }));
 
-  const logBlock = payload.blocks.find((block) => block.type === 'section' && String(block.text?.text || '').includes('Log de combate'));
+  const logBlock = payload.blocks.find((block) => block.type === 'section' && String(block.text?.text || '').includes('Log da dungeon'));
   assert.ok(logBlock);
   assert.match(logBlock.text.text, /Pikachu/);
   assert.match(logBlock.text.text, /Charmander/);

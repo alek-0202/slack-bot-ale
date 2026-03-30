@@ -55,6 +55,25 @@ async function respondEphemeral(respond, text) {
   await respond({ response_type: 'ephemeral', text });
 }
 
+async function ensureDungeonActionContext({ battle, actorUserId, respond, requireActive = true }) {
+  if (!battle) {
+    await respondEphemeral(respond, mapDungeonFailureReason('battle_not_found'));
+    return { ok: false };
+  }
+
+  if (requireActive && battle.status !== 'active') {
+    await respondEphemeral(respond, mapDungeonFailureReason('battle_not_active'));
+    return { ok: false };
+  }
+
+  if (getDungeonOwnerUserId(battle) !== actorUserId) {
+    await respondEphemeral(respond, DUNGEON_OWNER_ONLY_MESSAGE);
+    return { ok: false };
+  }
+
+  return { ok: true };
+}
+
 async function handleDungeonCommand({ event, say }) {
   logger.info('Entrada do comando !dungeon', {
     file: 'handlers/dungeonActions.js',
@@ -313,6 +332,7 @@ async function handleDungeonBattleMagicAction({ body, action, client, respond })
   const payload = parsePokemonActionValue(action?.value) || {};
   const actorUserId = body.user?.id;
   const channelId = payload.channelId;
+  const battle = getDungeonBattle(channelId);
 
   logger.info('Ação de magia da dungeon recebida', {
     file: 'handlers/dungeonActions.js',
@@ -322,6 +342,14 @@ async function handleDungeonBattleMagicAction({ body, action, client, respond })
     sessionId: channelId,
     magicSlot: payload.magicSlot,
   });
+
+  const contextValidation = await ensureDungeonActionContext({ battle, actorUserId, respond });
+  if (!contextValidation.ok) return;
+
+  if (isDungeonProcessing(channelId)) {
+    await respondEphemeral(respond, DUNGEON_ACTION_PROCESSING_MESSAGE);
+    return;
+  }
 
   const result = await processDungeonTurn({
     channelId,
@@ -376,14 +404,8 @@ async function handleDungeonBattleMagicCancelAction({ body, action, client, resp
     sessionId: payload.channelId,
   });
 
-  if (!battle) {
-    await respondEphemeral(respond, mapDungeonFailureReason('battle_not_found'));
-    return;
-  }
-  if (getDungeonOwnerUserId(battle) !== actorUserId) {
-    await respondEphemeral(respond, DUNGEON_OWNER_ONLY_MESSAGE);
-    return;
-  }
+  const contextValidation = await ensureDungeonActionContext({ battle, actorUserId, respond, requireActive: false });
+  if (!contextValidation.ok) return;
 
   return updateMessage(client, body, renderDungeonBattleState(battle));
 }
