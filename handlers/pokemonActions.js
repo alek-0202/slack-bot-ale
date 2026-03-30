@@ -8,7 +8,9 @@ const {
   TSHINY_CANCEL_ACTION_ID,
   buildTshinyResultMessage,
 } = require('../commands/pokemon/tshiny');
+const { MRSKILL_TOGGLE_ACTION_ID, buildMrSkillBlocks } = require('../commands/mrskill');
 const { getOwnedPokemonById } = require('../services/pokemonLookupService');
+const { getMrSkillSetup, saveMrSkillSelection } = require('../services/pokemonMagicService');
 const {
   upgradePokemonExtraStat,
   transferShiny,
@@ -525,6 +527,51 @@ ${pokemonSummary}
 
     const updated = buildUpdatedMessage(`🛑 Transferência shiny cancelada por <@${actorUserId}>.`);
     await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+  });
+
+  app.action(MRSKILL_TOGGLE_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parsePokemonActionValue(action?.value);
+
+    if (actorUserId !== payload?.slackUserId) {
+      await respond(buildUnauthorizedActionMessage(payload?.slackUserId));
+      return;
+    }
+
+    const setup = await getMrSkillSetup({ slackUserId: actorUserId, pokemonId: payload?.pokemonId });
+    if (!setup.ok) {
+      await respond({ response_type: 'ephemeral', text: 'Não consegui atualizar esse HUD de skills agora 😵' });
+      return;
+    }
+
+    const targetSkillId = String(payload?.skillId || '');
+    const selected = setup.selectedSkillIds.map((id) => String(id));
+    const nextSelection = selected.includes(targetSkillId)
+      ? selected.filter((id) => id !== targetSkillId)
+      : [...selected, targetSkillId].slice(-2);
+
+    const result = await saveMrSkillSelection({
+      slackUserId: actorUserId,
+      pokemonId: setup.pokemon.id,
+      selectedSkillIds: nextSelection,
+    });
+    if (!result.ok) {
+      await respond({ response_type: 'ephemeral', text: 'Não consegui aplicar essa troca de skills agora 😵' });
+      return;
+    }
+
+    const refreshed = await getMrSkillSetup({ slackUserId: actorUserId, pokemonId: setup.pokemon.id });
+    if (!refreshed.ok) {
+      await respond({ response_type: 'ephemeral', text: 'As skills foram salvas, mas não consegui recarregar o HUD.' });
+      return;
+    }
+
+    await client.chat.update({
+      channel: body.channel.id,
+      ts: body.message.ts,
+      ...buildMrSkillBlocks({ slackUserId: actorUserId, setup: refreshed }),
+    });
   });
 
 

@@ -93,6 +93,20 @@ function buildPokemonHelp() {
   ].join("\n");
 }
 
+function buildPokemonHelpBlocks() {
+  const sections = buildPokemonHelp().split("\n\n").filter(Boolean);
+  return sections.flatMap((section, index) => ([
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: section,
+      },
+    },
+    ...(index < sections.length - 1 ? [{ type: "divider" }] : []),
+  ]));
+}
+
 
 function buildDungeonHelp() {
   return [
@@ -154,6 +168,11 @@ module.exports = {
     let text;
     if (category === "pokemon") {
       text = buildPokemonHelp();
+      await say({
+        text: "Help do bot",
+        blocks: buildPokemonHelpBlocks(),
+      });
+      return;
     } else if (category === "battle") {
       text = buildBattleCategoryHelp();
     } else if (category === "dungeon") {

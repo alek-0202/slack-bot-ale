@@ -10,9 +10,16 @@ async function runCommand(command, args = "") {
   return calls[0];
 }
 
+function extractMrkdwnText(payload) {
+  return (payload.blocks || [])
+    .filter((block) => block?.type === "section" && block?.text?.type === "mrkdwn")
+    .map((block) => block.text.text)
+    .join("\n");
+}
+
 test("!help padrão mostra apenas comandos gerais e aponta categorias", async () => {
   const payload = await runCommand(helpCommand);
-  const text = payload.blocks[0].text.text;
+  const text = extractMrkdwnText(payload);
 
   assert.match(text, /!help pokemon/);
   assert.match(text, /!help battle/);
@@ -23,7 +30,7 @@ test("!help padrão mostra apenas comandos gerais e aponta categorias", async ()
 
 test("!help pokemon concentra comandos Pokémon e magicregister", async () => {
   const payload = await runCommand(helpCommand, "pokemon");
-  const text = payload.blocks[0].text.text;
+  const text = extractMrkdwnText(payload);
 
   assert.match(text, /!upgrade <pokemon_id>/);
   assert.match(text, /!up <pokemon_id> <nível>/);
@@ -45,7 +52,7 @@ test("!help pokemon concentra comandos Pokémon e magicregister", async () => {
 
 test("!help battle concentra comandos de batalha sem defesa", async () => {
   const payload = await runCommand(helpCommand, "battle");
-  const text = payload.blocks[0].text.text;
+  const text = extractMrkdwnText(payload);
 
   assert.match(text, /!ataque/);
   assert.doesNotMatch(text, /!defesa/);
@@ -57,7 +64,7 @@ test("!help battle concentra comandos de batalha sem defesa", async () => {
 
 test("!pokemonhelp mantém compatibilidade e mostra categoria Pokémon", async () => {
   const payload = await runCommand(pokemonHelpCommand);
-  const text = payload.blocks[0].text.text;
+  const text = extractMrkdwnText(payload);
 
   assert.match(text, /!magicregister <pokeid>/);
   assert.match(text, /!upgrade <pokemon_id>/);
@@ -67,7 +74,7 @@ test("!pokemonhelp mantém compatibilidade e mostra categoria Pokémon", async (
 
 test("!help dungeon mostra fluxo, regras e observações", async () => {
   const payload = await runCommand(helpCommand, "dungeon");
-  const text = payload.blocks[0].text.text;
+  const text = extractMrkdwnText(payload);
 
   assert.match(text, /Como usar/);
   assert.match(text, /Farm — regras e recompensas/);

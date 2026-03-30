@@ -6,12 +6,11 @@ const { formatGold, isGoldGte } = require('../utils/gold');
 
 const logger = createLogger('healing-station-service');
 
-const MAX_STATION_LEVEL = 10;
+const MAX_STATION_LEVEL = 30;
 const MAX_STATION_SLOTS = 5;
 const BASE_UPGRADE_COST = 7000n;
 const UPGRADE_COST_STEP = 3000n;
 const BASE_REGEN_PER_MINUTE = 0.5;
-const REGEN_PER_LEVEL_STEP = 0.2;
 
 function getHealingStationUpgradeCost(targetLevel) {
   const safeTargetLevel = Math.max(1, Math.min(MAX_STATION_LEVEL, Number(targetLevel) || 1));
@@ -20,7 +19,13 @@ function getHealingStationUpgradeCost(targetLevel) {
 
 function getHealingRatePerMinute(level = 1) {
   const safeLevel = Math.max(1, Math.min(MAX_STATION_LEVEL, Number(level) || 1));
-  return Number((BASE_REGEN_PER_MINUTE + (safeLevel - 1) * REGEN_PER_LEVEL_STEP).toFixed(1));
+  if (safeLevel <= 10) {
+    return Number((BASE_REGEN_PER_MINUTE + (safeLevel - 1) * 0.2).toFixed(1));
+  }
+  if (safeLevel <= 20) {
+    return Number((2.3 + (safeLevel - 10) * 0.4).toFixed(1));
+  }
+  return Number((6.3 + (safeLevel - 20) * 0.6).toFixed(1));
 }
 
 function formatHealingRate(ratePerMinute) {
