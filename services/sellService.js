@@ -5,6 +5,9 @@ const { createLogger } = require("../utils/logger");
 const { formatGold, toGoldBigInt } = require("../utils/gold");
 
 const logger = createLogger("sell-service");
+const PREVIEW_FETCH_CHUNK_SIZE = 300;
+const TRADE_LOCK_QUERY_CHUNK_SIZE = 400;
+const SELL_RPC_CHUNK_SIZE = 120;
 const ESSENCE_BY_RARITY = {
   common: 100,
   uncommon: 300,
@@ -52,15 +55,37 @@ function sumEssence(values) {
   return String((values || []).reduce((total, value) => total + Number.parseInt(value || 0, 10), 0));
 }
 
+function chunkArray(values, chunkSize) {
+  const safeSize = Math.max(1, Number(chunkSize) || 1);
+  const chunks = [];
+  for (let index = 0; index < (values || []).length; index += safeSize) {
+    chunks.push(values.slice(index, index + safeSize));
+  }
+  return chunks;
+}
+
+function normalizePokemonIds(pokemonIds) {
+  return [...new Set((pokemonIds || []).map((id) => Number.parseInt(id, 10)).filter((id) => Number.isInteger(id) && id > 0))];
+}
+
+async function getOwnedPokemonsByIdsInChunks({ slackUserId, pokemonIds }) {
+  if (pokemonIds.length === 1) {
+    return [await getUserPokemonById(slackUserId, pokemonIds[0])].filter(Boolean);
+  }
+
+  const pokemonChunks = await Promise.all(
+    chunkArray(pokemonIds, PREVIEW_FETCH_CHUNK_SIZE).map((chunkIds) => getUserPokemonsByIds(slackUserId, chunkIds)),
+  );
+  return pokemonChunks.flat();
+}
+
 async function buildSellPreviewBatch({ slackUserId, pokemonIds }) {
-  const requestedIds = [...new Set((pokemonIds || []).map((id) => Number.parseInt(id, 10)).filter((id) => Number.isInteger(id) && id > 0))];
+  const requestedIds = normalizePokemonIds(pokemonIds);
   if (!requestedIds.length) {
     return { ok: false, reason: "invalid_pokemon_ids" };
   }
 
-  const pokemons = requestedIds.length === 1
-    ? [await getUserPokemonById(slackUserId, requestedIds[0])].filter(Boolean)
-    : await getUserPokemonsByIds(slackUserId, requestedIds);
+  const pokemons = await getOwnedPokemonsByIdsInChunks({ slackUserId, pokemonIds: requestedIds });
 
   const pokemonById = new Map((pokemons || []).map((pokemon) => [Number(pokemon.id), pokemon]));
   const missingIds = requestedIds.filter((id) => !pokemonById.has(id));
@@ -118,17 +143,25 @@ async function buildSellPreviewBatch({ slackUserId, pokemonIds }) {
 }
 
 async function getTradeLockedPokemonIds({ supabase, pokemonIds }) {
-  const safeIds = [...new Set((pokemonIds || []).map((id) => Number.parseInt(id, 10)).filter((id) => Number.isInteger(id) && id > 0))];
+  const safeIds = normalizePokemonIds(pokemonIds);
   if (!safeIds.length) return [];
 
-  const { data, error } = await supabase
-    .from("trade_items")
-    .select("user_pokemon_id, trades!inner(status)")
-    .in("user_pokemon_id", safeIds)
-    .eq("trades.status", "pending");
+  const lockedIdSet = new Set();
+  for (const idChunk of chunkArray(safeIds, TRADE_LOCK_QUERY_CHUNK_SIZE)) {
+    const { data, error } = await supabase
+      .from("trade_items")
+      .select("user_pokemon_id, trades!inner(status)")
+      .in("user_pokemon_id", idChunk)
+      .eq("trades.status", "pending");
 
-  if (error) throw error;
-  return [...new Set((data || []).map((row) => Number(row.user_pokemon_id)).filter((id) => Number.isInteger(id) && id > 0))];
+    if (error) throw error;
+    for (const row of data || []) {
+      const id = Number(row.user_pokemon_id);
+      if (Number.isInteger(id) && id > 0) lockedIdSet.add(id);
+    }
+  }
+
+  return [...lockedIdSet];
 }
 
 async function buildSellAllPreview({ slackUserId }) {
@@ -139,9 +172,11 @@ async function buildSellAllPreview({ slackUserId }) {
     .filter((pokemon) => Boolean(pokemon.is_favorite))
     .map((pokemon) => Number(pokemon.id))
     .filter((id) => Number.isInteger(id) && id > 0);
-  const nonFavoriteIds = allIds.filter((id) => !favoriteIds.includes(id));
+  const favoriteIdSet = new Set(favoriteIds);
+  const nonFavoriteIds = allIds.filter((id) => !favoriteIdSet.has(id));
   const lockedIds = await getTradeLockedPokemonIds({ supabase, pokemonIds: nonFavoriteIds });
-  const eligibleIds = nonFavoriteIds.filter((id) => !lockedIds.includes(id));
+  const lockedIdSet = new Set(lockedIds);
+  const eligibleIds = nonFavoriteIds.filter((id) => !lockedIdSet.has(id));
 
   if (!eligibleIds.length) {
     return {
@@ -161,6 +196,7 @@ async function buildSellAllPreview({ slackUserId }) {
 
   return {
     ...preview,
+    sellAll: true,
     totalOwnedCount: allIds.length,
     favoriteIgnoredCount: favoriteIds.length,
     blockedCount: lockedIds.length,
@@ -242,24 +278,7 @@ async function sellPokemonBatchLegacy({ supabase, slackUserId, preview }) {
   };
 }
 
-async function sellPokemonBatch({ slackUserId, pokemonIds }) {
-  const supabase = getSupabaseClient();
-  const preview = await buildSellPreviewBatch({ slackUserId, pokemonIds });
-
-  if (!preview.ok) {
-    return preview;
-  }
-
-  if (preview.pokemons?.some((pokemon) => Boolean(pokemon?.is_favorite))) {
-    return {
-      ok: false,
-      reason: "favorite_pokemon_blocked",
-      favoriteIds: preview.pokemons.filter((pokemon) => pokemon?.is_favorite).map((pokemon) => pokemon.id),
-      pokemons: preview.pokemons,
-      pokemonIds: preview.pokemonIds,
-    };
-  }
-
+async function runSellBatchRpc({ supabase, slackUserId, preview }) {
   const { data, error } = await supabase.rpc("sell_user_pokemons_batch", {
     p_slack_user_id: slackUserId,
     p_pokemon_ids: preview.pokemonIds,
@@ -326,6 +345,70 @@ async function sellPokemonBatch({ slackUserId, pokemonIds }) {
   };
 }
 
+async function sellPokemonBatch({ slackUserId, pokemonIds }) {
+  const supabase = getSupabaseClient();
+  const preview = await buildSellPreviewBatch({ slackUserId, pokemonIds });
+
+  if (!preview.ok) {
+    return preview;
+  }
+
+  if (preview.pokemons?.some((pokemon) => Boolean(pokemon?.is_favorite))) {
+    return {
+      ok: false,
+      reason: "favorite_pokemon_blocked",
+      favoriteIds: preview.pokemons.filter((pokemon) => pokemon?.is_favorite).map((pokemon) => pokemon.id),
+      pokemons: preview.pokemons,
+      pokemonIds: preview.pokemonIds,
+    };
+  }
+  return runSellBatchRpc({ supabase, slackUserId, preview });
+}
+
+async function sellAllPokemonBatch({ slackUserId }) {
+  const preview = await buildSellAllPreview({ slackUserId });
+  if (!preview.ok) return preview;
+
+  const pokemonIdChunks = chunkArray(preview.pokemonIds || [], SELL_RPC_CHUNK_SIZE);
+  const soldPokemonIds = [];
+  let totalGoldReceived = 0n;
+  let totalEssenceReceived = 0n;
+  let currentGold = null;
+  let currentEssence = null;
+
+  for (const chunkIds of pokemonIdChunks) {
+    const chunkResult = await sellPokemonBatch({ slackUserId, pokemonIds: chunkIds });
+    if (!chunkResult.ok) {
+      return {
+        ok: false,
+        reason: chunkResult.reason,
+        soldCount: soldPokemonIds.length,
+        attemptedCount: preview.pokemonIds.length,
+      };
+    }
+
+    soldPokemonIds.push(...chunkResult.pokemonIds);
+    totalGoldReceived += toGoldBigInt(chunkResult.goldReceived);
+    totalEssenceReceived += toGoldBigInt(chunkResult.essenceReceived || 0);
+    currentGold = chunkResult.currentGold;
+    currentEssence = chunkResult.currentEssence;
+  }
+
+  return {
+    ok: true,
+    sellAll: true,
+    soldCount: soldPokemonIds.length,
+    totalCount: soldPokemonIds.length,
+    ignoredCount: preview.ignoredCount || 0,
+    favoriteIgnoredCount: preview.favoriteIgnoredCount || 0,
+    blockedCount: preview.blockedCount || 0,
+    goldReceived: formatGold(totalGoldReceived),
+    essenceReceived: formatGold(totalEssenceReceived),
+    currentGold: currentGold || "0",
+    currentEssence: currentEssence || "0",
+  };
+}
+
 async function sellPokemon({ slackUserId, pokemonId }) {
   const result = await sellPokemonBatch({ slackUserId, pokemonIds: [pokemonId] });
   if (!result.ok) return result;
@@ -349,4 +432,5 @@ module.exports = {
   buildSellAllPreview,
   sellPokemon,
   sellPokemonBatch,
+  sellAllPokemonBatch,
 };

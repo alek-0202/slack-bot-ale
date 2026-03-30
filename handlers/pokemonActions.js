@@ -33,6 +33,7 @@ const {
   upgradePokemonToLevel,
   sellPokemon,
   sellPokemonBatch,
+  sellAllPokemonBatch,
 } = require("../services/slackPokemonActionService");
 
 const logger = createLogger("handler:pokemon-actions");
@@ -359,8 +360,9 @@ function registerPokemonActions(app) {
     });
 
     const pokemonIds = Array.isArray(payload?.pokemonIds) ? payload.pokemonIds : (payload?.pokemonId ? [payload.pokemonId] : []);
+    const isSellAll = Boolean(payload?.sellAll);
 
-    if (!payload?.slackUserId || !pokemonIds.length) {
+    if (!payload?.slackUserId || (!pokemonIds.length && !isSellAll)) {
       await respond({ response_type: "ephemeral", text: "Não consegui validar essa confirmação de venda 😵" });
       return;
     }
@@ -371,7 +373,9 @@ function registerPokemonActions(app) {
     }
 
     try {
-      const result = pokemonIds.length > 1
+      const result = isSellAll
+        ? await sellAllPokemonBatch({ slackUserId: actorUserId })
+        : pokemonIds.length > 1
         ? await sellPokemonBatch({ slackUserId: actorUserId, pokemonIds })
         : await sellPokemon({ slackUserId: actorUserId, pokemonId: pokemonIds[0] });
       if (!result.ok) {
@@ -379,15 +383,18 @@ function registerPokemonActions(app) {
           pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
           favorite_pokemon_blocked: "Não é possível vender Pokémon favorito. Remova o favorito antes de confirmar a venda.",
           pokemon_locked_in_trade: "Um dos Pokémons está preso em um trade pendente e não pode ser vendido agora.",
+          no_sellable_pokemon: "Não há Pokémons elegíveis para vender agora no !sellall.",
           sale_price_changed: "O valor da venda mudou desde a confirmação. Abra o !sell novamente para revisar o total atualizado.",
         };
         await respond({ response_type: "ephemeral", text: map[result.reason] || "Não consegui vender esse Pokémon agora 😵" });
         return;
       }
 
-      const pokemonSummary = (result.pokemons || [result.pokemon])
-        .map((pokemon, index) => `• ${pokemon?.shiny ? "✨ " : ""}*${pokemon?.pokemon_species?.name || "Pokémon"}* (#${pokemon.id})${result.items?.[index] ? ` — *${result.items[index].priceBreakdown?.finalPrice || "0"}* gold` : ""}`)
-        .join("\n");
+      const pokemonSummary = result.sellAll
+        ? `*Resumo da venda em massa*\n• Vendidos: *${result.soldCount || 0}*\n• Ignorados/bloqueados: *${result.ignoredCount || 0}* (favoritos: ${result.favoriteIgnoredCount || 0}, bloqueados: ${result.blockedCount || 0})`
+        : (result.pokemons || [result.pokemon])
+          .map((pokemon, index) => `• ${pokemon?.shiny ? "✨ " : ""}*${pokemon?.pokemon_species?.name || "Pokémon"}* (#${pokemon.id})${result.items?.[index] ? ` — *${result.items[index].priceBreakdown?.finalPrice || "0"}* gold` : ""}`)
+          .join("\n");
       const updated = buildUpdatedMessage(
         `💸 *Venda concluída!*
 
