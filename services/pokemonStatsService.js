@@ -64,22 +64,21 @@ function canShinyPrimeReceiveIvCapBonus(rarity) {
 
 function rollPokemonIvOffsets({ shiny = false, shinyType = null, rarity = null } = {}) {
   const isPrime = shiny && shinyType === SHINY_TYPE.PRIME;
-  const primeBoost = isPrime && canShinyPrimeReceiveIvCapBonus(rarity) ? SHINY_PRIME_BONUS : 0;
   return {
     attack_iv: isPrime
-      ? IV_STAT_RANGES.attack.max + primeBoost
+      ? IV_STAT_RANGES.attack.max
       : randomIntInclusive(IV_STAT_RANGES.attack.min, IV_STAT_RANGES.attack.max),
     defense_iv: isPrime
-      ? IV_STAT_RANGES.defense.max + primeBoost
+      ? IV_STAT_RANGES.defense.max
       : randomIntInclusive(IV_STAT_RANGES.defense.min, IV_STAT_RANGES.defense.max),
     magic_iv: isPrime
-      ? IV_STAT_RANGES.magic.max + primeBoost
+      ? IV_STAT_RANGES.magic.max
       : randomIntInclusive(IV_STAT_RANGES.magic.min, IV_STAT_RANGES.magic.max),
     hp_iv: isPrime
-      ? IV_STAT_RANGES.hp.max + primeBoost
+      ? IV_STAT_RANGES.hp.max
       : randomIntInclusive(IV_STAT_RANGES.hp.min, IV_STAT_RANGES.hp.max),
     speed_iv: isPrime
-      ? IV_STAT_RANGES.speed.max + primeBoost
+      ? IV_STAT_RANGES.speed.max
       : randomIntInclusive(IV_STAT_RANGES.speed.min, IV_STAT_RANGES.speed.max),
   };
 }
