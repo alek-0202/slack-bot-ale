@@ -4,7 +4,7 @@ const { getUser } = require("./userService");
 const { getSpeciesById } = require("./pokemonLookupService");
 const { getEvolutionCost, evolvePokemon } = require("./evolutionService");
 const { MAX_LEVEL, calculateTotalUpgradeCost, upgradePokemonBatch } = require("./upgradeService");
-const { buildSellPreview, buildSellPreviewBatch, sellPokemon, sellPokemonBatch } = require("./sellService");
+const { buildSellPreview, buildSellPreviewBatch, buildSellAllPreview, sellPokemon, sellPokemonBatch } = require("./sellService");
 const { formatGold, isGoldGte } = require("../utils/gold");
 const { getPokemonProgressionSnapshot } = require("./pokemonStatsService");
 const { assertPokemonAvailableForAction } = require("./healingStationService");
@@ -458,7 +458,10 @@ async function applyBookItemToPokemon({ slackUserId, pokemonId, statKey }) {
   return applyAncientBookBonus({ slackUserId, pokemonId, statKey });
 }
 
-async function buildSellPreviewCard({ slackUserId, pokemonId, pokemonIds }) {
+async function buildSellPreviewCard({ slackUserId, pokemonId, pokemonIds, sellAll = false }) {
+  if (sellAll) {
+    return buildSellAllPreview({ slackUserId });
+  }
   if (Array.isArray(pokemonIds)) {
     return buildSellPreviewBatch({ slackUserId, pokemonIds });
   }
@@ -487,7 +490,16 @@ function buildSellPreviewMessage({ slackUserId, preview }) {
         text: {
           type: "mrkdwn",
           text: isBatch
-            ? [`*Pokémons selecionados (${preview.totalCount}):*`, ...previewLines, "", `*Valor total da venda:* ${preview.totalSellPrice || "0"} gold`].join("\n")
+            ? [
+              `*Pokémons selecionados (${preview.totalCount}):*`,
+              ...previewLines,
+              "",
+              `*Valor total da venda:* ${preview.totalSellPrice || "0"} gold`,
+              `*Essência total prevista:* ${preview.totalEssenceReceived || "0"}`,
+              preview.ignoredCount
+                ? `*Ignorados/bloqueados:* ${preview.ignoredCount} (favoritos: ${preview.favoriteIgnoredCount || 0}, bloqueados: ${preview.blockedCount || 0})`
+                : "*Ignorados/bloqueados:* 0",
+            ].join("\n")
             : previewLines.join("\n"),
         },
         accessory: isBatch ? undefined : buildAccessoryImage(preview.pokemon?.pokemon_species),

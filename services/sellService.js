@@ -1,10 +1,18 @@
 const { getSupabaseClient } = require("../database/supabase");
-const { getUserPokemonById, getUserPokemonsByIds } = require("./pokemonService");
+const { getUserPokemonById, getUserPokemonsByIds, getUserPokemons } = require("./pokemonService");
 const { getBaseGoldByRarity } = require("./economyService");
 const { createLogger } = require("../utils/logger");
 const { formatGold, toGoldBigInt } = require("../utils/gold");
 
 const logger = createLogger("sell-service");
+const ESSENCE_BY_RARITY = {
+  common: 100,
+  uncommon: 300,
+  rare: 700,
+  epic: 4000,
+  legendary: 50000,
+  mythical: 100000,
+};
 
 function getBaseSellPriceByRarity(rarity) {
   return BigInt(getBaseGoldByRarity(rarity));
@@ -36,6 +44,14 @@ function sumGold(values) {
   return formatGold((values || []).reduce((total, value) => total + toGoldBigInt(value), 0n));
 }
 
+function calculatePokemonSellEssence({ rarity }) {
+  return String(ESSENCE_BY_RARITY[String(rarity || "").toLowerCase()] || 0);
+}
+
+function sumEssence(values) {
+  return String((values || []).reduce((total, value) => total + Number.parseInt(value || 0, 10), 0));
+}
+
 async function buildSellPreviewBatch({ slackUserId, pokemonIds }) {
   const requestedIds = [...new Set((pokemonIds || []).map((id) => Number.parseInt(id, 10)).filter((id) => Number.isInteger(id) && id > 0))];
   if (!requestedIds.length) {
@@ -64,21 +80,27 @@ async function buildSellPreviewBatch({ slackUserId, pokemonIds }) {
       rarity: pokemon.pokemon_species?.rarity,
       upgradeSpentGold: pokemon.upgrade_spent_gold,
     });
+    const essenceBreakdown = calculatePokemonSellEssence({
+      rarity: pokemon.pokemon_species?.rarity,
+    });
 
     return {
       pokemon,
       priceBreakdown,
+      essenceBreakdown,
     };
   });
 
   const totalSellPrice = sumGold(items.map((item) => item.priceBreakdown.finalPrice));
   const totalUpgradeReturn = sumGold(items.map((item) => item.priceBreakdown.upgradeReturn));
+  const totalEssenceReceived = sumEssence(items.map((item) => item.essenceBreakdown));
 
   logger.info("Preview de venda em lote gerado", {
     slackUserId,
     pokemonIds: requestedIds,
     totalSellPrice,
     totalUpgradeReturn,
+    totalEssenceReceived,
   });
 
   return {
@@ -90,7 +112,61 @@ async function buildSellPreviewBatch({ slackUserId, pokemonIds }) {
     totalCount: items.length,
     totalSellPrice,
     totalUpgradeReturn,
+    totalEssenceReceived,
     priceBreakdown: items[0]?.priceBreakdown || null,
+  };
+}
+
+async function getTradeLockedPokemonIds({ supabase, pokemonIds }) {
+  const safeIds = [...new Set((pokemonIds || []).map((id) => Number.parseInt(id, 10)).filter((id) => Number.isInteger(id) && id > 0))];
+  if (!safeIds.length) return [];
+
+  const { data, error } = await supabase
+    .from("trade_items")
+    .select("user_pokemon_id, trades!inner(status)")
+    .in("user_pokemon_id", safeIds)
+    .eq("trades.status", "pending");
+
+  if (error) throw error;
+  return [...new Set((data || []).map((row) => Number(row.user_pokemon_id)).filter((id) => Number.isInteger(id) && id > 0))];
+}
+
+async function buildSellAllPreview({ slackUserId }) {
+  const supabase = getSupabaseClient();
+  const allPokemons = await getUserPokemons(slackUserId);
+  const allIds = allPokemons.map((pokemon) => Number(pokemon.id)).filter((id) => Number.isInteger(id) && id > 0);
+  const favoriteIds = allPokemons
+    .filter((pokemon) => Boolean(pokemon.is_favorite))
+    .map((pokemon) => Number(pokemon.id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  const nonFavoriteIds = allIds.filter((id) => !favoriteIds.includes(id));
+  const lockedIds = await getTradeLockedPokemonIds({ supabase, pokemonIds: nonFavoriteIds });
+  const eligibleIds = nonFavoriteIds.filter((id) => !lockedIds.includes(id));
+
+  if (!eligibleIds.length) {
+    return {
+      ok: false,
+      reason: "no_sellable_pokemon",
+      totalOwnedCount: allIds.length,
+      favoriteIgnoredCount: favoriteIds.length,
+      blockedCount: lockedIds.length,
+      ignoredCount: favoriteIds.length + lockedIds.length,
+      favoriteIds,
+      blockedIds: lockedIds,
+    };
+  }
+
+  const preview = await buildSellPreviewBatch({ slackUserId, pokemonIds: eligibleIds });
+  if (!preview.ok) return preview;
+
+  return {
+    ...preview,
+    totalOwnedCount: allIds.length,
+    favoriteIgnoredCount: favoriteIds.length,
+    blockedCount: lockedIds.length,
+    ignoredCount: favoriteIds.length + lockedIds.length,
+    favoriteIds,
+    blockedIds: lockedIds,
   };
 }
 
@@ -158,6 +234,7 @@ async function sellPokemonBatchLegacy({ supabase, slackUserId, preview }) {
     currentGold: formatGold(currentGold ?? 0),
     totalSellPrice: preview.totalSellPrice,
     totalUpgradeReturn: preview.totalUpgradeReturn,
+    totalEssenceReceived: preview.totalEssenceReceived,
     priceBreakdown: preview.priceBreakdown,
     usedLegacyFallback: true,
     essenceReceived: "0",
@@ -242,6 +319,7 @@ async function sellPokemonBatch({ slackUserId, pokemonIds }) {
     currentGold: formatGold(goldAfter),
     totalSellPrice: preview.totalSellPrice,
     totalUpgradeReturn: preview.totalUpgradeReturn,
+    totalEssenceReceived: preview.totalEssenceReceived,
     priceBreakdown: preview.priceBreakdown,
     essenceReceived: formatGold(essenceReceived),
     currentEssence: String(Math.max(0, Number(result.remaining_essence || 0))),
@@ -268,6 +346,7 @@ module.exports = {
   calculatePokemonSellPrice,
   buildSellPreview,
   buildSellPreviewBatch,
+  buildSellAllPreview,
   sellPokemon,
   sellPokemonBatch,
 };
