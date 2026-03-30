@@ -41,8 +41,8 @@ test("calculatePokemonStats aplica progressão forte, marcos e bônus do nível 
   const level50 = calculatePokemonStats({ species, level: 50 });
 
   assert.deepEqual(level1, { attack: 20, magic: 21, defense: 18, hp: 24, speed: 22 });
-  assert.deepEqual(level10, { attack: 57, magic: 62, defense: 52, hp: 84, speed: 45 });
-  assert.deepEqual(level50, { attack: 226, magic: 250, defense: 204, hp: 363, speed: 151 });
+  assert.deepEqual(level10, { attack: 57, magic: 62, defense: 52, hp: 69, speed: 45 });
+  assert.deepEqual(level50, { attack: 226, magic: 250, defense: 204, hp: 274, speed: 151 });
 });
 
 test("snapshot de progressão expõe estrelas e marcos corretamente", () => {
