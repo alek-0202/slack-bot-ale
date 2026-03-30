@@ -836,6 +836,9 @@ function processEnemyTurnIfNeeded({ battle, trigger = 'unknown', maxEnemyTurns =
 
 async function finalizeDungeonBattle(battle) {
   const playerUserId = battle.metadata?.slackUserId || battle.challengerId;
+  if (battle.metadata?.finalCompletion) {
+    return battle.metadata.finalCompletion;
+  }
   const playerState = battle.players[playerUserId];
   await persistPlayerBattleHp(playerUserId, playerState);
 
@@ -856,11 +859,13 @@ async function finalizeDungeonBattle(battle) {
   });
 
   if (!isPlayerVictory) {
-    return { ok: true, outcome: 'defeat', rewards: null };
+    const defeatCompletion = { ok: true, outcome: 'defeat', rewards: null };
+    battle.metadata.finalCompletion = defeatCompletion;
+    return defeatCompletion;
   }
 
   if (battle.metadata?.rewardsGranted) {
-    return { ok: false, reason: 'reward_already_granted' };
+    return battle.metadata.finalCompletion || { ok: true, outcome: 'victory', rewards: battle.metadata?.lastRewards || null, capturedSpecies: battle.metadata?.capturedSpecies || null };
   }
 
   let capturedSpecies = null;
@@ -884,6 +889,7 @@ async function finalizeDungeonBattle(battle) {
   });
 
   battle.metadata.rewardsGranted = true;
+  battle.metadata.lastRewards = rewards;
   battle.metadata.capturedSpecies = capturedSpecies;
 
   logger.info('Recompensas de dungeon concedidas', {
@@ -898,7 +904,9 @@ async function finalizeDungeonBattle(battle) {
     capturedSpeciesId: capturedSpecies?.id || null,
   });
 
-  return { ok: true, outcome: 'victory', rewards, capturedSpecies };
+  const victoryCompletion = { ok: true, outcome: 'victory', rewards, capturedSpecies };
+  battle.metadata.finalCompletion = victoryCompletion;
+  return victoryCompletion;
 }
 
 async function processDungeonTurn({ channelId, actorUserId, actionType, actionPayload = {} }) {
@@ -918,6 +926,12 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
     const lockedOwnerUserId = getDungeonOwnerUserId(lockedBattle);
     if (lockedOwnerUserId !== actorUserId) {
       return { ok: false, reason: 'not_dungeon_owner', battle: lockedBattle, ownerUserId: lockedOwnerUserId };
+    }
+
+    if (lockedBattle.status === 'finished') {
+      const completion = await finalizeDungeonBattle(lockedBattle);
+      battleStore.setBattle(lockedBattle.channelId, lockedBattle);
+      return { ok: true, battle: lockedBattle, completion };
     }
 
     const validation = validateTurnAction({ battle: lockedBattle, actorUserId, actionType });

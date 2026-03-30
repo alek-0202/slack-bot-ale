@@ -470,9 +470,9 @@ function buildSellPreviewMessage({ slackUserId, preview }) {
   const pokemonName = preview.pokemon?.pokemon_species?.name || "Pokémon";
   const price = preview.priceBreakdown?.finalPrice || "0";
   const previewLines = isBatch
-    ? preview.items.map((item) => `• *${item.pokemon?.pokemon_species?.name || "Pokémon"}* (#${item.pokemon.id}) — ${item.priceBreakdown?.finalPrice || "0"} gold`)
+    ? preview.items.map((item) => `• ${item.pokemon?.shiny ? "✨ " : ""}*${item.pokemon?.pokemon_species?.name || "Pokémon"}* (#${item.pokemon.id}) — ${item.priceBreakdown?.finalPrice || "0"} gold`)
     : [
-        `*Pokémon:* ${pokemonName} (#${preview.pokemon.id})`,
+        `*Pokémon:* ${preview.pokemon?.shiny ? "✨ " : ""}${pokemonName} (#${preview.pokemon.id})`,
         `*Nível:* ${preview.pokemon.level}`,
         `*Valor da venda:* ${price} gold`,
         `*Investimento em upgrades:* ${preview.priceBreakdown?.totalUpgradeCost || "0"} gold`,

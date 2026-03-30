@@ -32,6 +32,15 @@ const SHINY_MULTIPLIER = 1.15;
 const SHINY_PRIME_BONUS = 10;
 const LEGENDARY_BASE_BONUS = 15;
 const MYTHICAL_BASE_BONUS = 20;
+const SHINY_MULTIPLIER_BY_RARITY = Object.freeze({
+  common: 1.07,
+  uncommon: 1.07,
+  rare: 1.10,
+  epic: 1.15,
+  legendary: 1.18,
+  mythical: 1.20,
+});
+const SHINY_PRIME_IV_BONUS_MIN_RARITIES = new Set(["rare", "epic", "legendary", "mythical"]);
 
 function hasCompleteBaseStats(species = {}) {
   return SPECIES_STAT_FIELDS.every((field) => toPositiveInteger(species[field], 0) > 0);
@@ -41,9 +50,21 @@ function randomIntInclusive(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function rollPokemonIvOffsets({ shiny = false, shinyType = null } = {}) {
+function normalizeRarity(rarity) {
+  return String(rarity || "").toLowerCase();
+}
+
+function getShinyStatMultiplier(rarity) {
+  return SHINY_MULTIPLIER_BY_RARITY[normalizeRarity(rarity)] || SHINY_MULTIPLIER;
+}
+
+function canShinyPrimeReceiveIvCapBonus(rarity) {
+  return SHINY_PRIME_IV_BONUS_MIN_RARITIES.has(normalizeRarity(rarity));
+}
+
+function rollPokemonIvOffsets({ shiny = false, shinyType = null, rarity = null } = {}) {
   const isPrime = shiny && shinyType === SHINY_TYPE.PRIME;
-  const primeBoost = isPrime ? SHINY_PRIME_BONUS : 0;
+  const primeBoost = isPrime && canShinyPrimeReceiveIvCapBonus(rarity) ? SHINY_PRIME_BONUS : 0;
   return {
     attack_iv: isPrime
       ? IV_STAT_RANGES.attack.max + primeBoost
@@ -115,14 +136,15 @@ function getSpeciesBaseStats(species = {}, options = {}) {
   return baseStats;
 }
 
-function applyIvAndShinyModifiers({ baseStats = {}, ivOffsets = {}, shiny = false, shinyType = null } = {}) {
+function applyIvAndShinyModifiers({ baseStats = {}, ivOffsets = {}, shiny = false, shinyType = null, rarity = null } = {}) {
   const normalizedOffsets = normalizeIvOffsets(ivOffsets);
   const isPrime = shinyType === SHINY_TYPE.PRIME;
-  const primeBonus = isPrime ? SHINY_PRIME_BONUS : 0;
+  const primeBonus = isPrime && canShinyPrimeReceiveIvCapBonus(rarity) ? SHINY_PRIME_BONUS : 0;
+  const shinyMultiplier = shiny ? getShinyStatMultiplier(rarity) : 1;
 
   return STAT_FIELDS.reduce((acc, statKey) => {
     const value = Math.max(1, Number(baseStats[statKey] || 0) + Number(normalizedOffsets[statKey] || 0) + primeBonus);
-    acc[statKey] = Math.max(1, Math.round(shiny ? value * SHINY_MULTIPLIER : value));
+    acc[statKey] = Math.max(1, Math.round(value * shinyMultiplier));
     return acc;
   }, {});
 }
@@ -139,11 +161,13 @@ function getLevelStatMultiplier(level = 1) {
 
 function calculatePokemonStats({ species = {}, level = 1, fallbackStats = {}, ivOffsets = {}, shiny = false, shinyType = null, log = false, context = {} } = {}) {
   const baseStats = getSpeciesBaseStats(species, { fallbackStats });
+  const rarity = normalizeRarity(species.rarity);
   const baseStatsWithIvPrime = applyIvAndShinyModifiers({
     baseStats,
     ivOffsets,
     shiny: false,
     shinyType: shiny ? shinyType : null,
+    rarity,
   });
   const progression = calculateProgressedStats({
     baseStats: baseStatsWithIvPrime,
@@ -161,16 +185,19 @@ function calculatePokemonStats({ species = {}, level = 1, fallbackStats = {}, iv
     ivOffsets: {},
     shiny,
     shinyType: null,
+    rarity,
   });
 }
 
 function getPokemonProgressionSnapshot({ species = {}, level = 1, fallbackStats = {}, ivOffsets = {}, shiny = false, shinyType = null, log = false, context = {} } = {}) {
   const baseStats = getSpeciesBaseStats(species, { fallbackStats });
+  const rarity = normalizeRarity(species.rarity);
   const baseStatsWithIvPrime = applyIvAndShinyModifiers({
     baseStats,
     ivOffsets,
     shiny: false,
     shinyType: shiny ? shinyType : null,
+    rarity,
   });
   const progression = calculateProgressedStats({
     baseStats: baseStatsWithIvPrime,
@@ -186,11 +213,12 @@ function getPokemonProgressionSnapshot({ species = {}, level = 1, fallbackStats 
   return {
     ...progression,
     stats: applyIvAndShinyModifiers({
-      baseStats: progression.stats,
-      ivOffsets: {},
-      shiny,
-      shinyType: null,
-    }),
+    baseStats: progression.stats,
+    ivOffsets: {},
+    shiny,
+    shinyType: null,
+    rarity,
+  }),
   };
 }
 
@@ -216,7 +244,10 @@ module.exports = {
   IV_STAT_RANGES,
   SHINY_TYPE,
   SHINY_MULTIPLIER,
+  SHINY_MULTIPLIER_BY_RARITY,
   SHINY_PRIME_BONUS,
+  getShinyStatMultiplier,
+  canShinyPrimeReceiveIvCapBonus,
   LEGENDARY_BASE_BONUS,
   MYTHICAL_BASE_BONUS,
   hasCompleteBaseStats,

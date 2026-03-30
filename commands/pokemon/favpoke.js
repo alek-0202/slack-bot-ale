@@ -1,12 +1,29 @@
 const { parsePositiveInt } = require("../../utils/number");
-const { togglePokemonFavorite, getUserPokemonById } = require("../../services/pokemonService");
+const { togglePokemonFavorite, setPokemonFavorite, getUserPokemonById } = require("../../services/pokemonService");
+
+function parseFavAction(rawArgs = "") {
+  const safeArgs = String(rawArgs || "").trim();
+  if (!safeArgs) return { mode: "toggle", pokemonId: null };
+
+  const [firstToken, secondToken] = safeArgs.split(/\s+/, 2);
+  const normalized = String(firstToken || "").toLowerCase();
+  if (normalized === "remove") {
+    return { mode: "remove", pokemonId: parsePositiveInt(secondToken) };
+  }
+  if (normalized === "add") {
+    return { mode: "add", pokemonId: parsePositiveInt(secondToken) };
+  }
+  return { mode: "toggle", pokemonId: parsePositiveInt(safeArgs) };
+}
 
 module.exports = {
-  name: "favpoke",
+  name: "pokefav",
+  aliases: ["favpoke"],
   async execute({ event, args, say }) {
-    const pokemonId = parsePositiveInt(args);
+    const parsed = parseFavAction(args);
+    const pokemonId = parsed.pokemonId;
     if (!pokemonId) {
-      await say("Use `!favpoke <id pokemon>`.");
+      await say("Use `!pokefav <id>` ou `!pokefav remove <id>`.");
       return;
     }
 
@@ -16,15 +33,17 @@ module.exports = {
       return;
     }
 
-    const toggled = await togglePokemonFavorite(event.user, pokemonId);
-    if (!toggled) {
+    const result = parsed.mode === "toggle"
+      ? await togglePokemonFavorite(event.user, pokemonId)
+      : await setPokemonFavorite(event.user, pokemonId, parsed.mode === "add");
+    if (!result) {
       await say("Não consegui atualizar o favorito agora.");
       return;
     }
 
     await say(
-      `${toggled.is_favorite ? "⭐" : "▫️"} *${pokemon.pokemon_species?.name || 'Pokémon'}* (#${pokemonId}) ` +
-      `${toggled.is_favorite ? "agora é favorito" : "não é mais favorito"}.`,
+      `${result.is_favorite ? "⭐" : "▫️"} *${pokemon.pokemon_species?.name || 'Pokémon'}* (#${pokemonId}) ` +
+      `${result.is_favorite ? "agora é favorito" : "não é mais favorito"}.`,
     );
   },
 };

@@ -203,3 +203,34 @@ test("sellPokemonBatch faz fallback para a RPC legada quando a RPC em lote não 
     context.cleanup();
   }
 });
+
+test("sellPokemonBatch bloqueia venda de favorito antes da RPC", async () => {
+  const pokemons = [
+    {
+      id: 23,
+      level: 1,
+      upgrade_spent_gold: 0,
+      is_favorite: true,
+      pokemon_species: { name: "Pikachu", rarity: "common", base_value: 300 },
+    },
+  ];
+
+  const context = loadSellServiceWithMocks({
+    pokemons,
+    rpcResult: { ok: true },
+  });
+
+  try {
+    const result = await context.sellService.sellPokemonBatch({
+      slackUserId: "U123",
+      pokemonIds: [23],
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "favorite_pokemon_blocked");
+    assert.deepEqual(result.favoriteIds, [23]);
+    assert.equal(context.rpcCalls.length, 0);
+  } finally {
+    context.cleanup();
+  }
+});
