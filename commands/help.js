@@ -60,6 +60,7 @@ function buildPokemonHelp() {
     "⬆️ *Progressão*",
     ...linesFrom(["upgrade", "up", "evolve"], sharedPokemonCommands),
     "`!sell <pokemon_id[,pokemon_id,...]>` → abre confirmação para vender Pokémons (retorno em gold + essência)",
+    "`!sellall` → abre confirmação para vender todos os Pokémons não favoritados e elegíveis",
     "`!resetpokeid <pokemon_id>` → reseta upgrades e devolve o gold investido",
     "`Botão Stats` no `!pokeid` → upgrades extras: crit, esquiva e efeito elemental",
     ...linesFrom(["market"], sharedPokemonCommands),

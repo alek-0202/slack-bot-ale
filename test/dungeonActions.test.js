@@ -123,7 +123,7 @@ test('defesa na dungeon responde ephemeral e não processa turno nem desmonta UI
 
   assert.equal(processCalls, 0);
   assert.equal(updates.length, 0);
-  assert.deepEqual(responds, [{ response_type: 'ephemeral', text: 'Defesa ainda está em desenvolvimento.' }]);
+  assert.deepEqual(responds, [{ response_type: 'ephemeral', text: 'unsupported_action' }]);
 });
 
 test('clique de outro player na dungeon é no-op completo', async () => {

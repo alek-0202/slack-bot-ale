@@ -50,7 +50,7 @@ test('renderDungeonMagicOptions usa action_ids de magia da dungeon e inclui botÃ
   });
 
   const actionBlocks = payload.blocks.filter((block) => block.type === 'actions');
-  assert.equal(actionBlocks[0].elements[0].action_id, `${DUNGEON_BATTLE_MAGIC_ACTION_ID}_1`);
+  assert.equal(actionBlocks[0].elements[0].action_id, `${DUNGEON_BATTLE_MAGIC_ACTION_ID}_magic:1`);
   assert.equal(actionBlocks[1].elements[0].action_id, DUNGEON_BATTLE_MAGIC_CANCEL_ACTION_ID);
 });
 

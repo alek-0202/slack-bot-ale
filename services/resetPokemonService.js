@@ -2,6 +2,8 @@ const { getSupabaseClient } = require("../database/supabase");
 const { getUserPokemonById } = require("./pokemonService");
 const { createLogger } = require("../utils/logger");
 const { formatGold, toGoldBigInt } = require("../utils/gold");
+const { clearCharacteristicSkillsFromLoadout } = require("./pokemonMagicService");
+const battleStore = require("./battleStateStore");
 
 const logger = createLogger("reset-pokemon-service");
 
@@ -43,6 +45,20 @@ async function resetPokemonUpgrades({ slackUserId, pokemonId }) {
   const refundedGold = toGoldBigInt(result.refunded_gold);
   const goldBefore = goldAfter - refundedGold;
   const updatedPokemon = await getUserPokemonById(slackUserId, pokemonId);
+
+  await clearCharacteristicSkillsFromLoadout({ slackUserId, pokemonId });
+
+  for (const battle of battleStore.getAllBattles()) {
+    for (const player of Object.values(battle?.players || {})) {
+      const activePokemonId = Number(player?.selectedPokemon?.id || 0);
+      if (activePokemonId !== Number(pokemonId)) continue;
+      player.characteristicSlots = [];
+      if (player.elementalState) {
+        player.elementalState.skillCooldowns = {};
+        player.elementalState.effects = [];
+      }
+    }
+  }
 
   logger.info("Reset de Pokémon concluído", {
     slackUserId,

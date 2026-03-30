@@ -28,6 +28,8 @@ const DAILY_CHANCES = {
 const DAILY_DUNGEON_ENABLED = false;
 const logger = createLogger('service:dungeon');
 const dungeonProcessingLocks = new Set();
+const USER_POKEMON_LEVEL_MIN = 1;
+const USER_POKEMON_LEVEL_CAP = 50;
 
 function getDungeonFarmList() { return [...FARM_LEVELS]; }
 
@@ -51,6 +53,11 @@ function mapDungeonFailureReason(reason) {
     unsupported_action: 'Ação de dungeon inválida.',
     magic_not_found: 'Não encontrei essa magia no loadout atual.',
     magic_on_cooldown: 'Sua magia ainda está em cooldown.',
+    elemental_skill_on_cooldown: 'Sua habilidade elemental ainda está em cooldown.',
+    insufficient_skill_energy: 'Energia insuficiente para usar essa habilidade.',
+    target_not_water_nature: 'Essa habilidade só pode ser aplicada em alvo de natureza Água.',
+    invalid_target: 'Alvo inválido para essa habilidade.',
+    characteristic_skill_requires_level_50: 'Magia característica exige Pokémon nível 50.',
     defeat: 'Seu Pokémon foi derrotado na dungeon.',
   }[reason] || 'Não foi possível iniciar a dungeon agora.';
 }
@@ -70,7 +77,7 @@ async function validateDungeonPokemonSelection({ slackUserId, pokemonId }) {
 }
 
 async function getEligibleDungeonPokemons(slackUserId) {
-  const pokemons = await getUserPokemons(slackUserId);
+  const pokemons = await getUserPokemons(slackUserId, { onlyBattleAvailable: true, limit: 25 });
   const eligible = [];
 
   for (const pokemon of pokemons) {
@@ -80,6 +87,12 @@ async function getEligibleDungeonPokemons(slackUserId) {
   }
 
   return eligible;
+}
+
+function normalizeCapturedRewardLevel(level) {
+  const numericLevel = Number(level);
+  if (!Number.isFinite(numericLevel)) return USER_POKEMON_LEVEL_MIN;
+  return Math.max(USER_POKEMON_LEVEL_MIN, Math.min(USER_POKEMON_LEVEL_CAP, Math.floor(numericLevel)));
 }
 
 function getFarmReward(level) {
@@ -365,18 +378,44 @@ async function grantDungeonRewards({ slackUserId, reward, transactionType, captu
 
   let captured = null;
   if (capturedSpecies) {
-    const stats = calculatePokemonStats({ species: capturedSpecies, level: enemyLevel || 1 });
-    captured = await insertUserPokemon({ slackUserId, speciesId: capturedSpecies.id, level: enemyLevel || 1, shiny: false, stats, source: transactionType });
-    logger.info('Pokémon de recompensa da dungeon persistido', {
-      file: 'services/dungeonService.js',
-      method: 'grantDungeonRewards',
-      slackUserId,
-      transactionType,
-      capturedSpeciesId: capturedSpecies.id,
-      enemyLevel: enemyLevel || 1,
-      capturedPokemonId: captured?.id || null,
-      grantStatus: 'captured_reward_granted',
-    });
+    const rewardPokemonLevel = normalizeCapturedRewardLevel(enemyLevel);
+    const stats = calculatePokemonStats({ species: capturedSpecies, level: rewardPokemonLevel });
+    try {
+      captured = await insertUserPokemon({
+        slackUserId,
+        speciesId: capturedSpecies.id,
+        level: rewardPokemonLevel,
+        shiny: false,
+        stats,
+        source: transactionType,
+      });
+      logger.info('Pokémon de recompensa da dungeon persistido', {
+        file: 'services/dungeonService.js',
+        method: 'grantDungeonRewards',
+        slackUserId,
+        transactionType,
+        capturedSpeciesId: capturedSpecies.id,
+        enemyLevel: enemyLevel || 1,
+        rewardPokemonLevel,
+        capturedPokemonId: captured?.id || null,
+        grantStatus: 'captured_reward_granted',
+      });
+    } catch (captureError) {
+      logger.error('Falha ao persistir Pokémon de recompensa da dungeon; mantendo conclusão da dungeon', {
+        file: 'services/dungeonService.js',
+        method: 'grantDungeonRewards',
+        slackUserId,
+        transactionType,
+        capturedSpeciesId: capturedSpecies.id,
+        enemyLevel: enemyLevel || 1,
+        rewardPokemonLevel,
+        postgresMessage: captureError?.message,
+        postgresDetails: captureError?.details,
+        postgresHint: captureError?.hint,
+        postgresCode: captureError?.code,
+        error: captureError,
+      });
+    }
   }
 
   return { goldReward: formatGold(reward.gold), xpResult, items, captured, goldTransaction: Array.isArray(goldData) ? goldData[0] : goldData };
@@ -831,6 +870,9 @@ function processEnemyTurnIfNeeded({ battle, trigger = 'unknown', maxEnemyTurns =
 
 async function finalizeDungeonBattle(battle) {
   const playerUserId = battle.metadata?.slackUserId || battle.challengerId;
+  if (battle.metadata?.finalCompletion) {
+    return battle.metadata.finalCompletion;
+  }
   const playerState = battle.players[playerUserId];
   await persistPlayerBattleHp(playerUserId, playerState);
 
@@ -851,11 +893,13 @@ async function finalizeDungeonBattle(battle) {
   });
 
   if (!isPlayerVictory) {
-    return { ok: true, outcome: 'defeat', rewards: null };
+    const defeatCompletion = { ok: true, outcome: 'defeat', rewards: null };
+    battle.metadata.finalCompletion = defeatCompletion;
+    return defeatCompletion;
   }
 
   if (battle.metadata?.rewardsGranted) {
-    return { ok: false, reason: 'reward_already_granted' };
+    return battle.metadata.finalCompletion || { ok: true, outcome: 'victory', rewards: battle.metadata?.lastRewards || null, capturedSpecies: battle.metadata?.capturedSpecies || null };
   }
 
   let capturedSpecies = null;
@@ -879,6 +923,7 @@ async function finalizeDungeonBattle(battle) {
   });
 
   battle.metadata.rewardsGranted = true;
+  battle.metadata.lastRewards = rewards;
   battle.metadata.capturedSpecies = capturedSpecies;
 
   logger.info('Recompensas de dungeon concedidas', {
@@ -893,7 +938,9 @@ async function finalizeDungeonBattle(battle) {
     capturedSpeciesId: capturedSpecies?.id || null,
   });
 
-  return { ok: true, outcome: 'victory', rewards, capturedSpecies };
+  const victoryCompletion = { ok: true, outcome: 'victory', rewards, capturedSpecies };
+  battle.metadata.finalCompletion = victoryCompletion;
+  return victoryCompletion;
 }
 
 async function processDungeonTurn({ channelId, actorUserId, actionType, actionPayload = {} }) {
@@ -913,6 +960,12 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
     const lockedOwnerUserId = getDungeonOwnerUserId(lockedBattle);
     if (lockedOwnerUserId !== actorUserId) {
       return { ok: false, reason: 'not_dungeon_owner', battle: lockedBattle, ownerUserId: lockedOwnerUserId };
+    }
+
+    if (lockedBattle.status === 'finished') {
+      const completion = await finalizeDungeonBattle(lockedBattle);
+      battleStore.setBattle(lockedBattle.channelId, lockedBattle);
+      return { ok: true, battle: lockedBattle, completion };
     }
 
     const validation = validateTurnAction({ battle: lockedBattle, actorUserId, actionType });

@@ -30,6 +30,11 @@ module.exports = {
           await say(`Você só pode vender Pokémons que pertencem a você.${invalidIds}`);
           return;
         }
+        if (preview.reason === "favorite_pokemon_blocked") {
+          const blockedIds = preview.favoriteIds?.length ? ` IDs favoritas: ${preview.favoriteIds.join(", ")}.` : "";
+          await say(`❌ Não é possível vender Pokémon favorito.${blockedIds} Remova dos favoritos antes de vender.`);
+          return;
+        }
 
         await say("Não consegui preparar a venda desse(s) Pokémon(s) agora 😵");
         return;

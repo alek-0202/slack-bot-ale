@@ -42,7 +42,7 @@ async function insertUserPokemon({
       current_hp: stats.currentHp ?? stats.hp,
       speed: stats.speed,
       source,
-      is_battle_available: true,
+      is_battle_available: false,
       is_favorite: false,
     })
     .select("id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite")
@@ -134,17 +134,28 @@ async function getUserPokemonsByIds(slackUserId, pokemonIds) {
   return data || [];
 }
 
-async function getUserPokemons(slackUserId) {
+async function getUserPokemons(slackUserId, options = {}) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const onlyBattleAvailable = options.onlyBattleAvailable === true;
+  const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : null;
+
+  let query = supabase
     .from("user_pokemons")
     .select(
       "id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, pokemon_species(id, name, sprite_url, rarity, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
     )
-    .eq("slack_user_id", slackUserId)
+    .eq("slack_user_id", slackUserId);
+
+  if (onlyBattleAvailable) query = query.eq("is_battle_available", true);
+
+  query = query
     .order("is_favorite", { ascending: false })
     .order("captured_at", { ascending: false })
     .order("id", { ascending: false });
+
+  if (limit) query = query.limit(limit);
+
+  const { data, error } = await query;
 
   if (error) throw error;
   return data || [];
@@ -234,10 +245,14 @@ async function togglePokemonFavorite(slackUserId, pokemonId) {
   const pokemon = await getUserPokemonById(slackUserId, pokemonId);
   if (!pokemon) return null;
 
+  return setPokemonFavorite(slackUserId, pokemonId, !pokemon.is_favorite);
+}
+
+async function setPokemonFavorite(slackUserId, pokemonId, isFavorite) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("user_pokemons")
-    .update({ is_favorite: !pokemon.is_favorite })
+    .update({ is_favorite: Boolean(isFavorite) })
     .eq("id", pokemonId)
     .eq("slack_user_id", slackUserId)
     .select("id, is_favorite")
@@ -259,4 +274,5 @@ module.exports = {
   filterUserPokemons,
   updatePokemonBattleAvailability,
   togglePokemonFavorite,
+  setPokemonFavorite,
 };

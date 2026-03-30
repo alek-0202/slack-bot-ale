@@ -1,5 +1,6 @@
 const { buildBattleViewModel } = require("../../../application/battle/renderers/battlePresenter");
 const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService");
+const { getAvailableElementalSkills, getSkillCooldownRemaining } = require("../../../application/battle/domain/elementalRules");
 
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
 const BATTLE_DECLINE_ACTION_ID = "battle_decline_invite";
@@ -168,7 +169,9 @@ function buildBattleLogBlock(battle, options = {}) {
 function buildBattleActionBlock(battle, options = {}) {
   if (battle.status !== "active") return null;
   const currentPlayer = battle.players[battle.currentTurnUserId];
-  const magicOnCooldown = (currentPlayer?.magicCooldown?.blockedOwnTurnsRemaining || 0) > 0;
+  const elementalSkills = getAvailableElementalSkills(currentPlayer || {});
+  const hasElementalReady = elementalSkills.some((entry) => getSkillCooldownRemaining(currentPlayer, entry.id) <= 0);
+  const magicOnCooldown = (currentPlayer?.magicCooldown?.blockedOwnTurnsRemaining || 0) > 0 && !hasElementalReady;
   const aliveReserves = (currentPlayer?.team || [])
     .filter((member, index) => index !== Number(currentPlayer.activeTeamIndex || 0))
     .filter((member) => Number(member?.battleHp?.current || 0) > 0);
@@ -216,7 +219,8 @@ function buildTurnButton({ battle, label, action, style, disabled = false, actio
 }
 
 function renderMagicOptions({ battle, actorUserId, magicSlots = [], options = {} }) {
-  if (!magicSlots.length) {
+  const entries = Array.isArray(magicSlots) ? magicSlots : [];
+  if (!entries.length) {
     return {
       text: "Seu Pokémon não possui magias registradas.",
       blocks: [
@@ -252,10 +256,10 @@ function renderMagicOptions({ battle, actorUserId, magicSlots = [], options = {}
       } : null,
       {
         type: "actions",
-        elements: magicSlots.map((magic) => ({
+        elements: entries.map((magic) => ({
           type: "button",
           action_id: magicActionIdBuilder(magic.slot),
-          text: { type: "plain_text", text: `${magic.slot}: ${magic.icon} ${magic.name}`.slice(0, 75) },
+          text: { type: "plain_text", text: `${magic.icon || "✨"} ${magic.name}${magic.cooldownRemaining > 0 ? ` (${magic.cooldownRemaining})` : ""}`.slice(0, 75) },
           value: JSON.stringify({ channelId: battle.channelId, magicSlot: magic.slot }),
         })),
       },
@@ -296,9 +300,15 @@ function renderMagicRegisterElementPrompt({ pokemon, elements, maxSlots }) {
 }
 
 function renderPokemonBlock(player) {
-  const magicText = Array.isArray(player.magicSlots) && player.magicSlots.length
-    ? player.magicSlots.map((magic) => `${magic.slot}. ${magic.icon} ${magic.name}`).join("\n")
+  const magicText = Array.isArray(player.magicActions) && player.magicActions.length
+    ? player.magicActions.map((magic) => `${magic.icon || "✨"} ${magic.name}${player.elementalCooldowns?.[magic.id] > 0 ? ` [CD ${player.elementalCooldowns[magic.id]}]` : ""}`).join("\n")
     : "Nenhuma registrada";
+  const statusText = Array.isArray(player.activeStatuses) && player.activeStatuses.length
+    ? player.activeStatuses.map((status) => `${status.name} x${status.stacks} (${status.remainingRounds}r)`).join(", ")
+    : "Sem status";
+  const effectText = Array.isArray(player.activeEffects) && player.activeEffects.length
+    ? player.activeEffects.map((effect) => `${effect.name}${effect.chargesRemaining != null ? ` [${effect.chargesRemaining} carga(s)]` : ""}${effect.remainingRounds != null ? ` (${effect.remainingRounds}r)` : ""}`).join(", ")
+    : "Sem efeitos";
 
   return (
     `*<@${player.userId}>*\n` +
@@ -309,8 +319,10 @@ function renderPokemonBlock(player) {
     `🛡️ DEF ${player.defense}\n` +
     `💨 SPD ${player.speed} | ⚡ Iniciativa ${player.initiativeGauge}/${player.initiativeThreshold}\n` +
     `🧪 Poções: ${player.potionsRemaining}\n` +
-    `⏳ Cooldown magia: ${player.magicCooldownRemaining}\n` +
-    `✨ Magias:\n${magicText}\n` +
+    `⏳ Cooldown magia padrão: ${player.magicCooldownRemaining}\n` +
+    `🧬 Status: ${statusText}\n` +
+    `🛡️ Efeitos: ${effectText}\n` +
+    `✨ Magias/Skills:\n${magicText}\n` +
     `🔁 Reservas:\n${renderReserveLines(player)}`
   );
 }

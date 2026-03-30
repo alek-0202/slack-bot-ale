@@ -224,6 +224,9 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
   }
 
   if (battle.status !== 'active') {
+    if (battle.metadata?.finalCompletion) {
+      return updateMessage(client, body, renderDungeonBattleFinished({ battle, completion: battle.metadata.finalCompletion }));
+    }
     await respondEphemeral(respond, mapDungeonFailureReason('battle_not_active'));
     return;
   }

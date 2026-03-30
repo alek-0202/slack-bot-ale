@@ -377,6 +377,7 @@ function registerPokemonActions(app) {
       if (!result.ok) {
         const map = {
           pokemon_not_owned: "Pokémon não encontrado ou não pertence a você.",
+          favorite_pokemon_blocked: "Não é possível vender Pokémon favorito. Remova o favorito antes de confirmar a venda.",
           pokemon_locked_in_trade: "Um dos Pokémons está preso em um trade pendente e não pode ser vendido agora.",
           sale_price_changed: "O valor da venda mudou desde a confirmação. Abra o !sell novamente para revisar o total atualizado.",
         };
@@ -385,7 +386,7 @@ function registerPokemonActions(app) {
       }
 
       const pokemonSummary = (result.pokemons || [result.pokemon])
-        .map((pokemon, index) => `• *${pokemon?.pokemon_species?.name || "Pokémon"}* (#${pokemon.id})${result.items?.[index] ? ` — *${result.items[index].priceBreakdown?.finalPrice || "0"}* gold` : ""}`)
+        .map((pokemon, index) => `• ${pokemon?.shiny ? "✨ " : ""}*${pokemon?.pokemon_species?.name || "Pokémon"}* (#${pokemon.id})${result.items?.[index] ? ` — *${result.items[index].priceBreakdown?.finalPrice || "0"}* gold` : ""}`)
         .join("\n");
       const updated = buildUpdatedMessage(
         `💸 *Venda concluída!*

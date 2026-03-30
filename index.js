@@ -38,6 +38,7 @@ const upgradeCommand = require("./commands/pokemon/upgrade");
 const marketCommand = require("./commands/pokemon/market");
 const tradeCommand = require("./commands/pokemon/trade");
 const sellCommand = require("./commands/pokemon/sell");
+const sellAllCommand = require("./commands/pokemon/sellall");
 const evolveCommand = require("./commands/pokemon/evolve");
 const upCommand = require("./commands/pokemon/up");
 const pokeidCommand = require("./commands/pokemon/pokeid");
@@ -130,6 +131,7 @@ for (const commandModule of [
   marketCommand,
   tradeCommand,
   sellCommand,
+  sellAllCommand,
   evolveCommand,
   upCommand,
   pokeidCommand,

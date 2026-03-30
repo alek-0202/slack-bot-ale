@@ -6,8 +6,9 @@ const sellServicePath = path.join(__dirname, "..", "services", "sellService.js")
 const supabasePath = path.join(__dirname, "..", "database", "supabase.js");
 const pokemonServicePath = path.join(__dirname, "..", "services", "pokemonService.js");
 
-function loadSellServiceWithMocks({ rpcResult, pokemons, rpcImpl }) {
+function loadSellServiceWithMocks({ rpcResult, pokemons, rpcImpl, tradeLockedIds = [] }) {
   const rpcCalls = [];
+  const fromCalls = [];
 
   delete require.cache[sellServicePath];
   delete require.cache[supabasePath];
@@ -20,6 +21,25 @@ function loadSellServiceWithMocks({ rpcResult, pokemons, rpcImpl }) {
     exports: {
       getSupabaseClient() {
         return {
+          from(table) {
+            fromCalls.push({ table });
+            return {
+              select() {
+                return this;
+              },
+              in(column, values) {
+                this._column = column;
+                this._values = values;
+                return this;
+              },
+              eq(column, value) {
+                const lockedRows = (tradeLockedIds || [])
+                  .filter((id) => (this._values || []).includes(id))
+                  .map((id) => ({ user_pokemon_id: id, trades: { status: "pending" } }));
+                return Promise.resolve({ data: column === "trades.status" && value === "pending" ? lockedRows : [], error: null });
+              },
+            };
+          },
           rpc(name, payload) {
             rpcCalls.push({ name, payload });
             if (rpcImpl) {
@@ -43,6 +63,9 @@ function loadSellServiceWithMocks({ rpcResult, pokemons, rpcImpl }) {
       async getUserPokemonsByIds() {
         return pokemons;
       },
+      async getUserPokemons() {
+        return pokemons;
+      },
     },
   };
 
@@ -51,6 +74,7 @@ function loadSellServiceWithMocks({ rpcResult, pokemons, rpcImpl }) {
   return {
     sellService,
     rpcCalls,
+    fromCalls,
     cleanup() {
       delete require.cache[sellServicePath];
       delete require.cache[supabasePath];
@@ -199,6 +223,123 @@ test("sellPokemonBatch faz fallback para a RPC legada quando a RPC em lote não 
         },
       },
     ]);
+  } finally {
+    context.cleanup();
+  }
+});
+
+test("sellPokemonBatch bloqueia venda de favorito antes da RPC", async () => {
+  const pokemons = [
+    {
+      id: 23,
+      level: 1,
+      upgrade_spent_gold: 0,
+      is_favorite: true,
+      pokemon_species: { name: "Pikachu", rarity: "common", base_value: 300 },
+    },
+  ];
+
+  const context = loadSellServiceWithMocks({
+    pokemons,
+    rpcResult: { ok: true },
+  });
+
+  try {
+    const result = await context.sellService.sellPokemonBatch({
+      slackUserId: "U123",
+      pokemonIds: [23],
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "favorite_pokemon_blocked");
+    assert.deepEqual(result.favoriteIds, [23]);
+    assert.equal(context.rpcCalls.length, 0);
+  } finally {
+    context.cleanup();
+  }
+});
+
+test("buildSellAllPreview filtra favoritos e pokémons bloqueados em trade antes da confirmação", async () => {
+  const pokemons = [
+    {
+      id: 10,
+      level: 1,
+      upgrade_spent_gold: 0,
+      is_favorite: false,
+      pokemon_species: { name: "Pikachu", rarity: "common", base_value: 300 },
+    },
+    {
+      id: 11,
+      level: 1,
+      upgrade_spent_gold: 200,
+      is_favorite: true,
+      pokemon_species: { name: "Bulbasaur", rarity: "rare", base_value: 500 },
+    },
+    {
+      id: 12,
+      level: 2,
+      upgrade_spent_gold: 100,
+      is_favorite: false,
+      pokemon_species: { name: "Squirtle", rarity: "uncommon", base_value: 400 },
+    },
+  ];
+
+  const context = loadSellServiceWithMocks({
+    pokemons,
+    tradeLockedIds: [12],
+    rpcResult: { ok: true },
+  });
+
+  try {
+    const preview = await context.sellService.buildSellAllPreview({ slackUserId: "U123" });
+
+    assert.equal(preview.ok, true);
+    assert.deepEqual(preview.pokemonIds, [10]);
+    assert.equal(preview.totalCount, 1);
+    assert.equal(preview.favoriteIgnoredCount, 1);
+    assert.equal(preview.blockedCount, 1);
+    assert.equal(preview.ignoredCount, 2);
+    assert.equal(preview.totalSellPrice, "300");
+    assert.equal(preview.totalEssenceReceived, "100");
+    assert.equal(context.rpcCalls.length, 0);
+  } finally {
+    context.cleanup();
+  }
+});
+
+test("buildSellAllPreview retorna no_sellable_pokemon quando todos são ignorados ou bloqueados", async () => {
+  const pokemons = [
+    {
+      id: 20,
+      level: 1,
+      upgrade_spent_gold: 0,
+      is_favorite: true,
+      pokemon_species: { name: "Pikachu", rarity: "common", base_value: 300 },
+    },
+    {
+      id: 21,
+      level: 1,
+      upgrade_spent_gold: 0,
+      is_favorite: false,
+      pokemon_species: { name: "Charmander", rarity: "common", base_value: 300 },
+    },
+  ];
+
+  const context = loadSellServiceWithMocks({
+    pokemons,
+    tradeLockedIds: [21],
+    rpcResult: { ok: true },
+  });
+
+  try {
+    const preview = await context.sellService.buildSellAllPreview({ slackUserId: "U123" });
+
+    assert.equal(preview.ok, false);
+    assert.equal(preview.reason, "no_sellable_pokemon");
+    assert.equal(preview.favoriteIgnoredCount, 1);
+    assert.equal(preview.blockedCount, 1);
+    assert.equal(preview.ignoredCount, 2);
+    assert.equal(context.rpcCalls.length, 0);
   } finally {
     context.cleanup();
   }
