@@ -4,7 +4,7 @@ const { createLogger } = require("../utils/logger");
 const { getOwnedPokemonById } = require("./pokemonLookupService");
 const { normalizePokemonTypes } = require("./pokemonTypeService");
 const { getRandomMagicName, getElementIcon, getElementLabel } = require("./magicLibraryService");
-const { getElementalRules } = require("../application/battle/domain/elementalRules");
+const { ENABLE_ELEMENTAL_SKILLS, getElementalRules } = require("../application/battle/domain/elementalRules");
 
 const logger = createLogger("pokemon-magic-service");
 const MAX_MAGIC_SLOTS = 5;
@@ -36,6 +36,7 @@ function canRegisterCharacteristicSkills(pokemon) {
 }
 
 function buildCharacteristicSkillEntriesFromElements(elements = [], pokemonLevel = 0) {
+  if (!ENABLE_ELEMENTAL_SKILLS) return [];
   if ((Number(pokemonLevel) || 0) < CHARACTERISTIC_SKILL_MIN_LEVEL) return [];
 
   const normalized = normalizePokemonTypes(elements);

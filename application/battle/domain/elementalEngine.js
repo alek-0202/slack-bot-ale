@@ -2,6 +2,7 @@ require("./fireElementRules");
 require("./waterElementRules");
 
 const {
+  ENABLE_ELEMENTAL_SKILLS,
   BATTLE_HOOK,
   getElementalRules,
   getAvailableMagicActions,
@@ -22,6 +23,7 @@ function parseMagicActionSlot(rawMagicSlot) {
 
 function resolveMagicActionEntry(playerState, rawMagicSlot) {
   const parsed = parseMagicActionSlot(rawMagicSlot);
+  if (!ENABLE_ELEMENTAL_SKILLS && parsed.kind === "elemental") return null;
   const actions = getAvailableMagicActions(playerState);
 
   if (parsed.kind === "regular") {
@@ -32,6 +34,12 @@ function resolveMagicActionEntry(playerState, rawMagicSlot) {
 }
 
 function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage }) {
+  if (!ENABLE_ELEMENTAL_SKILLS) {
+    return {
+      finalDamage: Math.max(0, Number(damage || 0)),
+      logs: [],
+    };
+  }
   let modifiedDamage = Math.max(0, Number(damage || 0));
   const logs = [];
 
@@ -93,6 +101,12 @@ function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage }) {
 }
 
 function applyOnHitHooks({ battle, attackerId, defenderId, damage }) {
+  if (!ENABLE_ELEMENTAL_SKILLS) {
+    return {
+      finalDamage: Math.max(0, Number(damage || 0)),
+      logs: [],
+    };
+  }
   let modifiedDamage = Math.max(0, Number(damage || 0));
   const logs = [];
 
@@ -131,6 +145,7 @@ function applyOnHitHooks({ battle, attackerId, defenderId, damage }) {
 }
 
 function runEndOfRound({ battle }) {
+  if (!ENABLE_ELEMENTAL_SKILLS) return [];
   const logs = [];
 
   for (const element of ["fire"]) {
@@ -151,6 +166,7 @@ function getElementalSkillCooldown(playerState, skillId) {
 }
 
 function runElementalSkillCast({ battle, actorId, defenderId, skillEntry, targetId = null }) {
+  if (!ENABLE_ELEMENTAL_SKILLS) return { ok: false, reason: "magic_not_found" };
   const actor = battle.players[actorId];
   const defender = battle.players[defenderId];
   ensureElementalState(actor);
