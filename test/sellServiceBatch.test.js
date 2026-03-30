@@ -259,6 +259,56 @@ test("sellPokemonBatch bloqueia venda de favorito antes da RPC", async () => {
   }
 });
 
+test("sellAllPokemonBatch processa em chunks para alto volume e retorna resumo agregado", async () => {
+  const pokemons = Array.from({ length: 260 }, (_, index) => ({
+    id: index + 1,
+    level: 1,
+    upgrade_spent_gold: 0,
+    is_favorite: index < 10,
+    pokemon_species: { name: `Poke${index + 1}`, rarity: "common", base_value: 300 },
+  }));
+
+  const context = loadSellServiceWithMocks({
+    pokemons,
+    tradeLockedIds: [11, 12, 13, 14, 15],
+    rpcImpl(name, payload, rpcCalls) {
+      if (name !== "sell_user_pokemons_batch") return { data: [{ ok: false, reason: "unknown" }], error: null };
+      const salePrice = payload.p_pokemon_ids.length * 300;
+      return {
+        data: [{
+          ok: true,
+          reason: null,
+          sale_price: salePrice,
+          essence_gained: payload.p_pokemon_ids.length * 100,
+          remaining_gold: 1000 + rpcCalls.filter((call) => call.name === "sell_user_pokemons_batch").length * salePrice,
+          remaining_essence: payload.p_pokemon_ids.length * 100,
+          deleted_trade_items: 0,
+          deleted_market_purchases: 0,
+        }],
+        error: null,
+      };
+    },
+  });
+
+  try {
+    const result = await context.sellService.sellAllPokemonBatch({ slackUserId: "U123" });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.soldCount, 245);
+    assert.equal(result.ignoredCount, 15);
+    assert.equal(result.favoriteIgnoredCount, 10);
+    assert.equal(result.blockedCount, 5);
+    assert.equal(result.goldReceived, String(245 * 300));
+    assert.equal(result.essenceReceived, String(245 * 100));
+
+    const batchRpcCalls = context.rpcCalls.filter((call) => call.name === "sell_user_pokemons_batch");
+    assert.equal(batchRpcCalls.length, 3);
+    assert.deepEqual(batchRpcCalls.map((call) => call.payload.p_pokemon_ids.length), [120, 120, 5]);
+  } finally {
+    context.cleanup();
+  }
+});
+
 test("buildSellAllPreview filtra favoritos e pokémons bloqueados em trade antes da confirmação", async () => {
   const pokemons = [
     {
