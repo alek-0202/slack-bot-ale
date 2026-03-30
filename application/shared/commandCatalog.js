@@ -140,6 +140,13 @@ const sharedCommandCatalog = {
     slackUsage: '`!magicregister <pokeid>`',
     discordDescription: 'Registra as magias de um Pokémon',
   },
+  mrskill: {
+    name: 'mrskill',
+    category: 'pokemon',
+    summary: 'Atalho para abrir o menu de magia/skill durante batalha ativa',
+    slackUsage: '`!mrskill`',
+    discordDescription: 'Atalho de magia/skill em batalha',
+  },
 
   dungeon: {
     name: 'dungeon',

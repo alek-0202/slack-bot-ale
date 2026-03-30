@@ -4,7 +4,10 @@ const ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER = 0.3;
 const ELEMENTAL_ADVANTAGE_MULTIPLIER = 2;
 const ELEMENTAL_NEUTRAL_MULTIPLIER = 1;
 const MAX_ELEMENTAL_SKILL_SLOTS_PER_ELEMENT = 2;
-const ENABLE_ELEMENTAL_SKILLS = false;
+const ENABLE_ELEMENTAL_SKILLS = (
+  String(process.env.ENABLE_ELEMENTAL_SKILLS || "").toLowerCase() === "true"
+  && String(process.env.NODE_ENV || "development").toLowerCase() !== "production"
+);
 
 const BATTLE_HOOK = {
   BEFORE_DAMAGE: "beforeDamage",
@@ -22,6 +25,10 @@ function registerElementalRules(element, rules) {
 function getElementalRules(element) {
   if (!ENABLE_ELEMENTAL_SKILLS) return null;
   return elementalRegistry.get(normalizeElementName(element)) || null;
+}
+
+function getRegisteredElementalRules() {
+  return Array.from(elementalRegistry.entries()).map(([element, rules]) => ({ element, rules }));
 }
 
 function getElementalEfficiencyMultiplier(playerState) {
@@ -173,6 +180,11 @@ function tickRoundTimers(playerState) {
         Math.max(0, Number(effect.cooldownOnExpire.rounds || 0)),
       );
     }
+    if (effect?.grantEffectOnExpire?.id) {
+      addOrRefreshEffect(playerState, {
+        ...effect.grantEffectOnExpire,
+      });
+    }
   }
 }
 
@@ -183,6 +195,7 @@ module.exports = {
   ELEMENTAL_ADVANTAGE_MULTIPLIER,
   registerElementalRules,
   getElementalRules,
+  getRegisteredElementalRules,
   getElementalEfficiencyMultiplier,
   resolveElementalDamageRule,
   ensureElementalState,

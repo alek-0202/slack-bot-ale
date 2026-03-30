@@ -201,7 +201,12 @@ function resolveNextTurnBySpeed({ battle, actorUserId, energyPenalty = 0 }) {
   let ticks = 0;
   while (!playerIds.some((userId) => (Number(gauges[userId]) || 0) >= threshold) && ticks < 1000) {
     for (const userId of playerIds) {
-      const speed = Math.max(1, Number(battle.players[userId]?.stats?.speed) || 1);
+      const baseSpeed = Math.max(1, Number(battle.players[userId]?.stats?.speed) || 1);
+      const effects = battle.players[userId]?.elementalState?.effects || [];
+      const speedMultiplier = effects
+        .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0 && effect?.speedMultiplier != null)
+        .reduce((acc, effect) => acc * Math.max(0.1, Number(effect.speedMultiplier || 1)), 1);
+      const speed = Math.max(1, Math.round(baseSpeed * speedMultiplier));
       gauges[userId] = (Number(gauges[userId]) || 0) + speed;
     }
     ticks += 1;
