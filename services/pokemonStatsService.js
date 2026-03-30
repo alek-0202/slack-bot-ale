@@ -189,6 +189,61 @@ function calculatePokemonStats({ species = {}, level = 1, fallbackStats = {}, iv
   });
 }
 
+function buildPokemonStatAudit({ species = {}, level = 1, fallbackStats = {}, ivOffsets = {}, shiny = false, shinyType = null, bookBonuses = {} } = {}) {
+  const rarity = normalizeRarity(species.rarity);
+  const normalizedBookBonuses = normalizeIvOffsets({
+    attack: bookBonuses.attack,
+    magic: bookBonuses.magic,
+    defense: bookBonuses.defense,
+    hp: bookBonuses.hp,
+    speed: bookBonuses.speed,
+  });
+  const levelSafe = normalizeLevel(level);
+
+  const baseStats = getSpeciesBaseStats(species, { fallbackStats });
+  const withIvAndPrime = applyIvAndShinyModifiers({
+    baseStats,
+    ivOffsets,
+    shiny: false,
+    shinyType: shiny ? shinyType : null,
+    rarity,
+  });
+  const progression = calculateProgressedStats({
+    baseStats: withIvAndPrime,
+    level: levelSafe,
+  });
+  const withShiny = applyIvAndShinyModifiers({
+    baseStats: progression.stats,
+    ivOffsets: {},
+    shiny,
+    shinyType: null,
+    rarity,
+  });
+
+  const finalWithBook = STAT_FIELDS.reduce((acc, statKey) => {
+    acc[statKey] = Math.max(1, Number(withShiny[statKey] || 0) + Number(normalizedBookBonuses[statKey] || 0));
+    return acc;
+  }, {});
+
+  return {
+    level: levelSafe,
+    rarity,
+    shiny: Boolean(shiny),
+    shinyType: shiny ? (shinyType || SHINY_TYPE.NORMAL) : null,
+    stages: {
+      baseSpecies: baseStats,
+      withIvAndPrime,
+      afterLevelScaling: progression.stats,
+      withShiny,
+      finalWithBook,
+    },
+    stars: progression.stars,
+    milestonesApplied: progression.milestonesApplied,
+    level50BonusApplied: progression.level50BonusApplied,
+    bookBonuses: normalizedBookBonuses,
+  };
+}
+
 function getPokemonProgressionSnapshot({ species = {}, level = 1, fallbackStats = {}, ivOffsets = {}, shiny = false, shinyType = null, log = false, context = {} } = {}) {
   const baseStats = getSpeciesBaseStats(species, { fallbackStats });
   const rarity = normalizeRarity(species.rarity);
@@ -259,6 +314,7 @@ module.exports = {
   getPokemonStars,
   formatPokemonStars,
   calculatePokemonStats,
+  buildPokemonStatAudit,
   getPokemonProgressionSnapshot,
   getStatSnapshotMetadata,
 };
