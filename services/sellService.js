@@ -52,6 +52,10 @@ async function buildSellPreviewBatch({ slackUserId, pokemonIds }) {
   if (missingIds.length) {
     return { ok: false, reason: "pokemon_not_owned", missingIds };
   }
+  const favoriteIds = requestedIds.filter((id) => Boolean(pokemonById.get(id)?.is_favorite));
+  if (favoriteIds.length) {
+    return { ok: false, reason: "favorite_pokemon_blocked", favoriteIds };
+  }
 
   const items = requestedIds.map((pokemonId) => {
     const pokemon = pokemonById.get(pokemonId);
@@ -167,6 +171,16 @@ async function sellPokemonBatch({ slackUserId, pokemonIds }) {
 
   if (!preview.ok) {
     return preview;
+  }
+
+  if (preview.pokemons?.some((pokemon) => Boolean(pokemon?.is_favorite))) {
+    return {
+      ok: false,
+      reason: "favorite_pokemon_blocked",
+      favoriteIds: preview.pokemons.filter((pokemon) => pokemon?.is_favorite).map((pokemon) => pokemon.id),
+      pokemons: preview.pokemons,
+      pokemonIds: preview.pokemonIds,
+    };
   }
 
   const { data, error } = await supabase.rpc("sell_user_pokemons_batch", {

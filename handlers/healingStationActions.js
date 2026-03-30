@@ -41,20 +41,30 @@ function mapReason(reason) {
 function registerHealingStationActions(app) {
   app.action(HEALSTATION_ADD_ACTION_ID, async ({ ack, body, action, client, respond }) => {
     await ack();
-    const payload = parsePokemonActionValue(action?.value);
-    const actorUserId = body.user?.id;
-    if (actorUserId !== payload?.slackUserId) return respond(buildUnauthorizedActionMessage(payload?.slackUserId));
-    const eligible = await getHealingEligibilityList(actorUserId);
-    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, ...renderHealingSelection({ mode: 'add', slackUserId: actorUserId, pokemons: eligible }) });
+    try {
+      const payload = parsePokemonActionValue(action?.value);
+      const actorUserId = body.user?.id;
+      if (actorUserId !== payload?.slackUserId) return respond(buildUnauthorizedActionMessage(payload?.slackUserId));
+      const eligible = await getHealingEligibilityList(actorUserId);
+      await client.chat.update({ channel: body.channel.id, ts: body.message.ts, ...renderHealingSelection({ mode: 'add', slackUserId: actorUserId, pokemons: eligible }) });
+    } catch (error) {
+      logger.error('Erro no botão de adicionar da healstation', { actorUserId: body.user?.id, error });
+      await respond({ response_type: 'ephemeral', text: 'Não consegui abrir a lista de adição agora 😵' });
+    }
   });
 
   app.action(HEALSTATION_REMOVE_ACTION_ID, async ({ ack, body, action, client, respond }) => {
     await ack();
-    const payload = parsePokemonActionValue(action?.value);
-    const actorUserId = body.user?.id;
-    if (actorUserId !== payload?.slackUserId) return respond(buildUnauthorizedActionMessage(payload?.slackUserId));
-    const view = await getHealingStationView(actorUserId);
-    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, ...renderHealingSelection({ mode: 'remove', slackUserId: actorUserId, pokemons: view.slots }) });
+    try {
+      const payload = parsePokemonActionValue(action?.value);
+      const actorUserId = body.user?.id;
+      if (actorUserId !== payload?.slackUserId) return respond(buildUnauthorizedActionMessage(payload?.slackUserId));
+      const view = await getHealingStationView(actorUserId);
+      await client.chat.update({ channel: body.channel.id, ts: body.message.ts, ...renderHealingSelection({ mode: 'remove', slackUserId: actorUserId, pokemons: view.slots }) });
+    } catch (error) {
+      logger.error('Erro no botão de remover da healstation', { actorUserId: body.user?.id, error });
+      await respond({ response_type: 'ephemeral', text: 'Não consegui abrir a lista de remoção agora 😵' });
+    }
   });
 
   app.action(HEALSTATION_PICK_ADD_ACTION_ID, async ({ ack, body, action, client, respond }) => {

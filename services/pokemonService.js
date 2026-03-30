@@ -234,10 +234,14 @@ async function togglePokemonFavorite(slackUserId, pokemonId) {
   const pokemon = await getUserPokemonById(slackUserId, pokemonId);
   if (!pokemon) return null;
 
+  return setPokemonFavorite(slackUserId, pokemonId, !pokemon.is_favorite);
+}
+
+async function setPokemonFavorite(slackUserId, pokemonId, isFavorite) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("user_pokemons")
-    .update({ is_favorite: !pokemon.is_favorite })
+    .update({ is_favorite: Boolean(isFavorite) })
     .eq("id", pokemonId)
     .eq("slack_user_id", slackUserId)
     .select("id, is_favorite")
@@ -259,4 +263,5 @@ module.exports = {
   filterUserPokemons,
   updatePokemonBattleAvailability,
   togglePokemonFavorite,
+  setPokemonFavorite,
 };

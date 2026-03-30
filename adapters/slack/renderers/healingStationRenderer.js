@@ -11,6 +11,14 @@ function actionValue(payload) {
   return JSON.stringify(payload);
 }
 
+function buildRows(elements, perRow = 5) {
+  const rows = [];
+  for (let index = 0; index < elements.length; index += perRow) {
+    rows.push({ type: 'actions', elements: elements.slice(index, index + perRow) });
+  }
+  return rows;
+}
+
 function renderHealingStation(view, slackUserId) {
   const slotsText = view.slots.length
     ? view.slots.map((slot) => `• *${slot.speciesName}* (#${slot.pokemonId}) — ❤️ ${slot.currentHp}/${slot.hpMax} (${slot.percent}%)`).join('\n')
@@ -46,7 +54,7 @@ function renderHealingSelection({ mode, slackUserId, pokemons = [] }) {
     blocks: [
       { type: 'header', text: { type: 'plain_text', text: title, emoji: true } },
       { type: 'section', text: { type: 'mrkdwn', text: elements.length ? 'Escolha um Pokémon:' : emptyText } },
-      ...(elements.length ? [{ type: 'actions', elements: elements.slice(0, 5) }] : []),
+      ...(elements.length ? buildRows(elements) : []),
       { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Cancelar', emoji: true }, action_id: HEALSTATION_CANCEL_ACTION_ID, value: actionValue({ slackUserId }) }] },
     ],
   };

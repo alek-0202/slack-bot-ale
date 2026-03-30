@@ -554,12 +554,13 @@ as $$
 declare
   v_base_value bigint;
   v_upgrade_spent_gold bigint;
+  v_is_favorite boolean := false;
   v_sale_price bigint;
   v_trade_items integer := 0;
   v_market_purchases integer := 0;
 begin
-  select ps.base_value, coalesce(up.upgrade_spent_gold, 0)
-    into v_base_value, v_upgrade_spent_gold
+  select ps.base_value, coalesce(up.upgrade_spent_gold, 0), coalesce(up.is_favorite, false)
+    into v_base_value, v_upgrade_spent_gold, v_is_favorite
   from public.user_pokemons up
   join public.pokemon_species ps on ps.id = up.species_id
   where up.id = p_pokemon_id
@@ -579,6 +580,11 @@ begin
       and t.status = 'pending'
   ) then
     return query select false, 'pokemon_locked_in_trade', null::bigint, null::bigint, 0, 0;
+    return;
+  end if;
+
+  if v_is_favorite then
+    return query select false, 'favorite_pokemon_blocked', null::bigint, null::bigint, 0, 0;
     return;
   end if;
 
@@ -630,6 +636,7 @@ declare
   v_sale_price bigint := 0;
   v_trade_items integer := 0;
   v_market_purchases integer := 0;
+  v_favorite_count integer := 0;
 begin
   select coalesce(array_agg(distinct id), '{}'::bigint[])
     into v_requested_ids
@@ -642,7 +649,7 @@ begin
   end if;
 
   for v_pokemon in
-    select up.id, ps.base_value, coalesce(up.upgrade_spent_gold, 0) as upgrade_spent_gold
+    select up.id, ps.base_value, coalesce(up.upgrade_spent_gold, 0) as upgrade_spent_gold, coalesce(up.is_favorite, false) as is_favorite
     from public.user_pokemons up
     join public.pokemon_species ps on ps.id = up.species_id
     where up.slack_user_id = p_slack_user_id
@@ -672,6 +679,18 @@ begin
 
   if v_locked_count > 0 then
     return query select false, 'pokemon_locked_in_trade', null::bigint, null::bigint, 0, 0;
+    return;
+  end if;
+
+  select count(*)
+    into v_favorite_count
+  from public.user_pokemons up
+  where up.slack_user_id = p_slack_user_id
+    and up.id = any(v_locked_ids)
+    and coalesce(up.is_favorite, false) = true;
+
+  if v_favorite_count > 0 then
+    return query select false, 'favorite_pokemon_blocked', null::bigint, null::bigint, 0, 0;
     return;
   end if;
 
