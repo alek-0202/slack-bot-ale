@@ -4,7 +4,13 @@ const { createLogger } = require("../utils/logger");
 const { getOwnedPokemonById } = require("./pokemonLookupService");
 const { normalizePokemonTypes, normalizePokemonType } = require("./pokemonTypeService");
 const { getRandomMagicName, getElementIcon, getElementLabel } = require("./magicLibraryService");
-const { ENABLE_ELEMENTAL_SKILLS, getElementalRules, getRegisteredElementalRules } = require("../application/battle/domain/elementalRules");
+const {
+  ENABLE_ELEMENTAL_SKILLS,
+  ENABLE_ELEMENTAL_SKILLS_REGISTRY,
+  ENABLE_ELEMENTAL_SKILLS_MRSKILL,
+  getElementalRules,
+  getRegisteredElementalRules,
+} = require("../application/battle/domain/elementalRules");
 
 const logger = createLogger("pokemon-magic-service");
 const MAX_MAGIC_SLOTS = 5;
@@ -36,7 +42,7 @@ function canRegisterCharacteristicSkills(pokemon) {
 }
 
 function buildCharacteristicSkillEntriesFromElements(elements = [], pokemonLevel = 0) {
-  if (!ENABLE_ELEMENTAL_SKILLS) return [];
+  if (!ENABLE_ELEMENTAL_SKILLS_REGISTRY) return [];
   if ((Number(pokemonLevel) || 0) < CHARACTERISTIC_SKILL_MIN_LEVEL) return [];
 
   const normalized = normalizePokemonTypes(elements);
@@ -199,6 +205,9 @@ function dedupeBySkillId(entries = []) {
 }
 
 async function getMrSkillSetup({ slackUserId, pokemonId }) {
+  if (!ENABLE_ELEMENTAL_SKILLS_MRSKILL) {
+    return { ok: false, reason: "characteristic_skills_disabled" };
+  }
   const pokemon = await getOwnedPokemonById(pokemonId);
   if (!pokemon) return { ok: false, reason: 'pokemon_not_found' };
   if (pokemon.slack_user_id !== slackUserId) return { ok: false, reason: 'not_owner', pokemon };
@@ -243,6 +252,8 @@ async function getMrSkillSetup({ slackUserId, pokemonId }) {
       normalizedElements: allElements,
       registryElements: getRegisteredElementalRules().map((entry) => entry.element),
       enableElementalSkills: ENABLE_ELEMENTAL_SKILLS,
+      enableElementalSkillsRegistry: ENABLE_ELEMENTAL_SKILLS_REGISTRY,
+      enableElementalSkillsMrskill: ENABLE_ELEMENTAL_SKILLS_MRSKILL,
     });
     return { ok: false, reason: 'no_characteristic_skills', pokemon };
   }

@@ -22,7 +22,7 @@ const {
   getFieldAttackBonuses,
 } = require("./elementalEngine");
 const { GRASS_EFFECT_FOREST_THORN, GRASS_EFFECT_SHORT_CUT, GRASS_EFFECT_SLOWNESS } = require("./grassElementRules");
-const { ensureElementalState, addOrRefreshEffect, ENABLE_ELEMENTAL_SKILLS } = require("./elementalRules");
+const { ensureElementalState, addOrRefreshEffect, ENABLE_ELEMENTAL_SKILLS_BATTLE } = require("./elementalRules");
 const { resolveSkillTargets, applyDamageToTargetRef } = require("./targetingEngine");
 const { ELECTRIC_EFFECT_FIELD_DEBUFF } = require("./electricElementRules");
 const { ICE_EFFECT_ARMOR } = require("./iceElementRules");
@@ -557,7 +557,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       }
     }
 
-    if (ENABLE_ELEMENTAL_SKILLS) {
+    if (ENABLE_ELEMENTAL_SKILLS_BATTLE) {
       const totalSkillCost = MAGIC_ENERGY_COST + extraEnergyCost;
       if (totalSkillCost >= 120) {
         const attackerEffects = ensureElementalState(attacker).effects || [];
@@ -652,7 +652,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     mergeRoundLogs(battle, damageWithHooks.logs, `⚔️ <@${actorUserId}> atacou <@${defenderId}>.`);
     const defenderEffects = ensureElementalState(defender).effects || [];
     const forestThorn = defenderEffects.find((effect) => effect.id === GRASS_EFFECT_FOREST_THORN);
-    if (ENABLE_ELEMENTAL_SKILLS && forestThorn?.reflectOnCommonAttack) {
+    if (ENABLE_ELEMENTAL_SKILLS_BATTLE && forestThorn?.reflectOnCommonAttack) {
       const attackerHpRatio = Number(attacker?.battleHp?.current || 0) / Math.max(1, Number(attacker?.battleHp?.max || 1));
       const useLowHpBonus = attackerHpRatio < Number(forestThorn.reflectOnCommonAttack.lowHpThreshold || 0.3);
       const reflectPct = useLowHpBonus
@@ -689,7 +689,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       );
     }
 
-    if (ENABLE_ELEMENTAL_SKILLS) {
+    if (ENABLE_ELEMENTAL_SKILLS_BATTLE) {
       const fieldBonuses = getFieldAttackBonuses({ battle, actorId: actorUserId });
       if (fieldBonuses && Math.random() < Number(fieldBonuses.splashChance || 0)) {
         const secondary = resolveSkillTargets({

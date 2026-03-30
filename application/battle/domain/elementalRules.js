@@ -5,9 +5,34 @@ const ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER = 0.3;
 const ELEMENTAL_ADVANTAGE_MULTIPLIER = 2;
 const ELEMENTAL_NEUTRAL_MULTIPLIER = 1;
 const MAX_ELEMENTAL_SKILL_SLOTS_PER_ELEMENT = 2;
-const ENABLE_ELEMENTAL_SKILLS = (
-  String(process.env.ENABLE_ELEMENTAL_SKILLS || "").toLowerCase() === "true"
+const APP_ENV = String(process.env.APP_ENV || process.env.NODE_ENV || "").toLowerCase();
+
+function parseBooleanEnv(value, fallback = false) {
+  if (value == null || value === "") return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
+const IS_DEV_ENV = ["development", "dev", "local"].includes(APP_ENV);
+const ENABLE_ELEMENTAL_SKILLS_MASTER = parseBooleanEnv(process.env.ENABLE_ELEMENTAL_SKILLS, false);
+const ENABLE_ELEMENTAL_SKILLS_IN_DEV = parseBooleanEnv(process.env.ENABLE_ELEMENTAL_SKILLS_IN_DEV, true);
+const ELEMENTAL_SKILLS_DEFAULT_ENABLED = ENABLE_ELEMENTAL_SKILLS_MASTER || (IS_DEV_ENV && ENABLE_ELEMENTAL_SKILLS_IN_DEV);
+
+const ENABLE_ELEMENTAL_SKILLS_REGISTRY = parseBooleanEnv(
+  process.env.ENABLE_ELEMENTAL_SKILLS_REGISTRY,
+  ELEMENTAL_SKILLS_DEFAULT_ENABLED,
 );
+const ENABLE_ELEMENTAL_SKILLS_MRSKILL = parseBooleanEnv(
+  process.env.ENABLE_ELEMENTAL_SKILLS_MRSKILL,
+  ELEMENTAL_SKILLS_DEFAULT_ENABLED,
+);
+const ENABLE_ELEMENTAL_SKILLS_BATTLE = parseBooleanEnv(
+  process.env.ENABLE_ELEMENTAL_SKILLS_BATTLE,
+  ELEMENTAL_SKILLS_DEFAULT_ENABLED,
+);
+const ENABLE_ELEMENTAL_SKILLS = ELEMENTAL_SKILLS_DEFAULT_ENABLED;
 
 const BATTLE_HOOK = {
   BEFORE_DAMAGE: "beforeDamage",
@@ -23,7 +48,6 @@ function registerElementalRules(element, rules) {
 }
 
 function getElementalRules(element) {
-  if (!ENABLE_ELEMENTAL_SKILLS) return null;
   return elementalRegistry.get(normalizeElementName(element)) || null;
 }
 
@@ -97,7 +121,7 @@ function addOrRefreshEffect(playerState, effect) {
 }
 
 function getAvailableElementalSkills(playerState) {
-  if (!ENABLE_ELEMENTAL_SKILLS) return [];
+  if (!ENABLE_ELEMENTAL_SKILLS_BATTLE) return [];
   const byRegistration = Array.isArray(playerState?.characteristicSlots) ? playerState.characteristicSlots : [];
   if (byRegistration.length) {
     return byRegistration.map((entry) => ({
@@ -190,6 +214,10 @@ function tickRoundTimers(playerState) {
 
 module.exports = {
   ENABLE_ELEMENTAL_SKILLS,
+  ENABLE_ELEMENTAL_SKILLS_IN_DEV,
+  ENABLE_ELEMENTAL_SKILLS_REGISTRY,
+  ENABLE_ELEMENTAL_SKILLS_MRSKILL,
+  ENABLE_ELEMENTAL_SKILLS_BATTLE,
   BATTLE_HOOK,
   ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER,
   ELEMENTAL_ADVANTAGE_MULTIPLIER,
