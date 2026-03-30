@@ -67,6 +67,7 @@ module.exports = {
       const map = {
         pokemon_not_found: 'Pokémon não encontrado.',
         not_owner: 'Você não pode configurar skills de Pokémon de outro usuário.',
+        characteristic_skills_disabled: 'Skills características estão desativadas neste ambiente.',
         level_too_low: `Esse Pokémon precisa estar no nível ${setup.minLevel || 50}+ para usar !mrskill.`,
         pokemon_without_elements: 'Esse Pokémon não possui elementos válidos para skills características.',
         no_characteristic_skills: 'Nenhuma skill característica disponível para os elementos deste Pokémon.',

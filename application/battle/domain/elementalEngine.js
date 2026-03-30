@@ -8,7 +8,7 @@ require("./psychicElementRules");
 require("./ghostElementRules");
 
 const {
-  ENABLE_ELEMENTAL_SKILLS,
+  ENABLE_ELEMENTAL_SKILLS_BATTLE,
   BATTLE_HOOK,
   getElementalRules,
   getRegisteredElementalRules,
@@ -33,7 +33,7 @@ function parseMagicActionSlot(rawMagicSlot) {
 
 function resolveMagicActionEntry(playerState, rawMagicSlot) {
   const parsed = parseMagicActionSlot(rawMagicSlot);
-  if (!ENABLE_ELEMENTAL_SKILLS && parsed.kind === "elemental") return null;
+  if (!ENABLE_ELEMENTAL_SKILLS_BATTLE && parsed.kind === "elemental") return null;
   const actions = getAvailableMagicActions(playerState);
 
   if (parsed.kind === "regular") {
@@ -44,7 +44,7 @@ function resolveMagicActionEntry(playerState, rawMagicSlot) {
 }
 
 function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage }) {
-  if (!ENABLE_ELEMENTAL_SKILLS) {
+  if (!ENABLE_ELEMENTAL_SKILLS_BATTLE) {
     return {
       finalDamage: Math.max(0, Number(damage || 0)),
       logs: [],
@@ -111,7 +111,7 @@ function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage }) {
 }
 
 function applyOnHitHooks({ battle, attackerId, defenderId, damage }) {
-  if (!ENABLE_ELEMENTAL_SKILLS) {
+  if (!ENABLE_ELEMENTAL_SKILLS_BATTLE) {
     return {
       finalDamage: Math.max(0, Number(damage || 0)),
       logs: [],
@@ -167,7 +167,7 @@ function applyOnHitHooks({ battle, attackerId, defenderId, damage }) {
 }
 
 function runEndOfRound({ battle }) {
-  if (!ENABLE_ELEMENTAL_SKILLS) return [];
+  if (!ENABLE_ELEMENTAL_SKILLS_BATTLE) return [];
   const logs = [];
   const uniqueElements = [...new Set(
     normalizeElementList(
@@ -196,7 +196,7 @@ function getForcedAction(playerState) {
 }
 
 function resolveMobilityInterception({ battle, actorId, actionType, actionPayload = {} }) {
-  if (!ENABLE_ELEMENTAL_SKILLS) return { damageTaken: 0, logs: [] };
+  if (!ENABLE_ELEMENTAL_SKILLS_BATTLE) return { damageTaken: 0, logs: [] };
   const actor = battle.players?.[actorId];
   if (!actor) return { damageTaken: 0, logs: [] };
   const isMobilityAttempt = actionType === "switch" || actionPayload?.isMobilitySkill === true;
@@ -214,7 +214,7 @@ function resolveMobilityInterception({ battle, actorId, actionType, actionPayloa
 }
 
 function evaluateActionStartModifiers({ battle, actorId, actionType }) {
-  if (!ENABLE_ELEMENTAL_SKILLS) return { cancelTurn: false, damageMultiplier: 1, logs: [] };
+  if (!ENABLE_ELEMENTAL_SKILLS_BATTLE) return { cancelTurn: false, damageMultiplier: 1, logs: [] };
   const actor = battle.players?.[actorId];
   if (!actor) return { cancelTurn: false, damageMultiplier: 1, logs: [] };
   const logs = [];
@@ -260,7 +260,7 @@ function evaluateActionStartModifiers({ battle, actorId, actionType }) {
 }
 
 function getFieldAttackBonuses({ battle, actorId }) {
-  if (!ENABLE_ELEMENTAL_SKILLS) return null;
+  if (!ENABLE_ELEMENTAL_SKILLS_BATTLE) return null;
   const actor = battle.players?.[actorId];
   const field = (ensureElementalState(actor).effects || []).find((effect) => effect.id === ELECTRIC_EFFECT_FIELD);
   if (!field) return null;
@@ -276,7 +276,7 @@ function getElementalSkillCooldown(playerState, skillId) {
 }
 
 function runElementalSkillCast({ battle, actorId, defenderId, skillEntry, targetId = null }) {
-  if (!ENABLE_ELEMENTAL_SKILLS) return { ok: false, reason: "magic_not_found" };
+  if (!ENABLE_ELEMENTAL_SKILLS_BATTLE) return { ok: false, reason: "magic_not_found" };
   const actor = battle.players[actorId];
   const defender = battle.players[defenderId];
   ensureElementalState(actor);
