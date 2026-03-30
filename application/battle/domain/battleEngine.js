@@ -1,5 +1,6 @@
 const { randomCoinflip } = require("../../../utils/helpers");
 const { resolveElementalRelation } = require("../../../services/pokemonElementsService");
+const { ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER } = require("./elementalRules");
 
 const BATTLE_HP_MULTIPLIER = 12.5;
 const MAX_POTIONS_PER_BATTLE = 5;
@@ -84,7 +85,7 @@ function calculateMagicDamage({
     isCritical = true;
     finalDamage = normalDamage * multiplier;
   } else if (elemental.hasDisadvantage) {
-    multiplier = 0.7;
+    multiplier = ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER;
     finalDamage = normalDamage * multiplier;
   }
 

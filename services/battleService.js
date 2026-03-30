@@ -31,6 +31,7 @@ const {
   renderSwitchOptions,
 } = require("./battleRenderService");
 const { getSupabaseClient } = require("../database/supabase");
+const { getAvailableMagicActions, getSkillCooldownRemaining } = require("../application/battle/domain/elementalRules");
 
 const logger = createLogger("battle-service");
 const PVP_ENTRY_FEE = 2000;
@@ -430,12 +431,13 @@ async function showMagicOptions({ event, say }) {
   if (!battle) return;
 
   const player = battle.players[event.user];
-  if (!player.magicSlots?.length) {
-    await say("✨ Seu Pokémon atual não possui magias registradas. Use `!magicregister <pokeid>` antes da batalha.");
+  const actions = getAvailableMagicActions(player);
+  if (!actions.length) {
+    await say("✨ Seu Pokémon atual não possui magias registradas ou habilidades elementais disponíveis.");
     return;
   }
 
-  if ((player.magicCooldown?.blockedOwnTurnsRemaining || 0) > 0) {
+  if ((player.magicCooldown?.blockedOwnTurnsRemaining || 0) > 0 && actions.every((entry) => entry.kind === "regular")) {
     logger.info("Tentativa de abrir magia durante cooldown", {
       playerId: event.user,
       battleId: battle.id,
@@ -449,7 +451,11 @@ async function showMagicOptions({ event, say }) {
     return;
   }
 
-  await say(renderMagicOptions({ battle, actorUserId: event.user, magicSlots: player.magicSlots }));
+  const withCooldown = actions.map((entry) => ({
+    ...entry,
+    cooldownRemaining: entry.kind === "elemental" ? getSkillCooldownRemaining(player, entry.id) : 0,
+  }));
+  await say(renderMagicOptions({ battle, actorUserId: event.user, magicSlots: withCooldown }));
 }
 
 async function showSwitchOptions({ event, say }) {
@@ -518,7 +524,7 @@ async function castMagic({ event, say, magicSlot }) {
     return;
   }
 
-  if (!result.ok && result.reason === "magic_on_cooldown") {
+  if (!result.ok && (result.reason === "magic_on_cooldown" || result.reason === "elemental_skill_on_cooldown")) {
     logger.info("Tentativa de magia bloqueada por cooldown", {
       playerId: event.user,
       battleId: battle.id,
@@ -532,6 +538,26 @@ async function castMagic({ event, say, magicSlot }) {
     return;
   }
 
+
+  if (!result.ok && result.reason === "insufficient_skill_energy") {
+    await say(`⚡ Energia insuficiente para essa skill. Necessário: *${result.requiredEnergy}*.`);
+    return;
+  }
+
+
+  if (!result.ok && result.reason === "characteristic_skill_requires_level_50") {
+    await say("🔒 Magia característica só pode ser usada por Pokémon no nível 50+");
+    return;
+  }
+  if (!result.ok && result.reason === "target_not_water_nature") {
+    await say("💧 O alvo de Energia Vital precisa ser de natureza Água.");
+    return;
+  }
+
+  if (!result.ok && result.reason === "invalid_target") {
+    await say("⚠️ Alvo inválido para essa habilidade.");
+    return;
+  }
   logger.info("Ação de magia", {
     pokemonId: battle.players[event.user]?.selectedPokemon?.id,
     battleId: battle.id,
