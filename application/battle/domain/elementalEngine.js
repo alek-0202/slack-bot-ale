@@ -20,6 +20,7 @@ const {
 } = require("./elementalRules");
 const { GRASS_EFFECT_SUFFOCATING_ROOTS } = require("./grassElementRules");
 const { ELECTRIC_EFFECT_SHOCK, ELECTRIC_EFFECT_OVERLOAD, ELECTRIC_EFFECT_FIELD_DEBUFF, ELECTRIC_EFFECT_FIELD } = require("./electricElementRules");
+const { normalizeElementList, matchesElement } = require("../../../services/elementType");
 
 function parseMagicActionSlot(rawMagicSlot) {
   const value = String(rawMagicSlot || "");
@@ -120,10 +121,10 @@ function applyOnHitHooks({ battle, attackerId, defenderId, damage }) {
   const logs = [];
 
   const attacker = battle.players[attackerId];
-  const attackerElements = (attacker?.selectedPokemon?.elementTypes || []).map((entry) => String(entry || '').toLowerCase());
+  const attackerElements = normalizeElementList(attacker?.selectedPokemon?.elementTypes || [], { includeUnknown: false });
   const attackerEffects = ensureElementalState(attacker).effects || [];
   const waterBoost = attackerEffects.find((effect) => effect?.outgoingWaterDamageMultiplier != null);
-  if (waterBoost && attackerElements.includes('water')) {
+  if (waterBoost && attackerElements.some((entry) => matchesElement(entry, "water"))) {
     modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(waterBoost.outgoingWaterDamageMultiplier || 1)));
     logs.push('💧 Energia Vital amplificou o dano de água em 50%.');
   }
@@ -169,9 +170,10 @@ function runEndOfRound({ battle }) {
   if (!ENABLE_ELEMENTAL_SKILLS) return [];
   const logs = [];
   const uniqueElements = [...new Set(
-    Object.values(battle.players || {})
-      .flatMap((player) => player?.selectedPokemon?.elementTypes || [])
-      .map((entry) => String(entry || "").toLowerCase()),
+    normalizeElementList(
+      Object.values(battle.players || {}).flatMap((player) => player?.selectedPokemon?.elementTypes || []),
+      { includeUnknown: false },
+    ),
   )];
   const fallbackRegistered = getRegisteredElementalRules().map((entry) => entry.element);
   const runFor = [...new Set([...uniqueElements, ...fallbackRegistered])];

@@ -53,7 +53,7 @@ alter table public.user_pokemons alter column current_hp set not null;
 
 create table if not exists public.healing_stations (
   slack_user_id text primary key references public.users(slack_user_id) on delete cascade,
-  level integer not null default 1 check (level between 1 and 10),
+  level integer not null default 1 check (level between 1 and 30),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

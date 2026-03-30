@@ -1,4 +1,5 @@
 const { createLogger } = require('../utils/logger');
+const { normalizeElement, normalizeElementList, matchesElement } = require('./elementType');
 
 const logger = createLogger('pokemon-elements');
 
@@ -24,7 +25,7 @@ const ELEMENT_WEAKNESS_MAP = [
 ];
 
 function normalizeElementName(element) {
-  return String(element || '').trim().toLowerCase();
+  return normalizeElement(element);
 }
 
 function getPokemonElementsReference() {
@@ -49,11 +50,13 @@ function getElementWeaknessMap() {
 
 function resolveElementalRelation({ attackElement, defenderElements = [] }) {
   const normalizedAttack = normalizeElementName(attackElement);
-  const normalizedDefenderElements = defenderElements.map((item) => normalizeElementName(item)).filter(Boolean);
+  const normalizedDefenderElements = normalizeElementList(defenderElements, { includeUnknown: false });
   const weaknessMap = getElementWeaknessMap();
 
-  const advantageAgainst = normalizedDefenderElements.filter((element) => (weaknessMap[element] || []).includes(normalizedAttack));
-  const disadvantagedAgainst = normalizedDefenderElements.filter((element) => (weaknessMap[normalizedAttack] || []).includes(element));
+  const advantageAgainst = normalizedDefenderElements.filter((element) =>
+    (weaknessMap[element] || []).some((weakness) => matchesElement(weakness, normalizedAttack)));
+  const disadvantagedAgainst = normalizedDefenderElements.filter((element) =>
+    (weaknessMap[normalizedAttack] || []).some((weakness) => matchesElement(weakness, element)));
 
   let relation = 'neutral';
   if (advantageAgainst.length) {
