@@ -1,5 +1,6 @@
 const { calculateBattleHp, decideStartingPlayer, createInitialInitiativeState, resolveNextTurnBySpeed } = require("./battleEngine");
 const { getPokemonStars, formatPokemonStars } = require("../../../services/pokemonProgressionService");
+const { normalizeElementList } = require("../../../services/elementType");
 
 const BATTLE_STATUS = {
   PENDING: "pending",
@@ -128,7 +129,7 @@ function buildTeamMemberFromPokemon(pokemon) {
     stars: getPokemonStars(level),
     starText: formatPokemonStars(level),
     spriteUrl: pokemon.pokemon_species?.sprite_url || null,
-    elementTypes: pokemon.pokemon_species?.element_types || [],
+    elementTypes: normalizeElementList(pokemon.pokemon_species?.element_types || [], { includeUnknown: false }),
     stats,
     magicSlots: Array.isArray(pokemon.magicSlots) ? pokemon.magicSlots.filter((entry) => entry?.kind !== "characteristic") : [],
     characteristicSlots: Array.isArray(pokemon.magicSlots) ? pokemon.magicSlots.filter((entry) => entry?.kind === "characteristic") : [],

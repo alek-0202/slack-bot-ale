@@ -140,6 +140,13 @@ const sharedCommandCatalog = {
     slackUsage: '`!magicregister <pokeid>`',
     discordDescription: 'Registra as magias de um Pokémon',
   },
+  mrskill: {
+    name: 'mrskill',
+    category: 'pokemon',
+    summary: 'Configura até 2 skills características de um Pokémon (nível 50+)',
+    slackUsage: '`!mrskill <pokeid>`',
+    discordDescription: 'Configura skills características',
+  },
 
   dungeon: {
     name: 'dungeon',

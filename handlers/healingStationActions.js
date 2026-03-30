@@ -111,7 +111,7 @@ function registerHealingStationActions(app) {
       if (!result.ok) {
         const map = {
           user_not_started: 'Você ainda não começou. Use `!poke start`.',
-          max_level_reached: 'Sua estação de cura já está no nível máximo (10/10).',
+          max_level_reached: 'Sua estação de cura já está no nível máximo (30/30).',
           insufficient_gold: `Gold insuficiente para subir sua estação. Custo: *${result.cost}* | Seu gold: *${result.currentGold}*.`,
         };
         await respond({ response_type: 'ephemeral', text: map[result.reason] || 'Não consegui concluir o upgrade da estação agora 😵' });

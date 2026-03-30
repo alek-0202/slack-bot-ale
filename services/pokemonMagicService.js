@@ -2,9 +2,15 @@ require("../application/battle/domain/elementalEngine");
 const { getSupabaseClient } = require("../database/supabase");
 const { createLogger } = require("../utils/logger");
 const { getOwnedPokemonById } = require("./pokemonLookupService");
-const { normalizePokemonTypes } = require("./pokemonTypeService");
+const { normalizePokemonTypes, normalizePokemonType } = require("./pokemonTypeService");
 const { getRandomMagicName, getElementIcon, getElementLabel } = require("./magicLibraryService");
-const { ENABLE_ELEMENTAL_SKILLS, getElementalRules } = require("../application/battle/domain/elementalRules");
+const {
+  ENABLE_ELEMENTAL_SKILLS,
+  ENABLE_ELEMENTAL_SKILLS_REGISTRY,
+  ENABLE_ELEMENTAL_SKILLS_MRSKILL,
+  getElementalRules,
+  getRegisteredElementalRules,
+} = require("../application/battle/domain/elementalRules");
 
 const logger = createLogger("pokemon-magic-service");
 const MAX_MAGIC_SLOTS = 5;
@@ -36,7 +42,7 @@ function canRegisterCharacteristicSkills(pokemon) {
 }
 
 function buildCharacteristicSkillEntriesFromElements(elements = [], pokemonLevel = 0) {
-  if (!ENABLE_ELEMENTAL_SKILLS) return [];
+  if (!ENABLE_ELEMENTAL_SKILLS_REGISTRY) return [];
   if ((Number(pokemonLevel) || 0) < CHARACTERISTIC_SKILL_MIN_LEVEL) return [];
 
   const normalized = normalizePokemonTypes(elements);
@@ -188,6 +194,116 @@ async function clearCharacteristicSkillsFromLoadout({ slackUserId, pokemonId }) 
   return { ok: true, removed: spells.length - nextSpells.length };
 }
 
+function dedupeBySkillId(entries = []) {
+  const seen = new Set();
+  return entries.filter((entry) => {
+    const skillId = String(entry?.id || '');
+    if (!skillId || seen.has(skillId)) return false;
+    seen.add(skillId);
+    return true;
+  });
+}
+
+async function getMrSkillSetup({ slackUserId, pokemonId }) {
+  if (!ENABLE_ELEMENTAL_SKILLS_MRSKILL) {
+    return { ok: false, reason: "characteristic_skills_disabled" };
+  }
+  const pokemon = await getOwnedPokemonById(pokemonId);
+  if (!pokemon) return { ok: false, reason: 'pokemon_not_found' };
+  if (pokemon.slack_user_id !== slackUserId) return { ok: false, reason: 'not_owner', pokemon };
+  if (!canRegisterCharacteristicSkills(pokemon)) {
+    return { ok: false, reason: 'level_too_low', pokemon, minLevel: CHARACTERISTIC_SKILL_MIN_LEVEL };
+  }
+
+  const rawElements = pokemon.pokemon_species?.element_types;
+  const allElements = normalizePokemonTypes(rawElements);
+  if (!allElements.length) return { ok: false, reason: 'pokemon_without_elements', pokemon };
+
+  logger.info("MRSKILL element normalization", {
+    slackUserId,
+    pokemonId,
+    rawElements,
+    normalizedElements: allElements,
+    normalizedPerInput: [].concat(rawElements == null ? [] : rawElements).map((entry) => ({
+      raw: entry,
+      normalized: normalizePokemonType(entry),
+    })),
+    registryElements: getRegisteredElementalRules().map((entry) => entry.element),
+  });
+
+  const registryKeys = allElements
+    .map((element) => ({
+      element,
+      hasRules: Boolean(getElementalRules(element)),
+    }));
+  logger.info("MRSKILL registry lookup", {
+    slackUserId,
+    pokemonId,
+    registryKeys,
+  });
+
+  const availableSkills = dedupeBySkillId(buildCharacteristicSkillEntriesFromElements(allElements, pokemon.level));
+  if (!availableSkills.length) {
+    logger.warn("MRSKILL sem skills após resolução de elementos", {
+      slackUserId,
+      pokemonId,
+      pokemonLevel: pokemon.level,
+      rawElements,
+      normalizedElements: allElements,
+      registryElements: getRegisteredElementalRules().map((entry) => entry.element),
+      enableElementalSkills: ENABLE_ELEMENTAL_SKILLS,
+      enableElementalSkillsRegistry: ENABLE_ELEMENTAL_SKILLS_REGISTRY,
+      enableElementalSkillsMrskill: ENABLE_ELEMENTAL_SKILLS_MRSKILL,
+    });
+    return { ok: false, reason: 'no_characteristic_skills', pokemon };
+  }
+
+  const loadout = await getPokemonMagicLoadout(pokemonId);
+  const selectedSkillIds = Array.isArray(loadout?.spells)
+    ? loadout.spells.filter((entry) => entry?.kind === 'characteristic').map((entry) => String(entry.id)).slice(0, 2)
+    : [];
+
+  return {
+    ok: true,
+    pokemon,
+    loadout,
+    availableSkills,
+    selectedSkillIds,
+  };
+}
+
+async function saveMrSkillSelection({ slackUserId, pokemonId, selectedSkillIds = [] }) {
+  const setup = await getMrSkillSetup({ slackUserId, pokemonId });
+  if (!setup.ok) return setup;
+
+  const allowed = new Set(setup.availableSkills.map((entry) => String(entry.id)));
+  const nextSkillIds = [...new Set((selectedSkillIds || []).map((id) => String(id)).filter((id) => allowed.has(id)))].slice(0, 2);
+  const characteristicSkills = setup.availableSkills.filter((entry) => nextSkillIds.includes(String(entry.id)));
+
+  const selectedElements = normalizePokemonTypes(
+    setup.loadout?.selected_elements?.length
+      ? setup.loadout.selected_elements
+      : setup.pokemon.pokemon_species?.element_types || [],
+  ).slice(0, MAX_MAGIC_SLOTS);
+  const regularSpells = buildMagicEntriesFromElements(selectedElements);
+  const spells = [...regularSpells, ...characteristicSkills];
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('pokemon_magic_loadouts')
+    .upsert({
+      pokemon_id: setup.pokemon.id,
+      slack_user_id: slackUserId,
+      selected_elements: selectedElements,
+      spells,
+    }, { onConflict: 'pokemon_id' })
+    .select('pokemon_id, slack_user_id, selected_elements, spells, updated_at')
+    .single();
+  if (error) throw error;
+
+  return { ok: true, pokemon: setup.pokemon, loadout: data, selectedSkillIds: nextSkillIds, availableSkills: setup.availableSkills };
+}
+
 module.exports = {
   MAX_MAGIC_SLOTS,
   CHARACTERISTIC_SKILL_MIN_LEVEL,
@@ -201,4 +317,6 @@ module.exports = {
   clearPendingMagicSelection,
   buildMagicSummary,
   clearCharacteristicSkillsFromLoadout,
+  getMrSkillSetup,
+  saveMrSkillSelection,
 };

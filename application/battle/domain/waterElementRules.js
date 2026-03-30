@@ -6,6 +6,7 @@ const {
   setSkillCooldown,
   ensureElementalState,
 } = require("./elementalRules");
+const { normalizeElementList, matchesElement } = require("../../../services/elementType");
 
 const WATER_SKILLS = {
   ABYSSAL_TIDE: "water_abyssal_tide",
@@ -17,7 +18,8 @@ const WATER_DEBUFF_ABYSSAL_TIDE = "water_abyssal_tide_debuff";
 const WATER_BUFF_LIFE_ENERGY = "water_life_energy_buff";
 
 function isWaterNature(playerState) {
-  return (playerState?.selectedPokemon?.elementTypes || []).map((entry) => String(entry || "").toLowerCase()).includes("water");
+  return normalizeElementList(playerState?.selectedPokemon?.elementTypes || [], { includeUnknown: false })
+    .some((entry) => matchesElement(entry, "water"));
 }
 
 const waterRules = {

@@ -650,8 +650,8 @@ function buildBattleHelp() {
     "• Primeiro turno é definido por cara ou coroa:\n" +
     "  - Player 1 (desafiante): *cara*\n" +
     "  - Player 2 (desafiado): *coroa*\n" +
-    "• Ações principais no turno: `!ataque`, `!magia`, `!pocao` e troca com `!bpick ID`\n" +
-    "• `!magia` abre as magias registradas do Pokémon atual\n" +
+    "• Ações principais no turno: `!ataque`, `!magia`/`!mrskill`, `!pocao` e troca com `!bpick ID`\n" +
+    "• `!magia` e `!mrskill` abrem as magias registradas do Pokémon atual\n" +
     "• Apenas o jogador do turno pode agir\n" +
     "• `!surrender` encerra sua participação e concede vitória ao oponente\n" +
     "• Botões da batalha seguem as mesmas regras dos comandos textuais"
