@@ -207,10 +207,7 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
       continue;
     }
     const text = String(normalized.text || "");
-    if (/burn causou/i.test(text)) {
-      const value = Number(text.match(/causou\s+(\d+)/i)?.[1] || 0);
-      if (value > 0) summaries[lane].statusDamage.push({ label: "Burn", value });
-    }
+    applyTextEntryToSummary({ summary: summaries[lane], text });
   }
 
   const nextTurnName = getNextTurnLabel(battle);
@@ -241,6 +238,7 @@ function buildCombatantSummary({ battle, userId, ownerLabel }) {
     ownerLabel,
     actionLabel: null,
     statusDamage: [],
+    continuousEffects: [],
     directDamage: 0,
     critDamageBonus: 0,
     extraHitDamage: [],
@@ -255,7 +253,7 @@ function buildCombatantSummary({ battle, userId, ownerLabel }) {
 function formatCombatantSummaryLines(summary, statusLines = []) {
   return [
     `• Ação: ${summary.actionLabel ? `*${summary.actorName}* usou ${summary.actionLabel}` : "—"}`,
-    `• DOT/Contínuo: ${summary.statusDamage.length ? summary.statusDamage.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
+    `• DOT/Contínuo: ${summary.continuousEffects.length ? summary.continuousEffects.join(", ") : "—"}`,
     `• Dano status: ${summary.statusDamage.length ? summary.statusDamage.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
     `• Dano: ${summary.directDamage || 0}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}`,
     `• Cura recebida: ${summary.healingReceived.length ? summary.healingReceived.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
@@ -281,9 +279,76 @@ function normalizeLogEntry(entry) {
   if (typeof entry === "string") return { kind: "text", text: entry.trim() };
   if (typeof entry === "object") {
     if (entry.kind === "action_summary") return entry;
+    if (entry.outcome && entry.actionType) {
+      return normalizeOutcomeEntry(entry);
+    }
     return { kind: "text", text: String(entry.message || entry.text || entry.summary || JSON.stringify(entry)).trim() };
   }
   return { kind: "text", text: String(entry).trim() };
+}
+
+function normalizeOutcomeEntry(entry) {
+  const outcome = entry.outcome || {};
+  const actionType = String(entry.actionType || outcome.type || "").toLowerCase();
+  const magicName = outcome.magicEntry?.name || "Magia";
+  if (actionType === "potion") {
+    return {
+      kind: "action_summary",
+      actorUserId: entry.actorUserId,
+      actorName: entry.actorName || null,
+      skillName: "Poção",
+      skillIcon: "🧪",
+      finalDamage: 0,
+      modifiers: [outcome.healAmount ? `cura ${outcome.healAmount}` : null].filter(Boolean),
+    };
+  }
+  return {
+    kind: "action_summary",
+    actorUserId: entry.actorUserId,
+    actorName: entry.actorName || null,
+    skillName: actionType === "attack" ? "Ataque Básico" : magicName,
+    skillIcon: actionType === "attack" ? "⚔️" : "✨",
+    finalDamage: Number(outcome.finalDamage || 0),
+    critical: Boolean(outcome.isCritical),
+    extraDamage: outcome.extraDamage || 0,
+  };
+}
+
+function applyTextEntryToSummary({ summary, text }) {
+  const cleaned = String(text || "").trim();
+  if (!cleaned) return;
+
+  const actionLine = cleaned.match(/(?:atacou|usou\s+\*?([^*]+)\*?|executou)\s/i);
+  if (!summary.actionLabel && actionLine) {
+    if (actionLine[1]) summary.actionLabel = `✨ ${actionLine[1]}`;
+    else if (/atacou/i.test(cleaned)) summary.actionLabel = "⚔️ Ataque";
+  }
+
+  const damage = Number(cleaned.match(/causou\s+\*?(\d+)\*?\s+de dano/i)?.[1] || cleaned.match(/com\s+(\d+)\.?$/i)?.[1] || 0);
+  if (damage > 0 && /(causou|atingiu|atacou|splash)/i.test(cleaned)) {
+    summary.directDamage = Math.max(0, Number(summary.directDamage || 0) + damage);
+  }
+
+  const statusLabel = extractStatusLabel(cleaned);
+  if (statusLabel) {
+    const statusValue = Number(cleaned.match(/causou\s+\*?(\d+)\*?/i)?.[1] || cleaned.match(/por\s+(\d+)\.?$/i)?.[1] || 0);
+    if (statusValue > 0) summary.statusDamage.push({ label: statusLabel, value: statusValue });
+    if (!summary.continuousEffects.includes(statusLabel)) summary.continuousEffects.push(statusLabel);
+  }
+
+  const healAmount = Number(cleaned.match(/(?:curou|recuperou)\s+\*?(\d+)\*?/i)?.[1] || 0);
+  if (healAmount > 0) {
+    summary.healingReceived.push({ label: "Cura", value: healAmount });
+    if (!summary.actionLabel && /poç[aã]o/i.test(cleaned)) summary.actionLabel = "🧪 Poção";
+  }
+}
+
+function extractStatusLabel(text) {
+  if (/burn/i.test(text)) return "Burn";
+  if (/nevasca|g[eé]lid|congel/i.test(text)) return "Gelo";
+  if (/ra[ií]z|dot|cont[ií]nu/i.test(text)) return "DOT";
+  if (/maldi|sombr|choque|veneno/i.test(text)) return "Status";
+  return null;
 }
 
 function classifyLogLane(entry, laneIds) {

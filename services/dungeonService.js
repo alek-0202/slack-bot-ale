@@ -543,6 +543,7 @@ async function startFarmDungeon({ slackUserId, pokemonId, level }) {
     battle,
     playerTurn: null,
     enemyTurn: enemyTurns[enemyTurns.length - 1] || null,
+    engineLogs: battle.metadata.turnLog,
   });
   battleStore.setBattle(battle.channelId, battle);
 
@@ -629,6 +630,7 @@ async function startDailyDungeon({ slackUserId, pokemonId, mode }) {
     battle,
     playerTurn: null,
     enemyTurn: enemyTurns[enemyTurns.length - 1] || null,
+    engineLogs: battle.metadata.turnLog,
   });
   battleStore.setBattle(battle.channelId, battle);
 
@@ -709,20 +711,69 @@ function formatDungeonTurnLogEntry({ battle, actionType, outcome, actorUserId, p
   return `🎯 ${actorLabel} executou ${actionType}.`;
 }
 
-function buildDungeonTurnLog({ battle, playerTurn, enemyTurn }) {
+function buildActionSummaryFromTurn({ battle, actionType, outcome, actorUserId }) {
+  if (!outcome?.ok || !actorUserId) return null;
+  const actorName = battle.players?.[actorUserId]?.selectedPokemon?.name || null;
+  if (actionType === BATTLE_ACTION.POTION) {
+    return {
+      kind: 'action_summary',
+      actorUserId,
+      actorName,
+      skillName: 'Poção',
+      skillIcon: '🧪',
+      finalDamage: 0,
+      modifiers: [outcome.healAmount ? `cura ${outcome.healAmount}` : null].filter(Boolean),
+    };
+  }
+  if (actionType === BATTLE_ACTION.ATTACK) {
+    return {
+      kind: 'action_summary',
+      actorUserId,
+      actorName,
+      skillName: 'Ataque Básico',
+      skillIcon: '⚔️',
+      finalDamage: Number(outcome.finalDamage || 0),
+      critical: Boolean(outcome.isCritical),
+    };
+  }
+  if (actionType === BATTLE_ACTION.MAGIC) {
+    return {
+      kind: 'action_summary',
+      actorUserId,
+      actorName,
+      skillName: outcome.magicEntry?.name || 'Magia',
+      skillIcon: outcome.magicEntry?.icon || '✨',
+      finalDamage: Number(outcome.finalDamage || 0),
+      critical: Boolean(outcome.isCritical),
+    };
+  }
+  return null;
+}
+
+function buildDungeonTurnLog({ battle, playerTurn, enemyTurn, engineLogs = [] }) {
   const log = [];
   log.push(`🔁 Rodada ${battle.round} — início da resolução`);
 
   if (playerTurn?.outcome) {
+    const playerSummary = buildActionSummaryFromTurn({ battle, actionType: playerTurn.actionType, outcome: playerTurn.outcome, actorUserId: playerTurn.actorUserId });
+    if (playerSummary) log.push(playerSummary);
     log.push(formatDungeonTurnLogEntry({ battle, actionType: playerTurn.actionType, outcome: playerTurn.outcome, actorUserId: playerTurn.actorUserId, phase: 'turn' }));
     if (playerTurn.outcome?.defenderRemainingHp === 0) log.push(`💀 ${getBattleActorLabel(battle, playerTurn.outcome.defenderId)} foi derrotado.`);
   }
 
   if (enemyTurn?.resolution?.outcome) {
+    const enemySummary = buildActionSummaryFromTurn({
+      battle,
+      actionType: enemyTurn.action.actionType,
+      outcome: enemyTurn.resolution.outcome,
+      actorUserId: DUNGEON_ENEMY_USER_ID,
+    });
+    if (enemySummary) log.push(enemySummary);
     log.push('🤖 Turno automático do inimigo');
     log.push(formatDungeonTurnLogEntry({ battle, actionType: enemyTurn.action.actionType, outcome: enemyTurn.resolution.outcome, actorUserId: DUNGEON_ENEMY_USER_ID, phase: 'auto' }));
     if (enemyTurn.resolution.outcome?.defenderRemainingHp === 0) log.push(`💀 ${getBattleActorLabel(battle, enemyTurn.resolution.outcome.defenderId)} foi derrotado.`);
   }
+  if (Array.isArray(engineLogs) && engineLogs.length) log.push(...engineLogs);
 
   if (battle.status === 'finished') {
     const winnerId = battle.metadata?.lastResolution?.finalized?.winnerId;
@@ -732,7 +783,7 @@ function buildDungeonTurnLog({ battle, playerTurn, enemyTurn }) {
     log.push(`✅ Rodada ${battle.round} — fim da resolução`);
   }
 
-  return log.slice(-8);
+  return log.slice(-12);
 }
 
 function resolveDungeonAiTurn(battle) {
@@ -1072,6 +1123,7 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
       battle: lockedBattle,
       playerTurn: { actorUserId, actionType, outcome: playerResolution.outcome },
       enemyTurn,
+      engineLogs: lockedBattle.metadata.turnLog,
     });
 
     logger.info('Renderização pós-resolução da dungeon preparada', {

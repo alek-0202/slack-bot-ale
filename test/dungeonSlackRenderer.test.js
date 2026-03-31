@@ -42,6 +42,22 @@ test('renderDungeonBattleState inclui log textual de combate quando disponível'
   assert.match(logBlock.text.text, /Charmander/);
 });
 
+test('renderDungeonBattleState renderiza ação quando turnLog traz summary estruturado', () => {
+  const payload = renderDungeonBattleState(createBattleStub({
+    metadata: {
+      turnLog: [
+        { kind: 'action_summary', actorUserId: 'U1', actorName: 'Pikachu', skillName: 'Ataque Básico', skillIcon: '⚔️', finalDamage: 42 },
+        '⚡ <@U1> atingiu <@__dungeon_enemy__> (chain) com 11.',
+      ],
+    },
+  }));
+
+  const logBlock = payload.blocks.find((block) => block.type === 'section' && String(block.text?.text || '').includes('Log da dungeon'));
+  assert.ok(logBlock);
+  assert.match(logBlock.text.text, /\*\[Pikachu\]\*[\s\S]*Ação: \*Pikachu\* usou/);
+  assert.match(logBlock.text.text, /Dano: 53/);
+});
+
 test('renderDungeonMagicOptions usa action_ids de magia da dungeon e inclui botão de voltar', () => {
   const payload = renderDungeonMagicOptions({
     battle: createBattleStub(),
