@@ -80,6 +80,21 @@ function calculateDamage({ attackerAttack, defenderDefense, attackerCritChance =
   };
 }
 
+function applyElementalMultiplier({ damage, attackerElement, defenderElements = [] }) {
+  const elemental = resolveElementalRelation({ attackElement: attackerElement, defenderElements });
+  const multiplier = elemental.hasAdvantage
+    ? 2
+    : elemental.hasDisadvantage
+      ? ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER
+      : 1;
+
+  return {
+    elemental,
+    multiplier,
+    finalDamage: Math.max(0, Math.round(Math.max(0, Number(damage) || 0) * multiplier)),
+  };
+}
+
 function calculateMagicDamage({
   attackerAttack,
   attackerMagic,
@@ -135,10 +150,23 @@ function resolveAttackTurn({ attacker, defender }) {
     defenderDodgeChance: defender.stats.dodgeChance,
   });
 
-  defender.battleHp.current = Math.max(0, defender.battleHp.current - result.finalDamage);
+  const attackerElement = Array.isArray(attacker?.selectedPokemon?.elementTypes)
+    ? attacker.selectedPokemon.elementTypes[0]
+    : null;
+  const elemental = applyElementalMultiplier({
+    damage: result.finalDamage,
+    attackerElement,
+    defenderElements: defender.selectedPokemon?.elementTypes || [],
+  });
+  const finalDamage = result.dodged ? 0 : elemental.finalDamage;
+
+  defender.battleHp.current = Math.max(0, defender.battleHp.current - finalDamage);
 
   return {
     ...result,
+    elemental,
+    attackElement: attackerElement,
+    finalDamage,
     defenderRemainingHp: defender.battleHp.current,
   };
 }
@@ -290,6 +318,7 @@ module.exports = {
   normalizeChance,
   rollCriticalStrike,
   calculateDamage,
+  applyElementalMultiplier,
   calculateMagicDamage,
   resolveAttackTurn,
   resolveMagicTurn,

@@ -157,6 +157,58 @@ test("ataque básico usa chance crítica direta do pokémon (40 => 40%)", () => 
   }
 });
 
+test("ataque básico aplica vantagem elemental no dano final", () => {
+  const battle = createReadyBattle();
+  battle.currentTurnUserId = "U1";
+  battle.players.U1.selectedPokemon.elementTypes = ["electric"];
+  battle.players.U2.selectedPokemon.elementTypes = ["water"];
+
+  const originalRandom = Math.random;
+  let calls = 0;
+  Math.random = () => {
+    calls += 1;
+    if (calls === 1) return 0.5; // variância
+    if (calls === 2) return 0.9; // esquiva falha
+    if (calls === 3) return 0.9; // sem crítico
+    return 0.5;
+  };
+  try {
+    const result = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    assert.equal(result.outcome.ok, true);
+    assert.equal(result.outcome.elemental.elemental.relation, "advantage");
+    assert.equal(result.outcome.resolvedAction.elementalRelation, "advantage");
+    assert.ok(result.outcome.finalDamage > result.outcome.normalDamage);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test("ataque básico aplica desvantagem elemental no dano final", () => {
+  const battle = createReadyBattle();
+  battle.currentTurnUserId = "U1";
+  battle.players.U1.selectedPokemon.elementTypes = ["fire"];
+  battle.players.U2.selectedPokemon.elementTypes = ["water"];
+
+  const originalRandom = Math.random;
+  let calls = 0;
+  Math.random = () => {
+    calls += 1;
+    if (calls === 1) return 0.5; // variância
+    if (calls === 2) return 0.9; // esquiva falha
+    if (calls === 3) return 0.9; // sem crítico
+    return 0.5;
+  };
+  try {
+    const result = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    assert.equal(result.outcome.ok, true);
+    assert.equal(result.outcome.elemental.elemental.relation, "disadvantage");
+    assert.equal(result.outcome.resolvedAction.elementalRelation, "disadvantage");
+    assert.ok(result.outcome.finalDamage < result.outcome.normalDamage);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
 test("resolvePotionTurn limita em 5 poções e não passa HP máximo", () => {
   const player = {
     battleHp: { max: 100, current: 40 },
