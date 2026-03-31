@@ -18,6 +18,18 @@ function normalizeChance(rawChance, cap = 1) {
   return Math.max(0, Math.min(Number(cap) || 1, normalized));
 }
 
+function resolveBattleChance(playerState, key) {
+  const statsValue = playerState?.stats?.[key];
+  if (statsValue != null && Number.isFinite(Number(statsValue))) {
+    return Number(statsValue);
+  }
+  const selectedValue = playerState?.selectedPokemon?.[key];
+  if (selectedValue != null && Number.isFinite(Number(selectedValue))) {
+    return Number(selectedValue);
+  }
+  return 0;
+}
+
 function rollCriticalStrike({ critChance, critMultiplier = 1.6 }) {
   const normalizedCritChance = normalizeChance(critChance, 0.95);
   const roll = Math.random();
@@ -185,11 +197,13 @@ function calculateMagicDamage({
 }
 
 function resolveAttackTurn({ attacker, defender }) {
+  const attackerCritChance = resolveBattleChance(attacker, "critChance");
+  const defenderDodgeChance = resolveBattleChance(defender, "dodgeChance");
   const result = calculateDamage({
     attackerAttack: attacker.stats.attack,
     defenderDefense: defender.stats.defense,
-    attackerCritChance: attacker.stats.critChance,
-    defenderDodgeChance: defender.stats.dodgeChance,
+    attackerCritChance,
+    defenderDodgeChance,
   });
 
   const finalDamage = result.dodged ? 0 : Math.max(0, Number(result.finalDamage || 0));
@@ -214,6 +228,8 @@ function resolveAttackTurn({ attacker, defender }) {
 }
 
 function resolveMagicTurn({ attacker, defender, magicEntry }) {
+  const attackerCritChance = resolveBattleChance(attacker, "critChance");
+  const defenderDodgeChance = resolveBattleChance(defender, "dodgeChance");
   const result = calculateMagicDamage({
     attacker,
     attackerAttack: attacker.stats.attack,

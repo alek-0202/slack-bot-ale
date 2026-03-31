@@ -214,6 +214,69 @@ test("ataque básico usa chance crítica direta do pokémon (40 => 40%)", () => 
   }
 });
 
+test("ataque básico lê chance crítica/esquiva de extra_stats do pokémon ativo", () => {
+  const battle = createBattle({
+    battleId: "B_EXTRA",
+    channelId: "C_EXTRA",
+    challengerId: "U1",
+    challengedId: "U2",
+  });
+  acceptInvite(battle);
+  assignSelectedPokemon(battle, "U1", {
+    id: 11,
+    species_id: 1,
+    level: 20,
+    attack: 60,
+    magic: 30,
+    defense: 20,
+    hp: 100,
+    speed: 30,
+    crit_level: 0,
+    dodge_level: 0,
+    elemental_level: 0,
+    extra_stats: { crit_chance: 40 },
+    pokemon_species: { id: 1, name: "Pikachu", element_types: ["electric"] },
+  });
+  assignSelectedPokemon(battle, "U2", {
+    id: 12,
+    species_id: 2,
+    level: 20,
+    attack: 40,
+    magic: 20,
+    defense: 20,
+    hp: 100,
+    speed: 20,
+    crit_level: 0,
+    dodge_level: 0,
+    elemental_level: 0,
+    extra_stats: { dodge_chance: 0 },
+    pokemon_species: { id: 2, name: "Bulbasaur", element_types: ["grass"] },
+  });
+  advanceSelectionState(battle);
+  advanceSelectionState(battle);
+  startBattle(battle);
+  battle.currentTurnUserId = "U1";
+  assert.equal(battle.players.U1.stats.critChance, 0.4);
+  assert.equal(battle.players.U1.selectedPokemon.critChance, 0.4);
+
+  const originalRandom = Math.random;
+  let calls = 0;
+  Math.random = () => {
+    calls += 1;
+    if (calls === 1) return 0.8; // variância
+    if (calls === 2) return 0.9; // esquiva não ativa
+    if (calls === 3) return 0.2; // crítico ativa
+    return 0.5;
+  };
+  try {
+    const result = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    assert.equal(result.outcome.isCritical, true);
+    assert.equal(result.outcome.resolvedAction.isCrit, true);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
 test("ataque básico com 95% de crítico gera críticos perceptíveis em sequência", () => {
   const battle = createReadyBattle();
   battle.currentTurnUserId = "U1";
