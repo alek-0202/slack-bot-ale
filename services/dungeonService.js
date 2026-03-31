@@ -1,6 +1,7 @@
 const { createBattle, assignSelectedPokemon, startBattle } = require('../application/battle/domain/battleState');
 const { resolveBattleTurn } = require('../application/battle/domain/turnResolver');
 const { BATTLE_ACTION, validateTurnAction } = require('../application/battle/domain/actionResolver');
+const { buildActionSummaryFromResolvedAction } = require('../application/battle/domain/resolvedAction');
 const { calculatePokemonStats } = require('./pokemonStatsService');
 const { getAllSpecies, getUserPokemonById, getUserPokemons, insertUserPokemon } = require('./pokemonService');
 const { getPokemonMagicLoadout, buildMagicEntriesFromElements } = require('./pokemonMagicService');
@@ -703,70 +704,18 @@ function formatDungeonTurnLogEntry({ battle, actionType, outcome, actorUserId, p
 }
 
 function buildActionSummaryFromTurn({ battle, actionType, outcome, actorUserId }) {
-  if (!outcome?.ok || !actorUserId) return null;
-  if (outcome.resolvedAction) {
-    const resolvedAction = outcome.resolvedAction;
-    return {
-      kind: 'action_summary',
-      actorUserId,
-      actorId: resolvedAction.actorId || actorUserId,
-      actorName: resolvedAction.actorName || battle.players?.[actorUserId]?.selectedPokemon?.name || null,
-      targetId: resolvedAction.targetId || outcome.defenderId || null,
-      targetName: resolvedAction.targetName || battle.players?.[outcome.defenderId]?.selectedPokemon?.name || null,
-      actionType: resolvedAction.actionType || actionType,
-      actionName: resolvedAction.actionName || (actionType === BATTLE_ACTION.ATTACK ? 'Ataque Básico' : actionType === BATTLE_ACTION.POTION ? 'Poção' : 'Magia'),
-      skillName: resolvedAction.actionName || (actionType === BATTLE_ACTION.ATTACK ? 'Ataque Básico' : actionType === BATTLE_ACTION.POTION ? 'Poção' : 'Magia'),
-      skillIcon: actionType === BATTLE_ACTION.ATTACK ? '⚔️' : actionType === BATTLE_ACTION.POTION ? '🧪' : (outcome.magicEntry?.icon || '✨'),
-      didHit: Boolean(resolvedAction.didHit),
-      isCrit: Boolean(resolvedAction.isCrit),
-      critical: Boolean(resolvedAction.isCrit),
-      baseDamage: Number(resolvedAction.baseDamage || 0),
-      finalDamage: Number(resolvedAction.finalDamage || 0),
-      statusDamage: Number(resolvedAction.statusDamage || 0),
-      healingDone: Number(resolvedAction.healingDone || 0),
-      appliedEffects: Array.isArray(resolvedAction.appliedEffects) ? [...resolvedAction.appliedEffects] : [],
-      extraNotes: Array.isArray(resolvedAction.extraNotes) ? [...resolvedAction.extraNotes] : [],
-    };
-  }
-  const actorName = battle.players?.[actorUserId]?.selectedPokemon?.name || null;
-  if (actionType === BATTLE_ACTION.POTION) {
-    return {
-      kind: 'action_summary',
-      actorUserId,
-      actorName,
-      skillName: 'Poção',
-      skillIcon: '🧪',
-      finalDamage: 0,
-      modifiers: [
-        outcome.healAmount ? `cura ${outcome.healAmount}` : null,
-        outcome.remainingPotions != null ? `poções restantes ${outcome.remainingPotions}` : null,
-      ].filter(Boolean),
-    };
-  }
-  if (actionType === BATTLE_ACTION.ATTACK) {
-    return {
-      kind: 'action_summary',
-      actorUserId,
-      actorName,
-      skillName: 'Ataque Básico',
-      skillIcon: '⚔️',
-      finalDamage: Number(outcome.finalDamage || 0),
-      critical: Boolean(outcome.isCritical),
-    };
-  }
-  if (actionType === BATTLE_ACTION.MAGIC) {
-    return {
-      kind: 'action_summary',
-      actorUserId,
-      actorName,
-      skillName: outcome.magicEntry?.name || 'Magia',
-      skillIcon: outcome.magicEntry?.icon || '✨',
-      finalDamage: Number(outcome.finalDamage || 0),
-      critical: Boolean(outcome.isCritical),
-    };
-  }
-  return null;
+  if (!outcome?.ok || !actorUserId || !outcome.resolvedAction) return null;
+  return buildActionSummaryFromResolvedAction(outcome.resolvedAction, {
+    actorUserId,
+    actorName: battle.players?.[actorUserId]?.selectedPokemon?.name || null,
+    targetId: outcome.defenderId || null,
+    targetName: battle.players?.[outcome.defenderId]?.selectedPokemon?.name || null,
+    actionType,
+    skillName: actionType === BATTLE_ACTION.ATTACK ? 'Ataque Básico' : actionType === BATTLE_ACTION.POTION ? 'Poção' : (outcome.magicEntry?.name || 'Magia'),
+    skillIcon: actionType === BATTLE_ACTION.ATTACK ? '⚔️' : actionType === BATTLE_ACTION.POTION ? '🧪' : (outcome.magicEntry?.icon || '✨'),
+  });
 }
+
 
 function buildDungeonTurnLog({ battle, playerTurn, enemyTurn, roundEngineLogs = [], previousLog = [] }) {
   const log = Array.isArray(previousLog) ? [...previousLog] : [];
