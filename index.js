@@ -59,6 +59,7 @@ const mrskillCommand = require("./commands/mrskill");
 const surrenderCommand = require("./commands/surrender");
 const magicregisterCommand = require("./commands/magicregister");
 const bhelpCommand = require("./commands/bhelp");
+const skillhelpCommand = require("./commands/skillhelp");
 const closeBattlesCommand = require("./commands/closebattles");
 const { registerPokedexActions } = require("./handlers/pokedexActions");
 const { registerCoffeActions } = require("./handlers/coffeActions");
@@ -153,6 +154,7 @@ for (const commandModule of [
   surrenderCommand,
   magicregisterCommand,
   bhelpCommand,
+  skillhelpCommand,
   closeBattlesCommand,
 ]) {
   commandRegistry.set(commandModule.name, commandModule);

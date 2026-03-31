@@ -75,6 +75,7 @@ function buildPokemonHelp() {
     "• Pode trocar as skills quando quiser usando o mesmo comando.",
     "• Algumas skills já impactam diretamente o combate; outras virão em updates.",
     "• Observação: alguns elementos ainda podem não ter skills disponíveis.",
+    "`!skillhelp` → lista todas as magias características por elemento (multiplicador, custo, cooldown e efeitos)",
     "`!tshiny <id_origem> <id_destino>` → transfere shiny (prime da origem vira normal no destino)",
     "",
     "🩺 *Estação de cura*",

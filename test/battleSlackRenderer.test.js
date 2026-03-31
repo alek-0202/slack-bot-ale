@@ -6,6 +6,7 @@ const {
   BATTLE_MAGIC_ACTION_ID,
   MAGIC_REGISTER_REMOVE_ACTION_ID,
   renderBattleState,
+  formatBattleLogForSlack,
   renderMagicOptions,
   renderMagicRegisterElementPrompt,
 } = require("../adapters/slack/renderers/battleRenderer");
@@ -68,6 +69,24 @@ test("renderMagicRegisterElementPrompt gera action_id único por elemento remov�
     `${MAGIC_REGISTER_REMOVE_ACTION_ID}_water`,
   ]);
   assert.equal(new Set(actionIds).size, actionIds.length);
+});
+
+test("formatBattleLogForSlack mantém perspectiva correta por lado e round no topo", () => {
+  const battle = createBattleStub();
+  battle.metadata = {
+    slackUserId: "U1",
+    turnLog: [
+      { kind: "action_summary", actorUserId: "U1", actorName: "Pikachu", skillName: "Ataque Básico", skillIcon: "⚔️", damageTypes: ["físico"], baseDamage: 50, modifiers: [], finalDamage: 50, critical: false },
+      { kind: "action_summary", actorUserId: "U2", actorName: "Charmander", skillName: "Garras Ardentes", skillIcon: "🔥", damageTypes: ["físico", "elemental"], baseDamage: 40, modifiers: ["+30%"], extraDamage: 12, finalDamage: 52, critical: false },
+      "🔥 Burn causou 10 em <@U1>.",
+    ],
+  };
+
+  const text = formatBattleLogForSlack({ battle, lines: battle.metadata.turnLog, title: "LOG" });
+  assert.match(text, /\*Rodada:\* 1/);
+  assert.match(text, /\*\[Pikachu\]\*[\s\S]*Ação: \*Pikachu\* usou/);
+  assert.match(text, /\*\[Charmander\]\*[\s\S]*Ação: \*Charmander\* usou/);
+  assert.match(text, /DOT\/Contínuo/);
 });
 
 function createBattleStub({ withReserves = false } = {}) {
