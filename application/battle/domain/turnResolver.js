@@ -109,11 +109,21 @@ function formatEffectImpact(effect = {}) {
   return parts;
 }
 
+function describeEffect(effect = {}) {
+  if (effect?.description) return String(effect.description);
+  const impacts = formatEffectImpact(effect);
+  if (impacts.length) return impacts.join(", ");
+  if (effect.immuneToDamageAndControl) return "absorve ou bloqueia dano recebido";
+  return "efeito ativo";
+}
+
 function splitActiveEffectsByPolarity(playerState) {
   const effects = (ensureElementalState(playerState).effects || [])
     .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0);
   const buffs = [];
   const debuffs = [];
+  const buffDetails = [];
+  const debuffDetails = [];
   for (const effect of effects) {
     const impacts = formatEffectImpact(effect);
     const baseLabel = effect.name || effect.id;
@@ -134,10 +144,26 @@ function splitActiveEffectsByPolarity(playerState) {
     );
     const harmful = harmfulByFlag
       || impacts.some((item) => item.includes("-") || /bloqueia ação|força ataque|dano contínuo|dano recebido/i.test(item));
-    if (harmful) debuffs.push(label);
-    else buffs.push(label);
+    const detailsEntry = {
+      id: effect.id || null,
+      name: label,
+      description: describeEffect(effect),
+    };
+    if (harmful) {
+      debuffs.push(label);
+      debuffDetails.push(detailsEntry);
+    } else {
+      buffs.push(label);
+      buffDetails.push(detailsEntry);
+    }
   }
-  return { buffs, debuffs };
+  return { buffs, debuffs, buffDetails, debuffDetails };
+}
+
+function resolveCurrentShield(playerState) {
+  return (ensureElementalState(playerState).effects || [])
+    .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0 && effect?.shieldCurrentHp != null)
+    .reduce((total, effect) => total + Math.max(0, Number(effect.shieldCurrentHp || 0)), 0);
 }
 
 function buildResolvedActionPayload({
@@ -162,7 +188,7 @@ function buildResolvedActionPayload({
 }) {
   const actorState = battle.players?.[actorUserId];
   const targetState = targetUserId ? battle.players?.[targetUserId] : null;
-  const { buffs, debuffs } = splitActiveEffectsByPolarity(actorState);
+  const { buffs, debuffs, buffDetails, debuffDetails } = splitActiveEffectsByPolarity(actorState);
   const safeBaseDamage = Math.max(0, Number(baseDamage) || 0);
   const safeFinalDamage = Math.max(0, Number(finalDamage) || 0);
   return {
@@ -182,10 +208,14 @@ function buildResolvedActionPayload({
     appliedEffects: Array.isArray(appliedEffects) ? appliedEffects.filter(Boolean) : [],
     activeBuffs: buffs,
     activeDebuffs: debuffs,
+    activeBuffDetails: buffDetails,
+    activeDebuffDetails: debuffDetails,
     actorCurrentHp: Math.max(0, Number(actorState?.battleHp?.current || 0)),
     actorMaxHp: Math.max(0, Number(actorState?.battleHp?.max || 0)),
+    actorCurrentShield: Math.max(0, resolveCurrentShield(actorState)),
     targetCurrentHp: Math.max(0, Number(targetState?.battleHp?.current || 0)),
     targetMaxHp: Math.max(0, Number(targetState?.battleHp?.max || 0)),
+    targetCurrentShield: Math.max(0, resolveCurrentShield(targetState)),
     blockedReason: blockedReason || null,
     shieldAbsorbedDamage: Math.max(0, Number(shieldAbsorbedDamage) || 0),
     elementalMultiplier: Math.max(0, Number(elementalMultiplier) || 0),
@@ -218,9 +248,21 @@ function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDama
       break;
     }
     const absorbed = Math.min(finalDamage, Math.max(0, Number(effect.shieldCurrentHp || 0)));
+    const shieldBefore = Math.max(0, Number(effect.shieldCurrentHp || 0));
     effect.shieldCurrentHp = Math.max(0, Number(effect.shieldCurrentHp || 0) - absorbed);
     finalDamage = Math.max(0, finalDamage - absorbed);
     shieldAbsorbedDamage += absorbed;
+    if (absorbed > 0) {
+      const hpPassed = Math.max(0, finalDamage);
+      if (hpPassed > 0) {
+        onHit.logs.push(`🛡️ Barreira de <@${defenderId}> absorveu ${Math.round(absorbed)} e ${Math.round(hpPassed)} passaram para o HP.`);
+      } else {
+        onHit.logs.push(`🛡️ Barreira de <@${defenderId}> absorveu ${Math.round(absorbed)} de dano.`);
+      }
+      if (Number(effect.shieldCurrentHp || 0) <= 0 && shieldBefore > 0) {
+        onHit.logs.push(`💥 Barreira de <@${defenderId}> foi quebrada.`);
+      }
+    }
     if (effect.id === PSYCHIC_EFFECT_BARRIER && Number(effect.shieldCurrentHp || 0) <= 0) {
       const stacks = Math.max(0, Number(effect.psychicEnergyStacks || 0));
       addOrRefreshEffect(defender, {
