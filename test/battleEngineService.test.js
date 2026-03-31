@@ -46,35 +46,90 @@ test("calculateDamage aplica crítico e arredondamento", () => {
   }
 });
 
-test("calculateMagicDamage aplica vantagem elemental com crítico garantido", () => {
-  const result = calculateMagicDamage({
-    attackerAttack: 10,
-    attackerMagic: 14,
-    magicElement: "electric",
-    defenderElements: ["water"],
-    d12Roll: 7,
-    d6Roll: 2,
-  });
+test("calculateMagicDamage aplica vantagem elemental + eficiência e crítico real", () => {
+  const originalRandom = Math.random;
+  let calls = 0;
+  Math.random = () => {
+    calls += 1;
+    if (calls === 1) return 0.99; // esquiva falha
+    if (calls === 2) return 0.1; // crítico ativa
+    return 0.5;
+  };
+  try {
+    const result = calculateMagicDamage({
+      attacker: { stats: { elementalChance: 0.3 } },
+      attackerAttack: 10,
+      attackerMagic: 14,
+      attackerCritChance: 0.4,
+      defenderDodgeChance: 0.1,
+      magicElement: "electric",
+      defenderElements: ["water"],
+      d12Roll: 7,
+      d6Roll: 2,
+    });
 
-  assert.equal(result.isCritical, true);
-  assert.equal(result.baseStatUsed, "magic");
-  assert.equal(result.multiplier, 2.0);
-  assert.equal(result.finalDamage, 50);
+    assert.equal(result.isCritical, true);
+    assert.equal(result.baseStatUsed, "magic");
+    assert.equal(result.elementalOutcome, "advantage");
+    assert.equal(result.critMultiplier, 1.6);
+    assert.equal(result.multiplier, 2.6);
+    assert.equal(result.finalDamage, 104);
+  } finally {
+    Math.random = originalRandom;
+  }
 });
 
 test("calculateMagicDamage aplica fallback para attack e desvantagem elemental", () => {
-  const result = calculateMagicDamage({
-    attackerAttack: 10,
-    magicElement: "fire",
-    defenderElements: ["water"],
-    d12Roll: 6,
-    d6Roll: 4,
-  });
+  const originalRandom = Math.random;
+  let calls = 0;
+  Math.random = () => {
+    calls += 1;
+    if (calls === 1) return 0.99; // esquiva falha
+    if (calls === 2) return 0.99; // sem crítico
+    return 0.5;
+  };
+  try {
+    const result = calculateMagicDamage({
+      attacker: { stats: { elementalChance: 0 } },
+      attackerAttack: 10,
+      attackerCritChance: 0,
+      defenderDodgeChance: 0,
+      magicElement: "fire",
+      defenderElements: ["water"],
+      d12Roll: 6,
+      d6Roll: 4,
+    });
 
-  assert.equal(result.isCritical, false);
-  assert.equal(result.baseStatUsed, "attack");
-  assert.equal(result.multiplier, 0.3);
-  assert.equal(result.finalDamage, 7);
+    assert.equal(result.isCritical, false);
+    assert.equal(result.baseStatUsed, "attack");
+    assert.equal(result.multiplier, 0.3);
+    assert.equal(result.finalDamage, 7);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test("calculateMagicDamage respeita esquiva do alvo e zera dano", () => {
+  const originalRandom = Math.random;
+  Math.random = () => 0.01;
+  try {
+    const result = calculateMagicDamage({
+      attacker: { stats: { elementalChance: 0.2 } },
+      attackerAttack: 10,
+      attackerMagic: 14,
+      attackerCritChance: 0.9,
+      defenderDodgeChance: 0.18,
+      magicElement: "electric",
+      defenderElements: ["water"],
+      d12Roll: 7,
+      d6Roll: 2,
+    });
+    assert.equal(result.didHit, false);
+    assert.equal(result.didDodge, true);
+    assert.equal(result.finalDamage, 0);
+  } finally {
+    Math.random = originalRandom;
+  }
 });
 
 test("calculateDamage respeita esquiva e zera o dano quando ativada", () => {
@@ -151,7 +206,72 @@ test("ataque básico usa chance crítica direta do pokémon (40 => 40%)", () => 
     const result = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
     assert.equal(result.outcome.isCritical, true);
     assert.equal(result.outcome.resolvedAction.isCrit, true);
+    assert.equal(result.outcome.resolvedAction.critMultiplier, 1.6);
+    assert.equal(result.outcome.resolvedAction.didDodge, false);
     assert.ok(result.outcome.finalDamage > result.outcome.normalDamage);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test("ataque básico lê chance crítica/esquiva de extra_stats do pokémon ativo", () => {
+  const battle = createBattle({
+    battleId: "B_EXTRA",
+    channelId: "C_EXTRA",
+    challengerId: "U1",
+    challengedId: "U2",
+  });
+  acceptInvite(battle);
+  assignSelectedPokemon(battle, "U1", {
+    id: 11,
+    species_id: 1,
+    level: 20,
+    attack: 60,
+    magic: 30,
+    defense: 20,
+    hp: 100,
+    speed: 30,
+    crit_level: 0,
+    dodge_level: 0,
+    elemental_level: 0,
+    extra_stats: { crit_chance: 40 },
+    pokemon_species: { id: 1, name: "Pikachu", element_types: ["electric"] },
+  });
+  assignSelectedPokemon(battle, "U2", {
+    id: 12,
+    species_id: 2,
+    level: 20,
+    attack: 40,
+    magic: 20,
+    defense: 20,
+    hp: 100,
+    speed: 20,
+    crit_level: 0,
+    dodge_level: 0,
+    elemental_level: 0,
+    extra_stats: { dodge_chance: 0 },
+    pokemon_species: { id: 2, name: "Bulbasaur", element_types: ["grass"] },
+  });
+  advanceSelectionState(battle);
+  advanceSelectionState(battle);
+  startBattle(battle);
+  battle.currentTurnUserId = "U1";
+  assert.equal(battle.players.U1.stats.critChance, 0.4);
+  assert.equal(battle.players.U1.selectedPokemon.critChance, 0.4);
+
+  const originalRandom = Math.random;
+  let calls = 0;
+  Math.random = () => {
+    calls += 1;
+    if (calls === 1) return 0.8; // variância
+    if (calls === 2) return 0.9; // esquiva não ativa
+    if (calls === 3) return 0.2; // crítico ativa
+    return 0.5;
+  };
+  try {
+    const result = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    assert.equal(result.outcome.isCritical, true);
+    assert.equal(result.outcome.resolvedAction.isCrit, true);
   } finally {
     Math.random = originalRandom;
   }
@@ -220,6 +340,8 @@ test("ataque básico não aplica counter/vantagem elemental", () => {
     assert.equal(result.outcome.ok, true);
     assert.equal(result.outcome.elemental.elemental.relation, "neutral");
     assert.equal(result.outcome.resolvedAction.elementalRelation, "neutral");
+    assert.equal(result.outcome.resolvedAction.elementalModifier, 1);
+    assert.equal(result.outcome.resolvedAction.elementalOutcome, "neutral");
     assert.equal(result.outcome.finalDamage, result.outcome.normalDamage);
   } finally {
     Math.random = originalRandom;
