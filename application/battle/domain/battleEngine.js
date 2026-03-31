@@ -234,8 +234,8 @@ function resolveMagicTurn({ attacker, defender, magicEntry }) {
     attacker,
     attackerAttack: attacker.stats.attack,
     attackerMagic: attacker.stats.magic,
-    attackerCritChance,
-    defenderDodgeChance,
+    attackerCritChance: attacker.stats.critChance,
+    defenderDodgeChance: defender.stats.dodgeChance,
     magicElement: magicEntry?.element,
     defenderElements: defender.selectedPokemon?.elementTypes || [],
   });
