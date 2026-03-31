@@ -162,14 +162,195 @@ function buildBattleLogBlock(battle, options = {}) {
     : [];
 
   if (!lines.length) return null;
+  const formatted = formatBattleLogForSlack({ battle, lines, title: options.logTitle || "📜 LOG DE COMBATE" });
 
   return {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `*${options.logTitle || "📜 Log de combate"}*\n${lines.map((line) => `• ${line}`).join("\n")}`.slice(0, 2900),
+      text: formatted.slice(0, 2900),
     },
   };
+}
+
+function formatBattleLogForSlack({ battle, lines, title }) {
+  const laneIds = resolveBattleLogLanes(battle);
+  const logBuckets = { player: { actions: [], dot: [], extra: [] }, enemy: { actions: [], dot: [], extra: [] } };
+
+  for (const rawEntry of lines) {
+    const normalized = normalizeLogEntry(rawEntry, battle);
+    if (!normalized) continue;
+    const lane = classifyLogLane(normalized, laneIds);
+    if (normalized.kind === "action_summary") {
+      logBuckets[lane].actions.push(formatActionSummary(normalized));
+      continue;
+    }
+    const formattedLine = compactCombatLogLine(normalized.text || normalized);
+    if (!formattedLine) continue;
+    if (isDotLine(normalized.text || normalized)) logBuckets[lane].dot.push(formattedLine);
+    else logBuckets[lane].extra.push(formattedLine);
+  }
+
+  const nextTurnName = getNextTurnLabel(battle);
+  const playerLabel = laneIds.playerName || "Jogador";
+  const enemyLabel = laneIds.enemyName || "Inimigo";
+  const playerStatus = formatStatusCategories(battle?.players?.[laneIds.playerId]);
+  const enemyStatus = formatStatusCategories(battle?.players?.[laneIds.enemyId]);
+
+  return [
+    `*${title}*`,
+    "──────────────",
+    `*Rodada:* ${battle?.round || 1}`,
+    `*Próximo turno:* ${nextTurnName}`,
+    "",
+    `*[${playerLabel}]*`,
+    ...(logBuckets.player.actions.length ? logBuckets.player.actions.map((line) => `• ${line}`) : ["• Ação: —"]),
+    ...(logBuckets.player.dot.length ? ["• DOT/Contínuo:", ...logBuckets.player.dot.map((line) => `  ◦ ${line}`)] : []),
+    ...(logBuckets.player.extra.length ? logBuckets.player.extra.map((line) => `• ${line}`) : []),
+    ...playerStatus,
+    "",
+    `*[${enemyLabel}]*`,
+    ...(logBuckets.enemy.actions.length ? logBuckets.enemy.actions.map((line) => `• ${line}`) : ["• Ação: —"]),
+    ...(logBuckets.enemy.dot.length ? ["• DOT/Contínuo:", ...logBuckets.enemy.dot.map((line) => `  ◦ ${line}`)] : []),
+    ...(logBuckets.enemy.extra.length ? logBuckets.enemy.extra.map((line) => `• ${line}`) : []),
+    ...enemyStatus,
+  ].join("\n");
+}
+
+function resolveBattleLogLanes(battle) {
+  const playerId = battle?.metadata?.slackUserId || battle?.challengerId;
+  const knownIds = [battle?.challengerId, battle?.challengedId].filter(Boolean);
+  const enemyId = knownIds.find((id) => id !== playerId) || battle?.challengedId || battle?.challengerId;
+  return {
+    playerId,
+    enemyId,
+    playerName: battle?.players?.[playerId]?.selectedPokemon?.name || "Jogador",
+    enemyName: battle?.players?.[enemyId]?.selectedPokemon?.name || "Inimigo",
+  };
+}
+
+function normalizeLogEntry(entry) {
+  if (entry == null) return null;
+  if (typeof entry === "string") return { kind: "text", text: entry.trim() };
+  if (typeof entry === "object") {
+    if (entry.kind === "action_summary") return entry;
+    return { kind: "text", text: String(entry.message || entry.text || entry.summary || JSON.stringify(entry)).trim() };
+  }
+  return { kind: "text", text: String(entry).trim() };
+}
+
+function classifyLogLane(entry, laneIds) {
+  if (entry?.kind === "action_summary") {
+    if (entry.actorUserId === laneIds.enemyId) return "enemy";
+    return "player";
+  }
+  const line = String(entry?.text || entry || "");
+  const subject = line.match(/^.*?<@([^>]+)>/);
+  if (subject?.[1] === laneIds.enemyId) return "enemy";
+  if (subject?.[1] === laneIds.playerId) return "player";
+  const mentions = [...line.matchAll(/<@([^>]+)>/g)].map((match) => match[1]);
+  if (mentions.includes(laneIds.playerId) && !mentions.includes(laneIds.enemyId)) return "player";
+  if (mentions.includes(laneIds.enemyId) && !mentions.includes(laneIds.playerId)) return "enemy";
+  if (/👾|🤖|inimig/i.test(line)) return "enemy";
+  return "player";
+}
+
+function compactCombatLogLine(line) {
+  const cleaned = String(line).replace(/\s+/g, " ").trim();
+  const skillMatch = cleaned.match(/(🔥|❄️|🌨️|⚡|🌩️|🧲|💧|🌊|🌀|🌿|🌱|🧠|💫|🛡️|👻|🕯️|🌑|🥊|💥)\s*([^:.\n]+)(?::|\.)?/);
+  if (skillMatch) {
+    const icon = skillMatch[1];
+    const skillName = skillMatch[2].replace(/\*+/g, "").trim();
+    return `Skill: ${icon} *${skillName}*${cleaned.includes("stack") ? " (stacks)" : ""}`;
+  }
+  if (/crític/i.test(cleaned)) return `Crítico: ${cleaned}`;
+  if (/esquiv|desvi|dodg/i.test(cleaned)) return `Esquiva: ${cleaned}`;
+  if (/burn|gélido|congel|choque|maldi|marca|raiz|debuff|buff|barreira|sobrecarga|ritmo|postura/i.test(cleaned)) {
+    return `Status: ${cleaned}`;
+  }
+  if (/falh|cooldown|inválid|limite/i.test(cleaned)) return `Falha: ${cleaned}`;
+  if (/causou|dano|atingiu|atacou|usou/i.test(cleaned)) return `Ação: ${cleaned}`;
+  return `Extra: ${cleaned}`;
+}
+
+function isDotLine(line) {
+  return /burn|rodada|nevasca|raízes|sufocantes|dreno|contínu|dot|sangramento|veneno/i.test(String(line || ""));
+}
+
+function formatStatusCategories(playerState) {
+  if (!playerState) return [];
+  const statuses = playerState.elementalState?.statuses || [];
+  const effects = playerState.elementalState?.effects || [];
+  const buffs = [];
+  const debuffs = [];
+  const control = [];
+  const dot = [];
+  const marks = [];
+  const decorate = (name) => withStatusEmoji(name);
+
+  for (const effect of effects) {
+    const stacks = effect?.stacks != null ? ` x${effect.stacks}` : "";
+    const rounds = effect?.remainingRounds != null ? ` (${effect.remainingRounds}r)` : "";
+    const label = `${decorate(effect.name || effect.id || "Efeito")}${stacks}${rounds}`;
+    if (effect.forcedSkipAction || effect.forcedAction || effect.controlLight) control.push(label);
+    else if (effect.id?.includes("mark")) marks.push(label);
+    else if (effect.outgoingDamageMultiplier || effect.shieldCurrentHp != null || effect.damageBoostPct) buffs.push(label);
+    else if (effect.incomingDamageTakenMultiplier || effect.partialFailureChance || effect.speedMultiplier) debuffs.push(label);
+  }
+
+  for (const status of statuses) {
+    const stacks = status?.stacks != null ? ` x${status.stacks}` : "";
+    const rounds = status?.remainingRounds != null ? ` (${status.remainingRounds}r)` : "";
+    const label = `${decorate(status.name || status.id || "Status")}${stacks}${rounds}`;
+    if (status.damagePerStack > 0) dot.push(label);
+    if (/mark|marca/i.test(status.name || status.id || "")) marks.push(label);
+    if (/congel|stun|freeze|control|choque/i.test(status.name || status.id || "")) control.push(label);
+    else if (/burn|poison|veneno|dot/i.test(status.name || status.id || "")) debuffs.push(label);
+    else buffs.push(label);
+  }
+  const line = (title, values) => (values.length ? [`• ${title}: ${values.join(", ")}`] : []);
+  return [
+    ...line("Buffs", buffs),
+    ...line("Debuffs", debuffs),
+    ...line("Controle", control),
+    ...line("Efeitos contínuos", dot),
+    ...line("Marcas/Stacks", marks),
+  ];
+}
+
+function withStatusEmoji(name) {
+  const value = String(name || "");
+  if (/burn|fogo|ardent|ígne|infernal/i.test(value)) return `🔥 ${value}`;
+  if (/gelo|gelid|nevasca|congel/i.test(value)) return `❄️ ${value}`;
+  if (/choque|eletro|sobrecarga|raio/i.test(value)) return `⚡ ${value}`;
+  if (/barreira|armadura|defesa|shield|postura/i.test(value)) return `🛡️ ${value}`;
+  if (/maldi|sombr|ghost|assombr/i.test(value)) return `👻 ${value}`;
+  if (/raiz|floresta|espinho|grass/i.test(value)) return `🌿 ${value}`;
+  if (/mark|marca/i.test(value)) return `🎯 ${value}`;
+  return value;
+}
+
+function formatActionSummary(entry) {
+  const actor = entry.actorName || "Ator";
+  const skill = entry.skillName ? `${entry.skillIcon || "✨"} ${entry.skillName}` : "Ataque básico";
+  const damageTypes = (entry.damageTypes || []).length ? ` | Tipos: ${(entry.damageTypes || []).join(", ")}` : "";
+  const parts = [
+    `Ação: *${actor}* usou *${skill}*${damageTypes}`,
+    `Base: ${entry.baseDamage ?? 0}`,
+    `Mods: ${(entry.modifiers || []).length ? entry.modifiers.join(" · ") : "—"}`,
+  ];
+  if (entry.extraDamage != null) parts.push(`Extra skill: ${entry.extraDamage}`);
+  if (entry.mitigation != null) parts.push(`Mitigação: ${entry.mitigation}`);
+  parts.push(`Crítico: ${entry.critical ? "sim" : "não"}`);
+  parts.push(`Final: ${entry.finalDamage ?? 0}`);
+  return parts.join(" | ");
+}
+
+function getNextTurnLabel(battle) {
+  const player = battle?.players?.[battle?.currentTurnUserId];
+  if (player?.selectedPokemon?.name) return player.selectedPokemon.name.toLowerCase();
+  if (battle?.currentTurnUserId) return `<@${battle.currentTurnUserId}>`;
+  return "—";
 }
 
 function buildBattleActionBlock(battle, options = {}) {
@@ -405,6 +586,7 @@ module.exports = {
   renderBattleInvite,
   renderSelectionPrompt,
   renderBattleState,
+  formatBattleLogForSlack,
   renderMagicOptions,
   renderSwitchOptions,
   renderMagicRegisterElementPrompt,
