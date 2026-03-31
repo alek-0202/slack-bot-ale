@@ -1,6 +1,7 @@
 const { buildBattleViewModel } = require("../../../application/battle/renderers/battlePresenter");
 const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService");
 const { getAvailableElementalSkills, getSkillCooldownRemaining } = require("../../../application/battle/domain/elementalRules");
+const { canUseSkillAction } = require("../../../application/battle/domain/skillActionValidator");
 
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
 const BATTLE_DECLINE_ACTION_ID = "battle_decline_invite";
@@ -162,7 +163,12 @@ function buildBattleLogBlock(battle, options = {}) {
     : [];
 
   if (!lines.length) return null;
-  const formatted = formatBattleLogForSlack({ battle, lines, title: options.logTitle || "📜 LOG DE COMBATE" });
+  const formatted = formatBattleLogForSlack({
+    battle,
+    lines,
+    title: options.logTitle || "📜 RESUMO DA RODADA",
+    rawMode: Boolean(options.debugRawLog || battle?.metadata?.debugRawLog),
+  });
 
   return {
     type: "section",
@@ -173,22 +179,38 @@ function buildBattleLogBlock(battle, options = {}) {
   };
 }
 
-function formatBattleLogForSlack({ battle, lines, title }) {
+function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
+  if (rawMode) {
+    return [`*${title}*`, ...lines.map((line) => `• ${typeof line === "string" ? line : JSON.stringify(line)}`)].join("\n");
+  }
   const laneIds = resolveBattleLogLanes(battle);
-  const logBuckets = { player: { actions: [], dot: [], extra: [] }, enemy: { actions: [], dot: [], extra: [] } };
+  const summaries = {
+    player: buildCombatantSummary({ battle, userId: laneIds.playerId, ownerLabel: "user" }),
+    enemy: buildCombatantSummary({ battle, userId: laneIds.enemyId, ownerLabel: "enemy" }),
+  };
 
   for (const rawEntry of lines) {
     const normalized = normalizeLogEntry(rawEntry, battle);
     if (!normalized) continue;
     const lane = classifyLogLane(normalized, laneIds);
     if (normalized.kind === "action_summary") {
-      logBuckets[lane].actions.push(formatActionSummary(normalized));
+      summaries[lane].actionLabel = `${normalized.skillIcon || "✨"} ${normalized.skillName || "Ação"}`;
+      summaries[lane].directDamage = Math.max(0, Number(summaries[lane].directDamage || 0) + Number(normalized.finalDamage || 0));
+      if (normalized.critical && normalized.extraDamage != null) {
+        summaries[lane].critDamageBonus = Math.max(0, Number(summaries[lane].critDamageBonus || 0) + Number(normalized.extraDamage || 0));
+      }
+      const healingFromModifiers = (normalized.modifiers || []).find((value) => /cura\s+\d+/i.test(String(value || "")));
+      if (healingFromModifiers) {
+        const value = Number(String(healingFromModifiers).match(/\d+/)?.[0] || 0);
+        if (value > 0) summaries[lane].healingReceived.push({ label: "Poção/Skill", value });
+      }
       continue;
     }
-    const formattedLine = compactCombatLogLine(normalized.text || normalized);
-    if (!formattedLine) continue;
-    if (isDotLine(normalized.text || normalized)) logBuckets[lane].dot.push(formattedLine);
-    else logBuckets[lane].extra.push(formattedLine);
+    const text = String(normalized.text || "");
+    if (/burn causou/i.test(text)) {
+      const value = Number(text.match(/causou\s+(\d+)/i)?.[1] || 0);
+      if (value > 0) summaries[lane].statusDamage.push({ label: "Burn", value });
+    }
   }
 
   const nextTurnName = getNextTurnLabel(battle);
@@ -204,17 +226,42 @@ function formatBattleLogForSlack({ battle, lines, title }) {
     `*Próximo turno:* ${nextTurnName}`,
     "",
     `*[${playerLabel}]*`,
-    ...(logBuckets.player.actions.length ? logBuckets.player.actions.map((line) => `• ${line}`) : ["• Ação: —"]),
-    ...(logBuckets.player.dot.length ? ["• DOT/Contínuo:", ...logBuckets.player.dot.map((line) => `  ◦ ${line}`)] : []),
-    ...(logBuckets.player.extra.length ? logBuckets.player.extra.map((line) => `• ${line}`) : []),
-    ...playerStatus,
+    ...formatCombatantSummaryLines(summaries.player, playerStatus),
     "",
     `*[${enemyLabel}]*`,
-    ...(logBuckets.enemy.actions.length ? logBuckets.enemy.actions.map((line) => `• ${line}`) : ["• Ação: —"]),
-    ...(logBuckets.enemy.dot.length ? ["• DOT/Contínuo:", ...logBuckets.enemy.dot.map((line) => `  ◦ ${line}`)] : []),
-    ...(logBuckets.enemy.extra.length ? logBuckets.enemy.extra.map((line) => `• ${line}`) : []),
-    ...enemyStatus,
+    ...formatCombatantSummaryLines(summaries.enemy, enemyStatus),
   ].join("\n");
+}
+
+function buildCombatantSummary({ battle, userId, ownerLabel }) {
+  const player = battle?.players?.[userId];
+  return {
+    actorId: userId,
+    actorName: player?.selectedPokemon?.name || "Pokémon",
+    ownerLabel,
+    actionLabel: null,
+    statusDamage: [],
+    directDamage: 0,
+    critDamageBonus: 0,
+    extraHitDamage: [],
+    healingReceived: [],
+    currentHp: Number(player?.battleHp?.current || 0),
+    maxHp: Number(player?.battleHp?.max || 0),
+    buffs: [],
+    debuffs: [],
+  };
+}
+
+function formatCombatantSummaryLines(summary, statusLines = []) {
+  return [
+    `• Ação: ${summary.actionLabel ? `*${summary.actorName}* usou ${summary.actionLabel}` : "—"}`,
+    `• DOT/Contínuo: ${summary.statusDamage.length ? summary.statusDamage.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
+    `• Dano status: ${summary.statusDamage.length ? summary.statusDamage.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
+    `• Dano: ${summary.directDamage || 0}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}`,
+    `• Cura recebida: ${summary.healingReceived.length ? summary.healingReceived.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
+    `• Vida: ${summary.currentHp}/${summary.maxHp}`,
+    ...statusLines,
+  ];
 }
 
 function resolveBattleLogLanes(battle) {
@@ -359,6 +406,10 @@ function buildBattleActionBlock(battle, options = {}) {
   const elementalSkills = getAvailableElementalSkills(currentPlayer || {});
   const hasElementalReady = elementalSkills.some((entry) => getSkillCooldownRemaining(currentPlayer, entry.id) <= 0);
   const magicOnCooldown = (currentPlayer?.magicCooldown?.blockedOwnTurnsRemaining || 0) > 0 && !hasElementalReady;
+  const sampleSkill = (currentPlayer?.magicSlots?.[0] && { ...currentPlayer.magicSlots[0], kind: "regular" }) || elementalSkills[0] || null;
+  const canUseAnySkill = sampleSkill
+    ? canUseSkillAction(battle, currentPlayer, sampleSkill, { actorUserId: battle.currentTurnUserId }).ok
+    : false;
   const aliveReserves = (currentPlayer?.team || [])
     .filter((member, index) => index !== Number(currentPlayer.activeTeamIndex || 0))
     .filter((member) => Number(member?.battleHp?.current || 0) > 0);
@@ -371,7 +422,7 @@ function buildBattleActionBlock(battle, options = {}) {
         battle,
         label: magicOnCooldown ? `${buildActionLabel("magic")} (${currentPlayer.magicCooldown.blockedOwnTurnsRemaining})` : buildActionLabel("magic"),
         action: "magic",
-        disabled: magicOnCooldown,
+        disabled: magicOnCooldown || !canUseAnySkill,
         actionIdBuilder: options.turnActionIdBuilder,
       }),
       buildTurnButton({ battle, action: "potion", actionIdBuilder: options.turnActionIdBuilder }),
@@ -448,12 +499,21 @@ function renderMagicOptions({ battle, actorUserId, magicSlots = [], options = {}
       } : null,
       {
         type: "actions",
-        elements: entries.map((magic) => ({
-          type: "button",
-          action_id: magicActionIdBuilder(magic.slot),
-          text: { type: "plain_text", text: `${magic.icon || "✨"} ${magic.name}${magic.cooldownRemaining > 0 ? ` (${magic.cooldownRemaining})` : ""}`.slice(0, 75) },
-          value: JSON.stringify({ channelId: battle.channelId, magicSlot: magic.slot }),
-        })),
+        elements: entries.map((magic) => {
+          const validation = canUseSkillAction(
+            battle,
+            battle?.players?.[actorUserId],
+            magic,
+            { actorUserId },
+          );
+          return {
+            type: "button",
+            action_id: magicActionIdBuilder(magic.slot),
+            text: { type: "plain_text", text: `${magic.icon || "✨"} ${magic.name}${magic.cooldownRemaining > 0 ? ` (${magic.cooldownRemaining})` : ""}`.slice(0, 75) },
+            value: JSON.stringify({ channelId: battle.channelId, magicSlot: magic.slot }),
+            ...(validation.ok ? {} : { value: JSON.stringify({ channelId: battle.channelId, magicSlot: magic.slot, unavailable: true }) }),
+          };
+        }),
       },
     ].filter(Boolean),
   };

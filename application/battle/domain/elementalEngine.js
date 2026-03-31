@@ -16,7 +16,6 @@ const {
   getSkillCooldownRemaining,
   resolveElementalDamageRule,
   ensureElementalState,
-  tickRoundTimers,
 } = require("./elementalRules");
 const { GRASS_EFFECT_SUFFOCATING_ROOTS } = require("./grassElementRules");
 const { ELECTRIC_EFFECT_SHOCK, ELECTRIC_EFFECT_OVERLOAD, ELECTRIC_EFFECT_FIELD_DEBUFF, ELECTRIC_EFFECT_FIELD } = require("./electricElementRules");
@@ -181,10 +180,6 @@ function runEndOfRound({ battle }) {
     const rules = getElementalRules(element);
     const entries = rules?.hooks?.[BATTLE_HOOK.END_OF_ROUND]?.({ battle }) || [];
     if (Array.isArray(entries)) logs.push(...entries);
-  }
-
-  for (const userId of Object.keys(battle.players || {})) {
-    tickRoundTimers(battle.players[userId]);
   }
 
   return logs;
