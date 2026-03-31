@@ -42,6 +42,7 @@ function calculateDamage({ attackerAttack, defenderDefense, attackerCritChance =
   const damageVariance = varianceRoll || ((Math.random() * 0.28) + 0.86);
 
   const baseDamage = Math.max(1, Math.round((attack * damageVariance) - (defense * 0.42)));
+  const critChanceRaw = Number(attackerCritChance) || 0;
   const critChance = normalizeChance(attackerCritChance, 0.95);
   const dodgeChance = normalizeChance(defenderDodgeChance, 0.95);
   const dodgeRoll = Math.random();
@@ -54,6 +55,7 @@ function calculateDamage({ attackerAttack, defenderDefense, attackerCritChance =
       normalDamage: baseDamage,
       finalDamage: 0,
       critChance,
+      critChanceRaw,
       dodgeChance,
       varianceRoll: Number(damageVariance.toFixed(4)),
       critRoll: null,
@@ -72,9 +74,10 @@ function calculateDamage({ attackerAttack, defenderDefense, attackerCritChance =
     normalDamage: baseDamage,
     finalDamage,
     critChance: crit.critChanceNormalized,
+    critChanceRaw,
     dodgeChance,
     varianceRoll: Number(damageVariance.toFixed(4)),
-    critChanceRaw: crit.critChanceRaw,
+    critRollInputChance: crit.critChanceRaw,
     critRoll: crit.critRoll,
     dodgeRoll: Number(dodgeRoll.toFixed(4)),
   };

@@ -157,6 +157,49 @@ test("ataque básico usa chance crítica direta do pokémon (40 => 40%)", () => 
   }
 });
 
+test("ataque básico com 95% de crítico gera críticos perceptíveis em sequência", () => {
+  const battle = createReadyBattle();
+  battle.currentTurnUserId = "U1";
+  battle.players.U1.stats.critChance = 0.95;
+
+  const originalRandom = Math.random;
+  Math.random = () => 0.2;
+  try {
+    const first = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    battle.currentTurnUserId = "U1";
+    const second = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    assert.equal(first.outcome.isCritical, true);
+    assert.equal(second.outcome.isCritical, true);
+    assert.ok(first.outcome.finalDamage > first.outcome.normalDamage);
+    assert.ok(second.outcome.finalDamage > second.outcome.normalDamage);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test("dano em barreira registra absorção parcial e quebra no log", () => {
+  const battle = createReadyBattle();
+  battle.currentTurnUserId = "U1";
+  battle.players.U2.elementalState.effects.push({
+    id: "test_shield",
+    name: "Escudo de Teste",
+    remainingRounds: 2,
+    shieldCurrentHp: 1,
+    shieldMaxHp: 1,
+  });
+
+  const originalRandom = Math.random;
+  Math.random = () => 0.5;
+  try {
+    resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    const turnLog = battle.metadata.turnLog || [];
+    assert.ok(turnLog.some((line) => String(line).includes("absorveu")));
+    assert.ok(turnLog.some((line) => String(line).includes("quebrada")));
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
 test("ataque básico aplica vantagem elemental no dano final", () => {
   const battle = createReadyBattle();
   battle.currentTurnUserId = "U1";

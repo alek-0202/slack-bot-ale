@@ -204,6 +204,11 @@ function buildCombatantSummary({ battle, userId, ownerLabel }) {
     potionEvents: [],
     currentHp: Number(player?.battleHp?.current || 0),
     maxHp: Number(player?.battleHp?.max || 0),
+    currentShield: Number(player?.elementalState?.effects
+      ?.filter((effect) => Number(effect?.remainingRounds ?? 1) > 0 && effect?.shieldCurrentHp != null)
+      ?.reduce((total, effect) => total + Math.max(0, Number(effect.shieldCurrentHp || 0)), 0) || 0),
+    buffDetails: [],
+    debuffDetails: [],
   };
 }
 
@@ -214,7 +219,7 @@ function formatCombatantSummaryLines(summary) {
     `• Dano status: ${summary.statusDamage.length ? summary.statusDamage.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
     `• Dano: ${summary.directDamage || 0}${summary.absorbedDamage ? ` (barreira absorveu ${summary.absorbedDamage})` : ""}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}${summary.dodged ? " (esquivado)" : ""}${summary.elementalTag ? ` (${summary.elementalTag})` : ""}`,
     `• Cura recebida: ${summary.healingReceived.length ? summary.healingReceived.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
-    `• Vida: ${summary.currentHp}/${summary.maxHp}`,
+    `• Vida: ${summary.currentHp}/${summary.maxHp}${summary.currentShield > 0 ? ` | Barreira: ${summary.currentShield}` : ""}`,
     `• Buffs: ${summary.buffs.length ? summary.buffs.join(" | ") : "—"}`,
     `• Debuffs: ${summary.debuffs.length ? summary.debuffs.join(" | ") : "—"}`,
   ];
@@ -284,8 +289,11 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     }
     summary.currentHp = Number(normalized.actorCurrentHp || summary.currentHp || 0);
     summary.maxHp = Number(normalized.actorMaxHp || summary.maxHp || 0);
+    summary.currentShield = Number(normalized.actorCurrentShield || summary.currentShield || 0);
     summary.buffs = Array.isArray(normalized.activeBuffs) ? normalized.activeBuffs : [];
     summary.debuffs = Array.isArray(normalized.activeDebuffs) ? normalized.activeDebuffs : [];
+    summary.buffDetails = Array.isArray(normalized.activeBuffDetails) ? normalized.activeBuffDetails : [];
+    summary.debuffDetails = Array.isArray(normalized.activeDebuffDetails) ? normalized.activeDebuffDetails : [];
     for (const effect of (Array.isArray(normalized.appliedEffects) ? normalized.appliedEffects : [])) {
       if (effect && !summary.continuousEffects.includes(effect)) summary.continuousEffects.push(effect);
     }
@@ -314,10 +322,70 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     "",
     `*[${enemyLabel}]*`,
     ...formatCombatantSummaryLines(summaries.enemy),
+    "",
+    ...formatDetailsSection(battle, laneIds, { playerLabel, enemyLabel }),
     extras.length ? "" : null,
     extras.length ? '*Eventos:*' : null,
     ...extras.slice(-6).map((line) => `• ${line}`),
   ].filter(Boolean).join("\n");
+}
+
+function formatDetailsSection(battle, laneIds, labels) {
+  const lines = ["*Details*"];
+  const appendDetails = (label, userId) => {
+    const details = collectLiveEffectDetails(battle?.players?.[userId]);
+    if (!details.length) {
+      lines.push(`• ${label}: —`);
+      return;
+    }
+    lines.push(`• ${label}:`);
+    for (const item of details.slice(0, 6)) {
+      const effectName = item?.name || item?.id || "Efeito";
+      const description = item?.description || "efeito ativo";
+      lines.push(`  ◦ ${effectName}: ${description}`);
+    }
+  };
+  appendDetails(labels.playerLabel || "Jogador", laneIds.playerId);
+  appendDetails(labels.enemyLabel || "Inimigo", laneIds.enemyId);
+  return lines;
+}
+
+function collectLiveEffectDetails(player = {}) {
+  const effectDetails = (player?.elementalState?.effects || [])
+    .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0)
+    .map((effect) => ({
+      name: `${effect?.name || effect?.id || "Efeito"}${effect?.remainingRounds != null ? ` [${Math.max(0, Number(effect.remainingRounds || 0))}]` : ""}`,
+      description: describeLiveEntry(effect),
+    }));
+  const statusDetails = (player?.elementalState?.statuses || [])
+    .filter((status) => Number(status?.remainingRounds ?? status?.durationTurnsRemaining ?? 1) > 0 && Number(status?.stacks || 1) > 0)
+    .map((status) => ({
+      name: `${status?.name || status?.id || "Status"} [${Math.max(0, Number(status?.remainingRounds ?? status?.durationTurnsRemaining ?? 0))}]`,
+      description: describeLiveEntry(status),
+    }));
+  return [...effectDetails, ...statusDetails];
+}
+
+function describeLiveEntry(entry = {}) {
+  if (entry?.description) return String(entry.description);
+  const parts = [];
+  const damagePerTick = Number(entry.dotDamage || entry.damagePerTurn || entry.damagePerStack || 0);
+  if (damagePerTick > 0) parts.push(`causa ${Math.round(damagePerTick)} de dano por turno`);
+  if (entry.outgoingDamageMultiplier != null && Number(entry.outgoingDamageMultiplier) !== 1) {
+    const pct = Math.round((Number(entry.outgoingDamageMultiplier) - 1) * 100);
+    parts.push(`${pct > 0 ? "aumenta" : "reduz"} dano em ${Math.abs(pct)}%`);
+  }
+  if (entry.incomingDamageTakenMultiplier != null && Number(entry.incomingDamageTakenMultiplier) !== 1) {
+    const pct = Math.round((Number(entry.incomingDamageTakenMultiplier) - 1) * 100);
+    parts.push(`${pct > 0 ? "recebe" : "mitiga"} ${Math.abs(pct)}% de dano`);
+  }
+  if (entry.speedMultiplier != null && Number(entry.speedMultiplier) !== 1) {
+    const pct = Math.round((Number(entry.speedMultiplier) - 1) * 100);
+    parts.push(`${pct > 0 ? "aumenta" : "reduz"} velocidade em ${Math.abs(pct)}%`);
+  }
+  if (entry.shieldCurrentHp != null && Number(entry.shieldCurrentHp) > 0) parts.push("absorve dano antes do HP");
+  if (entry.cannotAct || entry.skipTurn || entry.blockAction) parts.push("impede ação");
+  return parts.join(", ") || "efeito ativo";
 }
 
 function normalizeLogEntry(entry) {
@@ -341,8 +409,11 @@ function normalizeLogEntry(entry) {
         normalized.appliedEffects = resolved.appliedEffects;
         normalized.activeBuffs = resolved.activeBuffs;
         normalized.activeDebuffs = resolved.activeDebuffs;
+        normalized.activeBuffDetails = resolved.activeBuffDetails;
+        normalized.activeDebuffDetails = resolved.activeDebuffDetails;
         normalized.actorCurrentHp = resolved.actorCurrentHp;
         normalized.actorMaxHp = resolved.actorMaxHp;
+        normalized.actorCurrentShield = resolved.actorCurrentShield;
         normalized.blockedReason = resolved.blockedReason;
         normalized.extraNotes = resolved.extraNotes;
       }
@@ -569,7 +640,7 @@ function renderPokemonBlock(player) {
     `*<@${player.userId}>*\n` +
     `*${player.selectedPokemonName}* (Nv. ${player.level})${player.starText !== "-" ? ` | ${player.starText}` : ""}\n` +
     `${buildPokemonTypesLabel(player.selectedPokemonTypes) ? `🧪 ${buildPokemonTypesLabel(player.selectedPokemonTypes)}\n` : ""}` +
-    `❤️ ${player.hpCurrent}/${player.hpMax}\n` +
+    `❤️ ${player.hpCurrent}/${player.hpMax}${Number(player?.shieldCurrent || 0) > 0 ? ` | 🛡️ ${Number(player.shieldCurrent || 0)}` : ""}\n` +
     `⚔️ ATK ${player.attack} | ✨ MAG ${player.magic}\n` +
     `🛡️ DEF ${player.defense} | 💨 SPD ${player.speed}\n` +
     `⚡ Iniciativa ${player.initiativeGauge}/${player.initiativeThreshold}` +
@@ -601,7 +672,8 @@ function resolveMagicCooldownRemaining({ magic, actorPlayer }) {
 function renderPokemonLine(player) {
   const typesLabel = buildPokemonTypesLabel(player.selectedPokemonTypes);
   const starsLabel = player.starText !== "-" ? ` | ${player.starText}` : "";
-  return `• <@${player.userId}> — ${player.selectedPokemonName} Nv.${player.level}${starsLabel}${typesLabel ? ` | ${typesLabel}` : ""} | HP ${player.hpCurrent}/${player.hpMax} | SPD ${player.speed}`;
+  const shieldLabel = Number(player?.shieldCurrent || 0) > 0 ? ` • Shield ${Number(player.shieldCurrent || 0)}` : "";
+  return `• <@${player.userId}> — ${player.selectedPokemonName} Nv.${player.level}${starsLabel}${typesLabel ? ` | ${typesLabel}` : ""} | HP ${player.hpCurrent}/${player.hpMax}${shieldLabel} | SPD ${player.speed}`;
 }
 
 function renderBattleFinished({ winnerId, loserId }) {
