@@ -162,14 +162,100 @@ function buildBattleLogBlock(battle, options = {}) {
     : [];
 
   if (!lines.length) return null;
+  const formatted = formatBattleLogForSlack({ battle, lines, title: options.logTitle || "📜 LOG DE COMBATE" });
 
   return {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `*${options.logTitle || "📜 Log de combate"}*\n${lines.map((line) => `• ${line}`).join("\n")}`.slice(0, 2900),
+      text: formatted.slice(0, 2900),
     },
   };
+}
+
+function formatBattleLogForSlack({ battle, lines, title }) {
+  const laneIds = resolveBattleLogLanes(battle);
+  const logBuckets = { player: [], enemy: [] };
+
+  for (const rawEntry of lines) {
+    const normalized = normalizeLogEntry(rawEntry);
+    if (!normalized) continue;
+    const lane = classifyLogLane(normalized, laneIds);
+    const formattedLine = compactCombatLogLine(normalized);
+    if (lane === "enemy") logBuckets.enemy.push(formattedLine);
+    else logBuckets.player.push(formattedLine);
+  }
+
+  const nextTurnName = getNextTurnLabel(battle);
+  const playerLabel = laneIds.playerName || "Jogador";
+  const enemyLabel = laneIds.enemyName || "Inimigo";
+
+  return [
+    `*${title}*`,
+    "──────────────",
+    `*Rodada:* ${battle?.round || 1}`,
+    `*Próximo turno:* ${nextTurnName}`,
+    "",
+    `*[${playerLabel}]*`,
+    ...(logBuckets.player.length ? logBuckets.player.map((line) => `• ${line}`) : ["• —"]),
+    "",
+    `*[${enemyLabel}]*`,
+    ...(logBuckets.enemy.length ? logBuckets.enemy.map((line) => `• ${line}`) : ["• —"]),
+  ].join("\n");
+}
+
+function resolveBattleLogLanes(battle) {
+  const playerId = battle?.metadata?.slackUserId || battle?.challengerId;
+  const knownIds = [battle?.challengerId, battle?.challengedId].filter(Boolean);
+  const enemyId = knownIds.find((id) => id !== playerId) || battle?.challengedId || battle?.challengerId;
+  return {
+    playerId,
+    enemyId,
+    playerName: battle?.players?.[playerId]?.selectedPokemon?.name || "Jogador",
+    enemyName: battle?.players?.[enemyId]?.selectedPokemon?.name || "Inimigo",
+  };
+}
+
+function normalizeLogEntry(entry) {
+  if (entry == null) return "";
+  if (typeof entry === "string") return entry.trim();
+  if (typeof entry === "object") {
+    return String(entry.message || entry.text || entry.summary || JSON.stringify(entry)).trim();
+  }
+  return String(entry).trim();
+}
+
+function classifyLogLane(line, laneIds) {
+  const mentions = [...String(line).matchAll(/<@([^>]+)>/g)].map((match) => match[1]);
+  if (mentions.includes(laneIds.enemyId)) return "enemy";
+  if (mentions.includes(laneIds.playerId)) return "player";
+  if (/👾|🤖|inimig/i.test(line)) return "enemy";
+  return "player";
+}
+
+function compactCombatLogLine(line) {
+  const cleaned = String(line).replace(/\s+/g, " ").trim();
+  const skillMatch = cleaned.match(/(🔥|❄️|🌨️|⚡|🌩️|🧲|💧|🌊|🌀|🌿|🌱|🧠|💫|🛡️|👻|🕯️|🌑|🥊|💥)\s*([^:.\n]+)(?::|\.)?/);
+  if (skillMatch) {
+    const icon = skillMatch[1];
+    const skillName = skillMatch[2].replace(/\*+/g, "").trim();
+    return `Skill: ${icon} *${skillName}*${cleaned.includes("stack") ? " (stacks)" : ""}`;
+  }
+  if (/crític/i.test(cleaned)) return `Crítico: ${cleaned}`;
+  if (/esquiv|desvi|dodg/i.test(cleaned)) return `Esquiva: ${cleaned}`;
+  if (/burn|gélido|congel|choque|maldi|marca|raiz|debuff|buff|barreira|sobrecarga|ritmo|postura/i.test(cleaned)) {
+    return `Status: ${cleaned}`;
+  }
+  if (/falh|cooldown|inválid|limite/i.test(cleaned)) return `Falha: ${cleaned}`;
+  if (/causou|dano|atingiu|atacou|usou/i.test(cleaned)) return `Ação: ${cleaned}`;
+  return `Extra: ${cleaned}`;
+}
+
+function getNextTurnLabel(battle) {
+  const player = battle?.players?.[battle?.currentTurnUserId];
+  if (player?.selectedPokemon?.name) return player.selectedPokemon.name.toLowerCase();
+  if (battle?.currentTurnUserId) return `<@${battle.currentTurnUserId}>`;
+  return "—";
 }
 
 function buildBattleActionBlock(battle, options = {}) {
