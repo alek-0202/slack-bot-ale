@@ -1,116 +1,249 @@
-require("../application/battle/domain/elementalEngine");
-const { getRegisteredElementalRules } = require("../application/battle/domain/elementalRules");
+const SKILL_HELP_TEXT = `📘 *!skillhelp — Magias Características*
 
-const ELEMENT_ORDER = ["fire", "water", "grass", "electric", "ice", "fighting", "psychic", "ghost"];
+🔥 *FOGO*
+
+🔥 *Garras Ardentes*
+Buff (3 turnos)
+• +30% dano nos próximos 3 ataques
+• Aplica Burn (stack até 3)
+• Burn: 20% magia + eficiência / turno
+⚠️ Consome turno ao ativar
+
+🔥 *Sopro Infernal*
+Burst (+100 energia)
+• Dano: 90% magia
+• Burn forte (4 turnos)
+• Burn: 50% magia + eficiência
+
+🔥 *Defesa Ígnea*
+Sustain (3 turnos)
+• Cura: 15% da vida perdida (cap 400)
+• Contra Burn: inimigo causa -20% dano
+
+💧 *ÁGUA*
+
+🌊 *Maré Abissal*
+Controle
+• Dano fixo: 200
+• -35% dano do alvo (2 turnos)
+
+💧 *Energia Vital*
+Buff (4 turnos)
+• +50% dano de água
+• Pode buffar aliados de água
+
+🌊 *Profundezas do Oceano*
+Burst (+150 energia)
+• Dano verdadeiro: 2500
+• Kill: +100 energia / -3 CD
+
+🌿 *GRAMA*
+
+🌿 *Crescimento Natural*
+Sustain (3 turnos)
+• +25% eficiência
+• Cura 10% HP/turno
+• Gera Raiz (até 3)
+
+Raiz:
+• -5% dano recebido por stack
+• 3 stacks = imune a controle leve
+⚠️ -20% velocidade
+
+🌿 *Raízes Sufocantes*
+DOT + drain
+• 25% magia + eficiência / turno
+• Cura 50% do dano
+• -30% velocidade
+
+Extra: +1 turno se já afetado
+
+🌿 *Espinho da Floresta*
+Defensivo
+• Taunt + contra-ataque
+• Reflete 15% dano
+• <30% HP → até 22%
+
+⚡ *ELÉTRICO*
+
+⚡ *Sobrecarga*
+Buff
+• +20% dano elétrico
+• Aplica Choque
+
+Choque:
+• -25% iniciativa
+• 20% falha parcial
+
+Upgrade: pode perder turno
+
+⚡ *Corrente de Raios*
+Chain attack
+• 85% magia
+• Salta até 3 alvos
+
+Extra:
+• alvo único: +45% dano
+• choque melhora efeito
+
+⚡ *Campo Eletrostático*
+Campo (3 turnos)
+• -20% iniciativa inimigos
+• 15% chance de choque
+
+• +20% dano próprio
+• pode atingir alvo extra
+
+❄️ *GELO*
+
+❄️ *Armadura de Gelo*
+Defesa
+• -25% dano recebido
+• Aplica Gélido
+
+Gélido:
+• -20% iniciativa
+• 3 stacks = congelado
+
+❄️ *Estilhaço Glacial*
+Burst
+• 90% magia
+
+• Gélido → +30%
+• Congelado → +60%
+
+Aplica Quebra:
+• alvo recebe +25% dano
+
+❄️ *Nevasca*
+AoE (3 turnos)
+• 40% magia / turno
+• Aplica Gélido
+
+• -25% iniciativa
+• chance de congelar
+
+🥊 *LUTADOR*
+
+🥊 *Ritmo de Combate*
+Scaling
+• stacks (até 3):
++10% dano / +5% speed
+
+• 20% hit duplo
+
+3 stacks:
+• próximo ataque = crit x3
+
+🥊 *Golpe Demolidor*
+Burst
+• 100% magia
+
+• stacks → -10% defesa por stack
+• consome stacks
+
+🥊 *Postura Inabalável*
+Defesa
+• -30% dano recebido
+• converte dano em carga
+
+Carga:
+• até +50% dano
+
+Extra:
+• não morre
+• cura 10% HP
+
+🧠 *PSÍQUICO*
+
+🧠 *Leitura Mental*
+Setup (2 cargas)
+• Marca alvo
+
+• +20% velocidade
+• +25% dano
+
+2ª carga:
+• 110% magia
+
+🧠 *Explosão Psíquica*
+Burst
+• 80% magia
+• -30% iniciativa
+
+Counter:
+• vira shield
+
+🧠 *Barreira Psíquica*
+Shield
+• base: magia + HP
+
+• gera stacks
+• aplica dano on-hit
+
+Quebra:
+• bônus de dano + defesa
+
+👻 *GHOST*
+
+👻 *Forma Etérea*
+Invulnerável (3 turnos)
+• -95% dano
+• perde 2% HP/turno
+
+Saída:
+• dano + Assombro
+
+👻 *Maldição Sombria*
+DOT acumulativo
+• stacks por turno/skill
+
+Explode:
+• dano baseado em stacks
+
+Extra:
+• não executa
+• deixa alvo com 1 HP
+
+🌑 *Chamado das Sombras*
+Invocação
+• sombra ataca por turno
+
+Marca:
+• alvo recebe +dano
+
+Execução:
+• até 10% HP
+
+👻 *Possessão*
+Controle
+• 50% chance
+
+Sucesso:
+• dreno por 3 turnos
+
+Falha:
+• debuff`;
 
 function buildSkillHelpBlocks() {
-  const entries = listCharacteristicSkillsByElement();
+  const lines = SKILL_HELP_TEXT.split("\n");
   const chunks = [];
   let current = [];
   let currentLength = 0;
 
-  const pushLine = (line) => {
-    if ((currentLength + line.length) > 2600 && current.length) {
+  for (const line of lines) {
+    if (current.length && (currentLength + line.length + 1) > 2600) {
       chunks.push(current.join("\n"));
       current = [];
       currentLength = 0;
     }
+
     current.push(line);
     currentLength += line.length + 1;
-  };
-
-  pushLine("🧩 *SKILL HELP — Magias Características*");
-  pushLine("_Organizado por elemento. Valores podem receber bônus/reduções em batalha._");
-  pushLine("");
-
-  for (const group of entries) {
-    pushLine(`*${group.label}*`);
-    for (const skill of group.skills) {
-      pushLine(`${skill.icon || "✨"} *${skill.name}*`);
-      pushLine(`• Elemento: ${group.element}`);
-      pushLine(`• Descrição: ${skill.description}`);
-      pushLine(`• Multiplicadores: ${skill.multipliers}`);
-      pushLine(`• Custo de energia: ${skill.energyCost}`);
-      pushLine(`• Cooldown: ${skill.cooldown}`);
-      pushLine(`• Efeitos principais: ${skill.effects}`);
-      pushLine(`• Especial: ${skill.special}`);
-    }
-    pushLine("");
   }
 
   if (current.length) chunks.push(current.join("\n"));
   return chunks.map((text) => ({ type: "section", text: { type: "mrkdwn", text } }));
-}
-
-function listCharacteristicSkillsByElement() {
-  const registry = getRegisteredElementalRules();
-  const order = new Map(ELEMENT_ORDER.map((element, index) => [element, index]));
-  return registry
-    .map(({ element, rules }) => ({
-      element,
-      label: `${getElementEmoji(element)} ${capitalize(element)}`,
-      skills: (rules?.skills || []).map((skill) => ({
-        icon: skill.icon,
-        name: skill.name,
-        description: buildSkillDescription(skill),
-        multipliers: buildMultipliersLabel(skill),
-        energyCost: `${50 + Math.max(0, Number(skill.extraEnergyCost || 0))}`,
-        cooldown: `${Number(skill.cooldownRounds || 0)} rodada(s)`,
-        effects: buildEffectsLabel(skill),
-        special: buildSpecialLabel(skill),
-      })),
-    }))
-    .filter((entry) => entry.skills.length)
-    .sort((a, b) => (order.get(a.element) ?? 999) - (order.get(b.element) ?? 999));
-}
-
-function buildSkillDescription(skill) {
-  if (skill?.description) return skill.description;
-  if (skill?.hooks?.includes("onHit")) return "Skill de preparação/efeito com impacto em ataques seguintes.";
-  return "Skill ativa que altera dano, status ou campo de batalha.";
-}
-
-function buildMultipliersLabel(skill) {
-  const entries = [];
-  if (skill?.damageMultiplier) entries.push(`dano x${skill.damageMultiplier}`);
-  if (skill?.hooks?.includes("onHit")) entries.push("bônus em hits subsequentes");
-  if (skill?.extraEnergyCost) entries.push("alto custo = maior impacto");
-  return entries.length ? entries.join(" | ") : "depende do cálculo da skill (base + bônus situacionais)";
-}
-
-function buildEffectsLabel(skill) {
-  const hooks = Array.isArray(skill?.hooks) ? skill.hooks : [];
-  const mapped = hooks.map((hook) => ({
-    onCast: "aplica ao conjurar",
-    onHit: "aplica ao acertar",
-    beforeDamage: "modifica dano recebido/causado",
-    endOfRound: "efeito contínuo por rodada",
-  }[hook] || hook));
-  return mapped.length ? mapped.join(", ") : "efeitos diretos";
-}
-
-function buildSpecialLabel(skill) {
-  if (Number(skill?.extraEnergyCost || 0) >= 100) return "habilidade de alto impacto e alto custo.";
-  if (Number(skill?.cooldownRounds || 0) >= 5) return "janela forte com recarga longa.";
-  return "uso tático com recarga padrão.";
-}
-
-function getElementEmoji(element) {
-  return {
-    fire: "🔥",
-    water: "💧",
-    grass: "🌿",
-    electric: "⚡",
-    ice: "❄️",
-    fighting: "🥊",
-    psychic: "🧠",
-    ghost: "👻",
-  }[String(element || "").toLowerCase()] || "✨";
-}
-
-function capitalize(value) {
-  const text = String(value || "");
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 module.exports = {
