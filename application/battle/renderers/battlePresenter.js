@@ -1,6 +1,13 @@
 const { ENABLE_ELEMENTAL_SKILLS_BATTLE, getAvailableMagicActions, getSkillCooldownRemaining } = require("../domain/elementalRules");
 const { MAX_POTIONS_PER_BATTLE } = require("../domain/battleEngine");
 
+function resolveCurrentShield(playerState) {
+  const effects = playerState?.elementalState?.effects || [];
+  return effects
+    .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0 && effect?.shieldCurrentHp != null)
+    .reduce((total, effect) => total + Math.max(0, Number(effect.shieldCurrentHp || 0)), 0);
+}
+
 function buildBattleViewModel(battle) {
   const challenger = battle.players[battle.challengerId];
   const challenged = battle.players[battle.challengedId];
@@ -37,6 +44,7 @@ function buildPlayerViewModel(userId, playerState, initiative, battle) {
     starText: playerState.selectedPokemon?.starText || "-",
     hpCurrent: playerState.battleHp?.current ?? null,
     hpMax: playerState.battleHp?.max ?? null,
+    shieldCurrent: resolveCurrentShield(playerState),
     attack: playerState.stats?.attack ?? null,
     magic: playerState.stats?.magic ?? playerState.stats?.attack ?? null,
     defense: playerState.stats?.defense ?? null,

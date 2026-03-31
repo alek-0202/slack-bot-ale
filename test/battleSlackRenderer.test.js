@@ -115,13 +115,14 @@ test("formatBattleLogForSlack usa critBonusDamage e resolvedAction como fonte ú
         activeDebuffs: [],
         actorCurrentHp: 111,
         actorMaxHp: 150,
+        actorCurrentShield: 30,
       },
     }],
   });
 
   assert.match(text, /Dano: 48 \(\+crit 18\)/);
   assert.match(text, /Dano status: Status 5/);
-  assert.match(text, /Vida: 111\/150/);
+  assert.match(text, /Vida: 111\/150 \| Barreira: 30/);
   assert.match(text, /Buffs: Foco: \+15% chance crítica/);
 });
 
@@ -159,6 +160,23 @@ test("formatBattleLogForSlack exibe absorção de barreira e duração restante 
   assert.match(text, /Dano: 0 \(barreira absorveu 40\) \(vantagem elemental\)/);
   assert.match(text, /Buffs: Controle Mental \[2\] \| Barreira Psíquica \[1\]/);
   assert.match(text, /Debuffs: Burn \[3\]/);
+});
+
+test("formatBattleLogForSlack inclui bloco Details com efeitos ativos do estado real", () => {
+  const battle = createBattleStub();
+  battle.players.U1.elementalState = {
+    effects: [{ id: "mind_control", name: "Controle Mental", remainingRounds: 2, outgoingDamageMultiplier: 1.2 }],
+    statuses: [{ id: "burn", name: "Burn", stacks: 1, remainingRounds: 2, damagePerStack: 10 }],
+  };
+
+  const text = formatBattleLogForSlack({
+    battle,
+    title: "LOG",
+    lines: [{ kind: "text", text: "rodada" }],
+  });
+  assert.match(text, /\*Details\*/);
+  assert.match(text, /Controle Mental \[2\]: aumenta dano em 20%/);
+  assert.match(text, /Burn \[2\]: causa 10 de dano por turno/);
 });
 
 test("formatBattleLogForSlack usa fallback textual quando não há action_summary", () => {
