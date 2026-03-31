@@ -267,10 +267,11 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     summary.actionLabel = `${normalized.skillIcon || "✨"} ${normalized.skillName || normalized.actionName || "Ação"}`;
     summary.directDamage = Number(normalized.finalDamage || 0);
     summary.absorbedDamage = Number(normalized.shieldAbsorbedDamage || 0);
-    summary.dodged = Boolean(normalized.dodged);
-    summary.elementalTag = normalized.elementalRelation === "advantage"
+    summary.dodged = Boolean(normalized.didDodge || normalized.wasDodged || normalized.dodged);
+    const elementalOutcome = normalized.elementalOutcome || normalized.elementalRelation;
+    summary.elementalTag = elementalOutcome === "advantage"
       ? "vantagem elemental"
-      : normalized.elementalRelation === "disadvantage"
+      : elementalOutcome === "disadvantage"
         ? "resistido"
         : null;
     if (Number(normalized.statusDamage || 0) > 0) {
@@ -387,7 +388,11 @@ function normalizeLogEntry(entry) {
         normalized.healingDone = resolved.healingDone;
         normalized.shieldAbsorbedDamage = resolved.shieldAbsorbedDamage;
         normalized.elementalMultiplier = resolved.elementalMultiplier;
+        normalized.elementalModifier = resolved.elementalModifier;
+        normalized.elementalOutcome = resolved.elementalOutcome;
         normalized.elementalRelation = resolved.elementalRelation;
+        normalized.didDodge = resolved.didDodge;
+        normalized.wasDodged = resolved.wasDodged;
         normalized.dodged = resolved.dodged;
         normalized.isCrit = resolved.isCrit;
         normalized.critical = resolved.isCrit;
