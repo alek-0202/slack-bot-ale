@@ -200,7 +200,7 @@ test("dano em barreira registra absorção parcial e quebra no log", () => {
   }
 });
 
-test("ataque básico aplica vantagem elemental no dano final", () => {
+test("ataque básico não aplica counter/vantagem elemental", () => {
   const battle = createReadyBattle();
   battle.currentTurnUserId = "U1";
   battle.players.U1.selectedPokemon.elementTypes = ["electric"];
@@ -218,35 +218,31 @@ test("ataque básico aplica vantagem elemental no dano final", () => {
   try {
     const result = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
     assert.equal(result.outcome.ok, true);
-    assert.equal(result.outcome.elemental.elemental.relation, "advantage");
-    assert.equal(result.outcome.resolvedAction.elementalRelation, "advantage");
-    assert.ok(result.outcome.finalDamage > result.outcome.normalDamage);
+    assert.equal(result.outcome.elemental.elemental.relation, "neutral");
+    assert.equal(result.outcome.resolvedAction.elementalRelation, "neutral");
+    assert.equal(result.outcome.finalDamage, result.outcome.normalDamage);
   } finally {
     Math.random = originalRandom;
   }
 });
 
-test("ataque básico aplica desvantagem elemental no dano final", () => {
+test("ataque básico continua reduzido por defesa física", () => {
   const battle = createReadyBattle();
   battle.currentTurnUserId = "U1";
-  battle.players.U1.selectedPokemon.elementTypes = ["fire"];
-  battle.players.U2.selectedPokemon.elementTypes = ["water"];
+  battle.players.U1.stats.attack = 80;
+  battle.players.U2.stats.defense = 5;
 
   const originalRandom = Math.random;
-  let calls = 0;
-  Math.random = () => {
-    calls += 1;
-    if (calls === 1) return 0.5; // variância
-    if (calls === 2) return 0.9; // esquiva falha
-    if (calls === 3) return 0.9; // sem crítico
-    return 0.5;
-  };
+  Math.random = () => 0.9;
   try {
-    const result = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
-    assert.equal(result.outcome.ok, true);
-    assert.equal(result.outcome.elemental.elemental.relation, "disadvantage");
-    assert.equal(result.outcome.resolvedAction.elementalRelation, "disadvantage");
-    assert.ok(result.outcome.finalDamage < result.outcome.normalDamage);
+    const lowDefense = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    battle.currentTurnUserId = "U1";
+    battle.players.U2.battleHp.current = battle.players.U2.battleHp.max;
+    battle.players.U2.stats.defense = 70;
+    const highDefense = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+
+    assert.ok(lowDefense.outcome.finalDamage > highDefense.outcome.finalDamage);
+    assert.equal(highDefense.outcome.elemental.elemental.relation, "neutral");
   } finally {
     Math.random = originalRandom;
   }
