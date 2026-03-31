@@ -30,30 +30,18 @@ const { applyGelidStacks } = require("./iceStatusRules");
 const { FIGHTING_EFFECT_RHYTHM, FIGHTING_EFFECT_FINISHER, FIGHTING_EFFECT_UNYIELDING, FIGHTING_EFFECT_STANCE_RELEASE } = require("./fightingElementRules");
 const { PSYCHIC_SKILLS, PSYCHIC_EFFECT_BARRIER, PSYCHIC_EFFECT_BARRIER_BREAK_BUFF, getReadState, clearReadState } = require("./psychicElementRules");
 const { GHOST_SKILLS, GHOST_EFFECT_ETHEREAL, GHOST_EFFECT_CURSE, GHOST_EFFECT_SHADOW_MARK } = require("./ghostElementRules");
+const { consumeSkillEnergy, restoreSkillEnergy, ensureSkillEnergyState } = require("./skillEnergy");
+const { validateSkillActionRequest } = require("./skillActionValidator");
+const { tickOwnerTurnTimers, processOwnerTurnEffects, EFFECT_TIMING } = require("./elementalRules");
 
-
-function getBattleEnergyPool(battle) {
-  battle.metadata = battle.metadata || {};
-  battle.metadata.energyByUserId = battle.metadata.energyByUserId || {};
-  return battle.metadata.energyByUserId;
-}
 
 function consumeBattleEnergy({ battle, userId, amount }) {
-  const cost = Math.max(0, Number(amount) || 0);
-  const energyByUserId = getBattleEnergyPool(battle);
-  if (energyByUserId[userId] == null) return { ok: true, currentEnergy: Infinity, consumed: 0 };
-
-  const current = Math.max(0, Number(energyByUserId[userId] || 0));
-  if (current < cost) return { ok: false, currentEnergy: current, requiredEnergy: cost };
-  energyByUserId[userId] = current - cost;
-  return { ok: true, currentEnergy: energyByUserId[userId], consumed: cost };
+  const actor = battle?.players?.[userId];
+  return consumeSkillEnergy(actor, amount);
 }
 
 function restoreBattleEnergy({ battle, userId, amount }) {
-  const gain = Math.max(0, Number(amount) || 0);
-  const energyByUserId = getBattleEnergyPool(battle);
-  if (energyByUserId[userId] == null) return;
-  energyByUserId[userId] = Math.max(0, Number(energyByUserId[userId] || 0) + gain);
+  restoreSkillEnergy(battle?.players?.[userId], amount);
 }
 
 function reduceAllElementalCooldowns(playerState, rounds = 0) {
@@ -191,7 +179,25 @@ function applyRoundEndAndCheck(battle, actorUserId) {
   return null;
 }
 
+function advanceTurnForActor(battle, actorUserId, options = {}) {
+  const ownerEndLogs = processOwnerTurnEffects({
+    playerState: battle.players?.[actorUserId],
+    ownerUserId: actorUserId,
+    timing: EFFECT_TIMING.ON_OWNER_TURN_END,
+  });
+  tickOwnerTurnTimers(battle.players?.[actorUserId]);
+  if (ownerEndLogs.length) mergeRoundLogs(battle, ownerEndLogs);
+  return passTurn(battle, actorUserId, options);
+}
+
 function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {} }) {
+  const ownerStartLogs = processOwnerTurnEffects({
+    playerState: battle.players?.[actorUserId],
+    ownerUserId: actorUserId,
+    timing: EFFECT_TIMING.ON_OWNER_TURN_START,
+  });
+  if (ownerStartLogs.length) mergeRoundLogs(battle, ownerStartLogs);
+
   const actionStart = evaluateActionStartModifiers({ battle, actorId: actorUserId, actionType });
   const actorRhythm = ensureElementalState(battle.players?.[actorUserId]).effects?.find((effect) => effect.id === FIGHTING_EFFECT_RHYTHM);
   const hasGroupControl = (ensureElementalState(battle.players?.[actorUserId]).effects || [])
@@ -202,7 +208,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
   }
   if (actionStart.logs?.length) mergeRoundLogs(battle, actionStart.logs);
   if (actionStart.cancelTurn) {
-    const turnFlow = passTurn(battle, actorUserId, { energyPenalty: Math.round((1 - Number(actionStart.initiativePenaltyMultiplier || 1)) * 20) });
+    const turnFlow = advanceTurnForActor(battle, actorUserId, { energyPenalty: Math.round((1 - Number(actionStart.initiativePenaltyMultiplier || 1)) * 20) });
     return {
       battle,
       actionType,
@@ -295,7 +301,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       };
     }
 
-    const turnFlow = passTurn(battle, actorUserId);
+    const turnFlow = advanceTurnForActor(battle, actorUserId);
     return {
       battle,
       actionType,
@@ -315,6 +321,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
 
   if (actionType === BATTLE_ACTION.MAGIC) {
     const attacker = battle.players[actorUserId];
+    ensureSkillEnergyState(attacker);
     const curse = ensureElementalState(attacker).effects?.find((effect) => effect.id === GHOST_EFFECT_CURSE);
     if (curse) curse.stacks = Math.max(0, Number(curse.stacks || 0) + 2);
     const defenderId = getOpponentId(battle, actorUserId);
@@ -349,29 +356,39 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         shouldPassTurn: false,
       };
     }
+    const usageValidation = validateSkillActionRequest({ battle, actorUserId, magicSlot: actionPayload.magicSlot, targetUserId: defenderId });
+    if (!usageValidation.ok) {
+      const mapped = usageValidation.reason === "INSUFFICIENT_ENERGY"
+        ? "insufficient_skill_energy"
+        : usageValidation.reason === "COOLDOWN"
+          ? (magicAction.kind === "regular" ? "magic_on_cooldown" : "elemental_skill_on_cooldown")
+          : usageValidation.reason === "NOT_YOUR_TURN"
+            ? "not_actor_turn"
+            : "magic_not_found";
+      return {
+        battle,
+        actionType,
+        outcome: {
+          ok: false,
+          reason: mapped,
+          type: "magic",
+          blockedOwnTurnsRemaining: magicAction?.kind === "regular"
+            ? Math.max(0, Number(attacker?.magicCooldown?.blockedOwnTurnsRemaining || 0))
+            : Math.max(0, Number(getElementalSkillCooldown(attacker, magicAction?.id) || 0)),
+          requiredEnergy: usageValidation.requiredEnergy,
+          currentEnergy: attacker?.skillEnergy,
+        },
+        finished: false,
+        shouldPassTurn: false,
+      };
+    }
+
     if (magicAction.kind === "regular") {
       const rhythm = ensureElementalState(attacker).effects?.find((effect) => effect.id === FIGHTING_EFFECT_RHYTHM);
       if (rhythm?.breakOnMagic) {
         rhythm.stacks = 0;
         rhythm.targetUserId = null;
       }
-      const blockedOwnTurnsRemaining = Math.max(0, Number(attacker?.magicCooldown?.blockedOwnTurnsRemaining) || 0);
-      if (blockedOwnTurnsRemaining > 0) {
-        return {
-          battle,
-          actionType,
-          outcome: {
-            ok: false,
-            reason: "magic_on_cooldown",
-            type: "magic",
-            blockedOwnTurnsRemaining,
-            magicName: attacker?.magicCooldown?.lastMagicName || null,
-          },
-          finished: false,
-          shouldPassTurn: false,
-        };
-      }
-
       const regularEnergyCheck = consumeBattleEnergy({ battle, userId: actorUserId, amount: MAGIC_ENERGY_COST });
       if (!regularEnergyCheck.ok) {
         return { battle, actionType, outcome: { ok: false, reason: "insufficient_skill_energy", type: "magic", requiredEnergy: MAGIC_ENERGY_COST, currentEnergy: regularEnergyCheck.currentEnergy }, finished: false, shouldPassTurn: false };
@@ -424,7 +441,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         };
       }
 
-      const turnFlow = passTurn(battle, actorUserId, { energyPenalty: result.energyConsumed });
+      const turnFlow = advanceTurnForActor(battle, actorUserId, { energyPenalty: result.energyConsumed });
       return {
         battle,
         actionType,
@@ -439,23 +456,6 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         },
         finished: false,
         shouldPassTurn: true,
-      };
-    }
-
-    const skillCooldown = getElementalSkillCooldown(attacker, magicAction.id);
-    if (skillCooldown > 0) {
-      return {
-        battle,
-        actionType,
-        outcome: {
-          ok: false,
-          reason: "elemental_skill_on_cooldown",
-          type: "magic",
-          blockedOwnTurnsRemaining: skillCooldown,
-          magicName: magicAction.name,
-        },
-        finished: false,
-        shouldPassTurn: false,
       };
     }
 
@@ -539,10 +539,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         if (defenderFighting.logs.length) mergeRoundLogs(battle, defenderFighting.logs);
       }
     }
-    if (castResult.consumeAllEnergy) {
-      const pool = battle.metadata?.energyByUserId || {};
-      if (pool[actorUserId] != null) pool[actorUserId] = 0;
-    }
+    if (castResult.consumeAllEnergy) attacker.skillEnergy = 0;
 
     if (castResult.onKillSpread?.status === "gelid" && Number(battle.players[defenderId]?.battleHp?.current || 0) <= 0) {
       const next = resolveSkillTargets({
@@ -599,7 +596,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       };
     }
 
-    const turnFlow = passTurn(battle, actorUserId, {
+    const turnFlow = advanceTurnForActor(battle, actorUserId, {
       energyPenalty: MAGIC_ENERGY_COST + extraEnergyCost,
       forceNextActorUserId: castResult.forcePassTurn ? defenderId : null,
     });
@@ -727,7 +724,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       };
     }
 
-    const turnFlow = passTurn(battle, actorUserId);
+    const turnFlow = advanceTurnForActor(battle, actorUserId);
     return {
       battle,
       actionType,
@@ -781,7 +778,14 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     };
   }
 
-  const turnFlow = passTurn(battle, actorUserId);
+  const turnFlow = advanceTurnForActor(battle, actorUserId);
+  const ownerEndLogs = processOwnerTurnEffects({
+    playerState: battle.players?.[actorUserId],
+    ownerUserId: actorUserId,
+    timing: EFFECT_TIMING.ON_OWNER_TURN_END,
+  });
+  tickOwnerTurnTimers(battle.players?.[actorUserId]);
+  if (ownerEndLogs.length) mergeRoundLogs(battle, ownerEndLogs);
   return {
     battle,
     actionType,

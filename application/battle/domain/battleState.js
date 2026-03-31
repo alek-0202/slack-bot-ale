@@ -1,4 +1,5 @@
 const { calculateBattleHp, decideStartingPlayer, createInitialInitiativeState, resolveNextTurnBySpeed } = require("./battleEngine");
+const { SKILL_ENERGY_MAX, ensureSkillEnergyState, regenerateSkillEnergy } = require("./skillEnergy");
 const { getPokemonStars, formatPokemonStars } = require("../../../services/pokemonProgressionService");
 const { normalizeElementList } = require("../../../services/elementType");
 
@@ -43,6 +44,8 @@ function createPlayerState(userId) {
     },
     team: [],
     activeTeamIndex: 0,
+    skillEnergy: SKILL_ENERGY_MAX,
+    skillEnergyMax: SKILL_ENERGY_MAX,
   };
 }
 
@@ -233,6 +236,9 @@ function startBattle(battle) {
     };
   }
 
+  ensureSkillEnergyState(battle.players[battle.challengerId]);
+  ensureSkillEnergyState(battle.players[battle.challengedId]);
+
   return {
     battle,
     starter,
@@ -268,12 +274,18 @@ function passTurn(battle, actorUserId = battle.currentTurnUserId, options = {}) 
     };
     battle.currentTurnUserId = forcedNextActorUserId;
     battle.round += 1;
+    for (const player of Object.values(battle.players || {})) {
+      regenerateSkillEnergy(player, battle);
+    }
     return initiativeResult;
   }
 
   const initiativeResult = resolveNextTurnBySpeed({ battle, actorUserId, energyPenalty: options.energyPenalty });
   battle.currentTurnUserId = initiativeResult.nextActorUserId;
   battle.round += 1;
+  for (const player of Object.values(battle.players || {})) {
+    regenerateSkillEnergy(player, battle);
+  }
   return initiativeResult;
 }
 

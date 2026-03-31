@@ -32,6 +32,7 @@ const {
 } = require("./battleRenderService");
 const { getSupabaseClient } = require("../database/supabase");
 const { getAvailableMagicActions, getSkillCooldownRemaining } = require("../application/battle/domain/elementalRules");
+const { validateSkillActionRequest } = require("../application/battle/domain/skillActionValidator");
 
 const logger = createLogger("battle-service");
 const PVP_ENTRY_FEE = 2000;
@@ -540,6 +541,17 @@ async function switchPokemon({ event, say, pokemonId }) {
 async function castMagic({ event, say, magicSlot }) {
   const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.MAGIC });
   if (!battle) return;
+  const preValidation = validateSkillActionRequest({ battle, actorUserId: event.user, magicSlot });
+  if (!preValidation.ok) {
+    if (preValidation.reason === "INSUFFICIENT_ENERGY") {
+      await say("⚡ Energia de skill insuficiente para essa ação.");
+      return;
+    }
+    if (preValidation.reason === "COOLDOWN") {
+      await say("⏳ Skill em cooldown.");
+      return;
+    }
+  }
 
   const resolution = resolveBattleTurn({
     battle,
@@ -570,7 +582,7 @@ async function castMagic({ event, say, magicSlot }) {
 
 
   if (!result.ok && result.reason === "insufficient_skill_energy") {
-    await say(`⚡ Energia insuficiente para essa skill. Necessário: *${result.requiredEnergy}*.`);
+    await say(`⚡ Energia de skill insuficiente para essa ação.`);
     return;
   }
 
