@@ -37,6 +37,13 @@ const logger = createLogger("battle-service");
 const PVP_ENTRY_FEE = 2000;
 const PVP_WIN_PRIZE = 4000;
 
+function appendActionSummaryLog(battle, summary) {
+  if (!battle || !summary) return;
+  battle.metadata = battle.metadata || {};
+  const current = Array.isArray(battle.metadata.turnLog) ? battle.metadata.turnLog : [];
+  battle.metadata.turnLog = [...current, { kind: "action_summary", ...summary }].slice(-12);
+}
+
 function parsePokemonIds(rawArgs) {
   const tokens = String(rawArgs || "").split(/\s+/).filter(Boolean);
   const ids = [...new Set(tokens.map((token) => parsePositiveInt(token)).filter(Boolean))];
@@ -357,6 +364,18 @@ async function attack({ event, say }) {
   });
 
   store.setBattle(battle.channelId, battle);
+  appendActionSummaryLog(battle, {
+    actorUserId: event.user,
+    actorName: battle.players?.[event.user]?.selectedPokemon?.name || `<@${event.user}>`,
+    skillName: "Ataque Básico",
+    skillIcon: "⚔️",
+    damageTypes: ["físico"],
+    baseDamage: result.normalDamage,
+    modifiers: [result.isCritical ? "crítico x1.6" : "sem crítico"],
+    mitigation: Math.max(0, Number(result.normalDamage || 0) - Number(result.finalDamage || 0)),
+    critical: Boolean(result.isCritical),
+    finalDamage: result.finalDamage,
+  });
 
   if (resolution.finished) {
     await persistBattleResultHp(battle);
@@ -416,6 +435,17 @@ async function usePotion({ event, say }) {
   });
 
   store.setBattle(battle.channelId, battle);
+  appendActionSummaryLog(battle, {
+    actorUserId: event.user,
+    actorName: battle.players?.[event.user]?.selectedPokemon?.name || `<@${event.user}>`,
+    skillName: "Poção",
+    skillIcon: "🧪",
+    damageTypes: [],
+    baseDamage: 0,
+    modifiers: [`cura ${result.healAmount}`],
+    critical: false,
+    finalDamage: 0,
+  });
 
   await say(
     `🧪 <@${event.user}> usou poção e curou *${result.healAmount}* HP.\n` +
@@ -583,6 +613,24 @@ async function castMagic({ event, say, magicSlot }) {
   });
 
   store.setBattle(battle.channelId, battle);
+  appendActionSummaryLog(battle, {
+    actorUserId: event.user,
+    actorName: battle.players?.[event.user]?.selectedPokemon?.name || `<@${event.user}>`,
+    skillName: result.magicEntry?.name || "Magia",
+    skillIcon: result.magicEntry?.icon || "✨",
+    damageTypes: [result.magicEntry?.element || "mágico", result.magicEntry?.kind === "elemental" ? "habilidade característica" : "magia"],
+    baseDamage: result.normalDamage ?? result.magicStat ?? 0,
+    modifiers: [
+      result.multiplier ? `x${result.multiplier}` : null,
+      result.elemental?.hasAdvantage ? "vantagem elemental" : null,
+      result.elemental?.hasDisadvantage ? "desvantagem elemental" : null,
+      result.energyConsumed ? `energia -${result.energyConsumed}` : null,
+    ].filter(Boolean),
+    extraDamage: result.finalDamage != null && result.normalDamage != null ? Math.max(0, Number(result.finalDamage) - Number(result.normalDamage)) : null,
+    mitigation: null,
+    critical: Boolean(result.isCritical || result.elemental?.hasAdvantage),
+    finalDamage: result.finalDamage,
+  });
 
   if (resolution.finished) {
     await persistBattleResultHp(battle);

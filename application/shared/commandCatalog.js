@@ -147,6 +147,13 @@ const sharedCommandCatalog = {
     slackUsage: '`!mrskill <pokeid>`',
     discordDescription: 'Configura skills características',
   },
+  skillhelp: {
+    name: 'skillhelp',
+    category: 'pokemon',
+    summary: 'Mostra as skills características por elemento com efeitos e custos',
+    slackUsage: '`!skillhelp`',
+    discordDescription: 'Mostra guia das skills características',
+  },
 
   dungeon: {
     name: 'dungeon',
