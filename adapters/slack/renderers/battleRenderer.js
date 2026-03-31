@@ -2,6 +2,7 @@ const { buildBattleViewModel } = require("../../../application/battle/renderers/
 const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService");
 const { getAvailableElementalSkills } = require("../../../application/battle/domain/elementalRules");
 const { canUseSkillAction } = require("../../../application/battle/domain/skillActionValidator");
+const { sanitizeResolvedAction } = require("../../../application/battle/domain/resolvedAction");
 const { getLevelBorderStyle } = require("./pokemonVisualTier");
 
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
@@ -183,69 +184,6 @@ function buildBattleLogBlock(battle, options = {}) {
   };
 }
 
-function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
-  if (rawMode) {
-    return [`*${title}*`, ...lines.map((line) => `• ${typeof line === "string" ? line : JSON.stringify(line)}`)].join("\n");
-  }
-  const laneIds = resolveBattleLogLanes(battle);
-  const summaries = {
-    player: buildCombatantSummary({ battle, userId: laneIds.playerId, ownerLabel: "user" }),
-    enemy: buildCombatantSummary({ battle, userId: laneIds.enemyId, ownerLabel: "enemy" }),
-  };
-
-  for (const rawEntry of lines) {
-    const normalized = normalizeLogEntry(rawEntry, battle);
-    if (!normalized) continue;
-    const lane = classifyLogLane(normalized, laneIds);
-    if (normalized.kind === "action_summary") {
-      summaries[lane].actionLabel = `${normalized.skillIcon || "✨"} ${normalized.skillName || "Ação"}`;
-      summaries[lane].directDamage = Math.max(0, Number(summaries[lane].directDamage || 0) + Number(normalized.finalDamage || 0));
-      if (Number(normalized.statusDamage || 0) > 0) {
-        summaries[lane].statusDamage.push({ label: "Status", value: Number(normalized.statusDamage || 0) });
-      }
-      if (normalized.critical || normalized.isCrit) {
-        const critBonus = normalized.extraDamage != null
-          ? Number(normalized.extraDamage || 0)
-          : Math.max(0, Number(normalized.finalDamage || 0) - Number(normalized.baseDamage || 0));
-        summaries[lane].critDamageBonus = Math.max(0, Number(summaries[lane].critDamageBonus || 0) + critBonus);
-      }
-      if (Number(normalized.healingDone || 0) > 0) {
-        summaries[lane].healingReceived.push({ label: "Cura", value: Number(normalized.healingDone || 0) });
-      }
-      if (Array.isArray(normalized.appliedEffects)) {
-        for (const effectName of normalized.appliedEffects) {
-          if (!effectName) continue;
-          if (!summaries[lane].continuousEffects.includes(effectName)) summaries[lane].continuousEffects.push(effectName);
-        }
-      }
-      const healingFromModifiers = (normalized.modifiers || []).find((value) => /cura\s+\d+/i.test(String(value || "")));
-      if (healingFromModifiers) {
-        const value = Number(String(healingFromModifiers).match(/\d+/)?.[0] || 0);
-        if (value > 0) summaries[lane].healingReceived.push({ label: "Poção/Skill", value });
-      }
-      continue;
-    }
-    const text = String(normalized.text || "");
-    applyTextEntryToSummary({ summary: summaries[lane], text });
-  }
-
-  const nextTurnName = getNextTurnLabel(battle);
-  const playerLabel = laneIds.playerName || "Jogador";
-  const enemyLabel = laneIds.enemyName || "Inimigo";
-  return [
-    `*${title}*`,
-    "──────────────",
-    `*Rodada:* ${battle?.round || 1}`,
-    `*Próximo turno:* ${nextTurnName}`,
-    "",
-    `*[${playerLabel}]*`,
-    ...formatCombatantSummaryLines(summaries.player),
-    "",
-    `*[${enemyLabel}]*`,
-    ...formatCombatantSummaryLines(summaries.enemy),
-  ].join("\n");
-}
-
 function buildCombatantSummary({ battle, userId, ownerLabel }) {
   const player = battle?.players?.[userId];
   return {
@@ -257,26 +195,21 @@ function buildCombatantSummary({ battle, userId, ownerLabel }) {
     continuousEffects: [],
     directDamage: 0,
     critDamageBonus: 0,
-    extraHitDamage: [],
     healingReceived: [],
     potionEvents: [],
     currentHp: Number(player?.battleHp?.current || 0),
     maxHp: Number(player?.battleHp?.max || 0),
-    buffs: [],
-    debuffs: [],
   };
 }
 
-function formatCombatantSummaryLines(summary, statusLines = []) {
+function formatCombatantSummaryLines(summary) {
   return [
     `• Ação: ${summary.actionLabel ? `*${summary.actorName}* usou ${summary.actionLabel}` : "—"}`,
     `• DOT/Contínuo: ${summary.continuousEffects.length ? summary.continuousEffects.join(", ") : "—"}`,
     `• Dano status: ${summary.statusDamage.length ? summary.statusDamage.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
     `• Dano: ${summary.directDamage || 0}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}`,
     `• Cura recebida: ${summary.healingReceived.length ? summary.healingReceived.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
-    `• Poções: ${summary.potionEvents.length ? summary.potionEvents.join(", ") : "—"}`,
     `• Vida: ${summary.currentHp}/${summary.maxHp}`,
-    ...statusLines,
   ];
 }
 
@@ -292,107 +225,126 @@ function resolveBattleLogLanes(battle) {
   };
 }
 
+function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
+  if (rawMode) {
+    return [`*${title}*`, ...lines.map((line) => `• ${typeof line === "string" ? line : JSON.stringify(line)}`)].join("\n");
+  }
+
+  const laneIds = resolveBattleLogLanes(battle);
+  const summaries = {
+    player: buildCombatantSummary({ battle, userId: laneIds.playerId, ownerLabel: "user" }),
+    enemy: buildCombatantSummary({ battle, userId: laneIds.enemyId, ownerLabel: "enemy" }),
+  };
+
+  const extras = [];
+  for (const rawEntry of lines) {
+    const normalized = normalizeLogEntry(rawEntry);
+    if (!normalized) continue;
+    if (normalized.kind !== 'action_summary') {
+      const textLane = classifyTextLane(normalized.text, laneIds);
+      applyTextMetricsToSummary(summaries[textLane], normalized.text);
+      extras.push(compactCombatLogLine(normalized.text));
+      continue;
+    }
+    const lane = classifySummaryLane(normalized, laneIds);
+    const summary = summaries[lane];
+    summary.actionLabel = `${normalized.skillIcon || "✨"} ${normalized.skillName || normalized.actionName || "Ação"}`;
+    summary.directDamage += Number(normalized.finalDamage || 0);
+    if (Number(normalized.statusDamage || 0) > 0) {
+      summary.statusDamage.push({ label: 'Status', value: Number(normalized.statusDamage || 0) });
+    }
+    if (normalized.critical || normalized.isCrit) {
+      const critBonus = Math.max(0, Number(normalized.finalDamage || 0) - Number(normalized.baseDamage || 0));
+      summary.critDamageBonus += critBonus;
+    }
+    if (Number(normalized.healingDone || 0) > 0) {
+      summary.healingReceived.push({ label: 'Cura', value: Number(normalized.healingDone || 0) });
+    }
+    for (const effect of (Array.isArray(normalized.appliedEffects) ? normalized.appliedEffects : [])) {
+      if (effect && !summary.continuousEffects.includes(effect)) summary.continuousEffects.push(effect);
+    }
+    if (normalized.blockedReason) {
+      extras.push(`Falha: ${summary.actorName} bloqueado (${normalized.blockedReason})`);
+    }
+    for (const note of (Array.isArray(normalized.extraNotes) ? normalized.extraNotes : [])) {
+      extras.push(compactCombatLogLine(note));
+    }
+  }
+
+  if (!summaries.player.actionLabel && extras.length) summaries.player.actionLabel = "📜 Eventos da rodada";
+  if (!summaries.enemy.actionLabel && extras.length) summaries.enemy.actionLabel = "📜 Eventos da rodada";
+
+  const nextTurnName = getNextTurnLabel(battle);
+  const playerLabel = laneIds.playerName || "Jogador";
+  const enemyLabel = laneIds.enemyName || "Inimigo";
+  return [
+    `*${title}*`,
+    "──────────────",
+    `*Rodada:* ${battle?.round || 1}`,
+    `*Próximo turno:* ${nextTurnName}`,
+    "",
+    `*[${playerLabel}]*`,
+    ...formatCombatantSummaryLines(summaries.player),
+    "",
+    `*[${enemyLabel}]*`,
+    ...formatCombatantSummaryLines(summaries.enemy),
+    extras.length ? "" : null,
+    extras.length ? '*Eventos:*' : null,
+    ...extras.slice(-6).map((line) => `• ${line}`),
+  ].filter(Boolean).join("\n");
+}
+
 function normalizeLogEntry(entry) {
   if (entry == null) return null;
-  if (typeof entry === "string") return { kind: "text", text: entry.trim() };
-  if (typeof entry === "object") {
-    if (entry.kind === "action_summary") return entry;
-    if (entry.outcome && entry.actionType) {
-      return normalizeOutcomeEntry(entry);
+  if (typeof entry === 'object' && entry.kind === 'action_summary') {
+    const normalized = { ...entry };
+    if (entry.resolvedAction) {
+      const resolved = sanitizeResolvedAction(entry.resolvedAction);
+      if (resolved) {
+        normalized.baseDamage = resolved.baseDamage;
+        normalized.finalDamage = resolved.finalDamage;
+        normalized.statusDamage = resolved.statusDamage;
+        normalized.healingDone = resolved.healingDone;
+        normalized.isCrit = resolved.isCrit;
+        normalized.critical = resolved.isCrit;
+        normalized.appliedEffects = resolved.appliedEffects;
+        normalized.blockedReason = resolved.blockedReason;
+        normalized.extraNotes = resolved.extraNotes;
+      }
     }
-    return { kind: "text", text: String(entry.message || entry.text || entry.summary || JSON.stringify(entry)).trim() };
+    return normalized;
   }
-  return { kind: "text", text: String(entry).trim() };
+  if (typeof entry === 'string') return { kind: 'text', text: entry.trim() };
+  if (typeof entry === 'object') return { kind: 'text', text: String(entry.message || entry.text || entry.summary || JSON.stringify(entry)).trim() };
+  return { kind: 'text', text: String(entry).trim() };
 }
 
-function normalizeOutcomeEntry(entry) {
-  const outcome = entry.outcome || {};
-  const actionType = String(entry.actionType || outcome.type || "").toLowerCase();
-  const magicName = outcome.magicEntry?.name || "Magia";
-  if (actionType === "potion") {
-    return {
-      kind: "action_summary",
-      actorUserId: entry.actorUserId,
-      actorName: entry.actorName || null,
-      skillName: "Poção",
-      skillIcon: "🧪",
-      finalDamage: 0,
-      modifiers: [
-        outcome.healAmount ? `cura ${outcome.healAmount}` : null,
-        outcome.remainingPotions != null ? `poções restantes ${outcome.remainingPotions}` : null,
-      ].filter(Boolean),
-    };
-  }
-  return {
-    kind: "action_summary",
-    actorUserId: entry.actorUserId,
-    actorName: entry.actorName || null,
-    skillName: actionType === "attack" ? "Ataque Básico" : magicName,
-    skillIcon: actionType === "attack" ? "⚔️" : "✨",
-    baseDamage: Number(outcome.resolvedAction?.baseDamage ?? outcome.normalDamage ?? 0),
-    finalDamage: Number(outcome.finalDamage || 0),
-    healingDone: Number(outcome.resolvedAction?.healingDone || 0),
-    appliedEffects: Array.isArray(outcome.resolvedAction?.appliedEffects) ? outcome.resolvedAction.appliedEffects : [],
-    critical: Boolean(outcome.resolvedAction?.isCrit ?? outcome.isCritical),
-    extraDamage: outcome.extraDamage || 0,
-  };
-}
-
-function applyTextEntryToSummary({ summary, text }) {
-  const cleaned = String(text || "").trim();
-  if (!cleaned) return;
-
-  const actionLine = cleaned.match(/(?:atacou|usou\s+\*?([^*]+)\*?|executou)\s/i);
-  if (!summary.actionLabel && actionLine) {
-    if (actionLine[1]) summary.actionLabel = `✨ ${actionLine[1]}`;
-    else if (/atacou/i.test(cleaned)) summary.actionLabel = "⚔️ Ataque";
-  }
-
-  const damage = Number(cleaned.match(/causou\s+\*?(\d+)\*?\s+de dano/i)?.[1] || cleaned.match(/com\s+(\d+)\.?$/i)?.[1] || 0);
-  if (damage > 0 && /(causou|atingiu|atacou|splash)/i.test(cleaned)) {
-    summary.directDamage = Math.max(0, Number(summary.directDamage || 0) + damage);
-  }
-
-  const statusLabel = extractStatusLabel(cleaned);
-  if (statusLabel) {
-    const statusValue = Number(cleaned.match(/causou\s+\*?(\d+)\*?/i)?.[1] || cleaned.match(/por\s+(\d+)\.?$/i)?.[1] || 0);
-    if (statusValue > 0) summary.statusDamage.push({ label: statusLabel, value: statusValue });
-    if (!summary.continuousEffects.includes(statusLabel)) summary.continuousEffects.push(statusLabel);
-  }
-
-  const healAmount = Number(cleaned.match(/(?:curou|recuperou)\s+\*?(\d+)\*?/i)?.[1] || 0);
-  if (healAmount > 0) {
-    summary.healingReceived.push({ label: "Cura", value: healAmount });
-    if (!summary.actionLabel && /poç[aã]o/i.test(cleaned)) summary.actionLabel = "🧪 Poção";
-  }
-  const remainingPotions = Number(cleaned.match(/poç(?:õ|o)es?\s+restantes:?\s+\*?(\d+)\*?/i)?.[1] || 0);
-  if (/poç[aã]o/i.test(cleaned) && remainingPotions >= 0) {
-    summary.potionEvents.push(`curou ${healAmount || 0} | restantes ${remainingPotions}`);
-  }
-}
-
-function extractStatusLabel(text) {
-  if (/burn/i.test(text)) return "Burn";
-  if (/nevasca|g[eé]lid|congel/i.test(text)) return "Gelo";
-  if (/ra[ií]z|dot|cont[ií]nu/i.test(text)) return "DOT";
-  if (/maldi|sombr|choque|veneno/i.test(text)) return "Status";
-  return null;
-}
-
-function classifyLogLane(entry, laneIds) {
-  if (entry?.kind === "action_summary") {
-    if (entry.actorUserId === laneIds.enemyId) return "enemy";
-    return "player";
-  }
-  const line = String(entry?.text || entry || "");
+function classifyTextLane(text, laneIds) {
+  const line = String(text || '');
   const subject = line.match(/^.*?<@([^>]+)>/);
-  if (subject?.[1] === laneIds.enemyId) return "enemy";
-  if (subject?.[1] === laneIds.playerId) return "player";
-  const mentions = [...line.matchAll(/<@([^>]+)>/g)].map((match) => match[1]);
-  if (mentions.includes(laneIds.playerId) && !mentions.includes(laneIds.enemyId)) return "player";
-  if (mentions.includes(laneIds.enemyId) && !mentions.includes(laneIds.playerId)) return "enemy";
-  if (/👾|🤖|inimig/i.test(line)) return "enemy";
-  return "player";
+  if (subject?.[1] === laneIds.enemyId) return 'enemy';
+  if (subject?.[1] === laneIds.playerId) return 'player';
+  return 'player';
+}
+
+function applyTextMetricsToSummary(summary, text) {
+  const line = String(text || '');
+  const damage = Number(line.match(/causou\s+\*?(\d+)\*?\s+de dano/i)?.[1] || line.match(/com\s+(\d+)\.?$/i)?.[1] || 0);
+  if (damage > 0) summary.directDamage += damage;
+
+  const heal = Number(line.match(/(?:curou|recuperou)\s+\*?(\d+)\*?/i)?.[1] || 0);
+  if (heal > 0) summary.healingReceived.push({ label: 'Cura', value: heal });
+
+  const statusDamage = Number(line.match(/burn\s+causou\s+(\d+)/i)?.[1] || 0);
+  if (statusDamage > 0) {
+    summary.statusDamage.push({ label: 'Burn', value: statusDamage });
+    if (!summary.continuousEffects.includes('Burn')) summary.continuousEffects.push('Burn');
+  }
+}
+
+function classifySummaryLane(entry, laneIds) {
+  if (entry.actorUserId === laneIds.enemyId || entry.actorId === laneIds.enemyId) return 'enemy';
+  return 'player';
 }
 
 function compactCombatLogLine(line) {

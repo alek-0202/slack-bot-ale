@@ -33,6 +33,7 @@ const {
 const { getSupabaseClient } = require("../database/supabase");
 const { getAvailableMagicActions, getSkillCooldownRemaining } = require("../application/battle/domain/elementalRules");
 const { validateSkillActionRequest } = require("../application/battle/domain/skillActionValidator");
+const { buildActionSummaryFromResolvedAction } = require("../application/battle/domain/resolvedAction");
 
 const logger = createLogger("battle-service");
 const PVP_ENTRY_FEE = 2000;
@@ -43,24 +44,6 @@ function appendActionSummaryLog(battle, summary) {
   battle.metadata = battle.metadata || {};
   const current = Array.isArray(battle.metadata.turnLog) ? battle.metadata.turnLog : [];
   battle.metadata.turnLog = [...current, { kind: "action_summary", ...summary }].slice(-12);
-}
-
-function buildSummaryFromResolvedAction(resolvedAction, fallback = {}) {
-  if (!resolvedAction) return null;
-  return {
-    actorUserId: resolvedAction.actorId || fallback.actorUserId,
-    actorName: resolvedAction.actorName || fallback.actorName || null,
-    skillName: resolvedAction.actionName || fallback.skillName || "Ação",
-    skillIcon: fallback.skillIcon || (resolvedAction.actionType === "attack" ? "⚔️" : resolvedAction.actionType === "potion" ? "🧪" : "✨"),
-    finalDamage: Number(resolvedAction.finalDamage || 0),
-    baseDamage: Number(resolvedAction.baseDamage || 0),
-    critical: Boolean(resolvedAction.isCrit),
-    healingDone: Number(resolvedAction.healingDone || 0),
-    appliedEffects: Array.isArray(resolvedAction.appliedEffects) ? resolvedAction.appliedEffects : [],
-    extraNotes: Array.isArray(resolvedAction.extraNotes) ? resolvedAction.extraNotes : [],
-    modifiers: fallback.modifiers || [],
-    extraDamage: fallback.extraDamage,
-  };
 }
 
 function parsePokemonIds(rawArgs) {
@@ -385,7 +368,7 @@ async function attack({ event, say }) {
   store.setBattle(battle.channelId, battle);
   appendActionSummaryLog(
     battle,
-    buildSummaryFromResolvedAction(result.resolvedAction, {
+    buildActionSummaryFromResolvedAction(result.resolvedAction, {
       actorUserId: event.user,
       actorName: battle.players?.[event.user]?.selectedPokemon?.name || `<@${event.user}>`,
       skillName: "Ataque Básico",
@@ -453,7 +436,7 @@ async function usePotion({ event, say }) {
   store.setBattle(battle.channelId, battle);
   appendActionSummaryLog(
     battle,
-    buildSummaryFromResolvedAction(result.resolvedAction, {
+    buildActionSummaryFromResolvedAction(result.resolvedAction, {
       actorUserId: event.user,
       actorName: battle.players?.[event.user]?.selectedPokemon?.name || `<@${event.user}>`,
       skillName: "Poção",
@@ -641,7 +624,7 @@ async function castMagic({ event, say, magicSlot }) {
   store.setBattle(battle.channelId, battle);
   appendActionSummaryLog(
     battle,
-    buildSummaryFromResolvedAction(result.resolvedAction, {
+    buildActionSummaryFromResolvedAction(result.resolvedAction, {
       actorUserId: event.user,
       actorName: battle.players?.[event.user]?.selectedPokemon?.name || `<@${event.user}>`,
       skillName: result.magicEntry?.name || "Magia",

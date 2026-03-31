@@ -88,6 +88,7 @@ function buildResolvedActionPayload({
   healingDone = 0,
   appliedEffects = [],
   extraNotes = [],
+  blockedReason = null,
 }) {
   return {
     actorId: actorUserId,
@@ -103,6 +104,7 @@ function buildResolvedActionPayload({
     statusDamage: Math.max(0, Number(statusDamage) || 0),
     healingDone: Math.max(0, Number(healingDone) || 0),
     appliedEffects: Array.isArray(appliedEffects) ? appliedEffects.filter(Boolean) : [],
+    blockedReason: blockedReason || null,
     extraNotes: Array.isArray(extraNotes) ? extraNotes.filter(Boolean) : [],
   };
 }
@@ -934,13 +936,6 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
   }
 
   const turnFlow = advanceTurnForActor(battle, actorUserId);
-  const ownerEndLogs = processOwnerTurnEffects({
-    playerState: battle.players?.[actorUserId],
-    ownerUserId: actorUserId,
-    timing: EFFECT_TIMING.ON_OWNER_TURN_END,
-  });
-  tickOwnerTurnTimers(battle.players?.[actorUserId]);
-  if (ownerEndLogs.length) mergeRoundLogs(battle, ownerEndLogs);
   return {
     battle,
     actionType,
