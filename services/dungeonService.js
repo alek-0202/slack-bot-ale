@@ -705,7 +705,7 @@ function formatDungeonTurnLogEntry({ battle, actionType, outcome, actorUserId, p
   }
 
   if (actionType === BATTLE_ACTION.POTION) {
-    return `🧪 ${actorLabel} usou poção e recuperou *${outcome.healAmount}* HP (agora ${outcome.currentHp}/${battle.players?.[actorUserId]?.battleHp?.max || '?'})`;
+    return `🧪 ${actorLabel} usou poção e curou *${outcome.healAmount}* de vida. Poções restantes: *${outcome.remainingPotions ?? 0}*`;
   }
 
   return `🎯 ${actorLabel} executou ${actionType}.`;
@@ -722,7 +722,10 @@ function buildActionSummaryFromTurn({ battle, actionType, outcome, actorUserId }
       skillName: 'Poção',
       skillIcon: '🧪',
       finalDamage: 0,
-      modifiers: [outcome.healAmount ? `cura ${outcome.healAmount}` : null].filter(Boolean),
+      modifiers: [
+        outcome.healAmount ? `cura ${outcome.healAmount}` : null,
+        outcome.remainingPotions != null ? `poções restantes ${outcome.remainingPotions}` : null,
+      ].filter(Boolean),
     };
   }
   if (actionType === BATTLE_ACTION.ATTACK) {

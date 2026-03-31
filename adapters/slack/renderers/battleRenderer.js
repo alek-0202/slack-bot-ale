@@ -1,7 +1,8 @@
 const { buildBattleViewModel } = require("../../../application/battle/renderers/battlePresenter");
 const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService");
-const { getAvailableElementalSkills, getSkillCooldownRemaining } = require("../../../application/battle/domain/elementalRules");
+const { getAvailableElementalSkills } = require("../../../application/battle/domain/elementalRules");
 const { canUseSkillAction } = require("../../../application/battle/domain/skillActionValidator");
+const { getLevelBorderStyle } = require("./pokemonVisualTier");
 
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
 const BATTLE_DECLINE_ACTION_ID = "battle_decline_invite";
@@ -127,16 +128,19 @@ function renderBattleState(battle, options = {}) {
       } : null,
       {
         type: "section",
-        fields: [
-          {
-            type: "mrkdwn",
-            text: renderPokemonBlock(challenger),
-          },
-          {
-            type: "mrkdwn",
-            text: renderPokemonBlock(challenged),
-          },
-        ],
+        text: {
+          type: "mrkdwn",
+          text: renderPokemonBlock(challenger),
+        },
+        ...(buildPokemonAccessory(challenger) ? { accessory: buildPokemonAccessory(challenger) } : {}),
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: renderPokemonBlock(challenged),
+        },
+        ...(buildPokemonAccessory(challenged) ? { accessory: buildPokemonAccessory(challenged) } : {}),
       },
       {
         type: "context",
@@ -213,9 +217,6 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
   const nextTurnName = getNextTurnLabel(battle);
   const playerLabel = laneIds.playerName || "Jogador";
   const enemyLabel = laneIds.enemyName || "Inimigo";
-  const playerStatus = formatStatusCategories(battle?.players?.[laneIds.playerId]);
-  const enemyStatus = formatStatusCategories(battle?.players?.[laneIds.enemyId]);
-
   return [
     `*${title}*`,
     "──────────────",
@@ -223,10 +224,10 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     `*Próximo turno:* ${nextTurnName}`,
     "",
     `*[${playerLabel}]*`,
-    ...formatCombatantSummaryLines(summaries.player, playerStatus),
+    ...formatCombatantSummaryLines(summaries.player),
     "",
     `*[${enemyLabel}]*`,
-    ...formatCombatantSummaryLines(summaries.enemy, enemyStatus),
+    ...formatCombatantSummaryLines(summaries.enemy),
   ].join("\n");
 }
 
@@ -243,6 +244,7 @@ function buildCombatantSummary({ battle, userId, ownerLabel }) {
     critDamageBonus: 0,
     extraHitDamage: [],
     healingReceived: [],
+    potionEvents: [],
     currentHp: Number(player?.battleHp?.current || 0),
     maxHp: Number(player?.battleHp?.max || 0),
     buffs: [],
@@ -257,6 +259,7 @@ function formatCombatantSummaryLines(summary, statusLines = []) {
     `• Dano status: ${summary.statusDamage.length ? summary.statusDamage.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
     `• Dano: ${summary.directDamage || 0}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}`,
     `• Cura recebida: ${summary.healingReceived.length ? summary.healingReceived.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
+    `• Poções: ${summary.potionEvents.length ? summary.potionEvents.join(", ") : "—"}`,
     `• Vida: ${summary.currentHp}/${summary.maxHp}`,
     ...statusLines,
   ];
@@ -299,7 +302,10 @@ function normalizeOutcomeEntry(entry) {
       skillName: "Poção",
       skillIcon: "🧪",
       finalDamage: 0,
-      modifiers: [outcome.healAmount ? `cura ${outcome.healAmount}` : null].filter(Boolean),
+      modifiers: [
+        outcome.healAmount ? `cura ${outcome.healAmount}` : null,
+        outcome.remainingPotions != null ? `poções restantes ${outcome.remainingPotions}` : null,
+      ].filter(Boolean),
     };
   }
   return {
@@ -340,6 +346,10 @@ function applyTextEntryToSummary({ summary, text }) {
   if (healAmount > 0) {
     summary.healingReceived.push({ label: "Cura", value: healAmount });
     if (!summary.actionLabel && /poç[aã]o/i.test(cleaned)) summary.actionLabel = "🧪 Poção";
+  }
+  const remainingPotions = Number(cleaned.match(/poç(?:õ|o)es?\s+restantes:?\s+\*?(\d+)\*?/i)?.[1] || 0);
+  if (/poç[aã]o/i.test(cleaned) && remainingPotions >= 0) {
+    summary.potionEvents.push(`curou ${healAmount || 0} | restantes ${remainingPotions}`);
   }
 }
 
@@ -389,75 +399,6 @@ function isDotLine(line) {
   return /burn|rodada|nevasca|raízes|sufocantes|dreno|contínu|dot|sangramento|veneno/i.test(String(line || ""));
 }
 
-function formatStatusCategories(playerState) {
-  if (!playerState) return [];
-  const statuses = playerState.elementalState?.statuses || [];
-  const effects = playerState.elementalState?.effects || [];
-  const buffs = [];
-  const debuffs = [];
-  const control = [];
-  const dot = [];
-  const marks = [];
-  const decorate = (name) => withStatusEmoji(name);
-
-  for (const effect of effects) {
-    const stacks = effect?.stacks != null ? ` x${effect.stacks}` : "";
-    const rounds = effect?.remainingRounds != null ? ` (${effect.remainingRounds}r)` : "";
-    const label = `${decorate(effect.name || effect.id || "Efeito")}${stacks}${rounds}`;
-    if (effect.forcedSkipAction || effect.forcedAction || effect.controlLight) control.push(label);
-    else if (effect.id?.includes("mark")) marks.push(label);
-    else if (effect.outgoingDamageMultiplier || effect.shieldCurrentHp != null || effect.damageBoostPct) buffs.push(label);
-    else if (effect.incomingDamageTakenMultiplier || effect.partialFailureChance || effect.speedMultiplier) debuffs.push(label);
-  }
-
-  for (const status of statuses) {
-    const stacks = status?.stacks != null ? ` x${status.stacks}` : "";
-    const rounds = status?.remainingRounds != null ? ` (${status.remainingRounds}r)` : "";
-    const label = `${decorate(status.name || status.id || "Status")}${stacks}${rounds}`;
-    if (status.damagePerStack > 0) dot.push(label);
-    if (/mark|marca/i.test(status.name || status.id || "")) marks.push(label);
-    if (/congel|stun|freeze|control|choque/i.test(status.name || status.id || "")) control.push(label);
-    else if (/burn|poison|veneno|dot/i.test(status.name || status.id || "")) debuffs.push(label);
-    else buffs.push(label);
-  }
-  const line = (title, values) => (values.length ? [`• ${title}: ${values.join(", ")}`] : []);
-  return [
-    ...line("Buffs", buffs),
-    ...line("Debuffs", debuffs),
-    ...line("Controle", control),
-    ...line("Efeitos contínuos", dot),
-    ...line("Marcas/Stacks", marks),
-  ];
-}
-
-function withStatusEmoji(name) {
-  const value = String(name || "");
-  if (/burn|fogo|ardent|ígne|infernal/i.test(value)) return `🔥 ${value}`;
-  if (/gelo|gelid|nevasca|congel/i.test(value)) return `❄️ ${value}`;
-  if (/choque|eletro|sobrecarga|raio/i.test(value)) return `⚡ ${value}`;
-  if (/barreira|armadura|defesa|shield|postura/i.test(value)) return `🛡️ ${value}`;
-  if (/maldi|sombr|ghost|assombr/i.test(value)) return `👻 ${value}`;
-  if (/raiz|floresta|espinho|grass/i.test(value)) return `🌿 ${value}`;
-  if (/mark|marca/i.test(value)) return `🎯 ${value}`;
-  return value;
-}
-
-function formatActionSummary(entry) {
-  const actor = entry.actorName || "Ator";
-  const skill = entry.skillName ? `${entry.skillIcon || "✨"} ${entry.skillName}` : "Ataque básico";
-  const damageTypes = (entry.damageTypes || []).length ? ` | Tipos: ${(entry.damageTypes || []).join(", ")}` : "";
-  const parts = [
-    `Ação: *${actor}* usou *${skill}*${damageTypes}`,
-    `Base: ${entry.baseDamage ?? 0}`,
-    `Mods: ${(entry.modifiers || []).length ? entry.modifiers.join(" · ") : "—"}`,
-  ];
-  if (entry.extraDamage != null) parts.push(`Extra skill: ${entry.extraDamage}`);
-  if (entry.mitigation != null) parts.push(`Mitigação: ${entry.mitigation}`);
-  parts.push(`Crítico: ${entry.critical ? "sim" : "não"}`);
-  parts.push(`Final: ${entry.finalDamage ?? 0}`);
-  return parts.join(" | ");
-}
-
 function getNextTurnLabel(battle) {
   const player = battle?.players?.[battle?.currentTurnUserId];
   if (player?.selectedPokemon?.name) return player.selectedPokemon.name.toLowerCase();
@@ -469,8 +410,6 @@ function buildBattleActionBlock(battle, options = {}) {
   if (battle.status !== "active") return null;
   const currentPlayer = battle.players[battle.currentTurnUserId];
   const elementalSkills = getAvailableElementalSkills(currentPlayer || {});
-  const hasElementalReady = elementalSkills.some((entry) => getSkillCooldownRemaining(currentPlayer, entry.id) <= 0);
-  const magicOnCooldown = (currentPlayer?.magicCooldown?.blockedOwnTurnsRemaining || 0) > 0 && !hasElementalReady;
   const sampleSkill = (currentPlayer?.magicSlots?.[0] && { ...currentPlayer.magicSlots[0], kind: "regular" }) || elementalSkills[0] || null;
   const canUseAnySkill = sampleSkill
     ? canUseSkillAction(battle, currentPlayer, sampleSkill, { actorUserId: battle.currentTurnUserId }).ok
@@ -485,9 +424,9 @@ function buildBattleActionBlock(battle, options = {}) {
       buildTurnButton({ battle, action: "attack", actionIdBuilder: options.turnActionIdBuilder }),
       buildTurnButton({
         battle,
-        label: magicOnCooldown ? `${buildActionLabel("magic")} (${currentPlayer.magicCooldown.blockedOwnTurnsRemaining})` : buildActionLabel("magic"),
+        label: buildActionLabel("magic"),
         action: "magic",
-        disabled: magicOnCooldown || !canUseAnySkill,
+        disabled: !canUseAnySkill,
         actionIdBuilder: options.turnActionIdBuilder,
       }),
       buildTurnButton({ battle, action: "potion", actionIdBuilder: options.turnActionIdBuilder }),
@@ -571,10 +510,14 @@ function renderMagicOptions({ battle, actorUserId, magicSlots = [], options = {}
             magic,
             { actorUserId },
           );
+          const cooldownRemaining = resolveMagicCooldownRemaining({ magic, actorPlayer: battle?.players?.[actorUserId] });
           return {
             type: "button",
             action_id: magicActionIdBuilder(magic.slot),
-            text: { type: "plain_text", text: `${magic.icon || "✨"} ${magic.name}${magic.cooldownRemaining > 0 ? ` (${magic.cooldownRemaining})` : ""}`.slice(0, 75) },
+            text: {
+              type: "plain_text",
+              text: `${magic.icon || "✨"} ${magic.name}${cooldownRemaining > 0 ? ` (${cooldownRemaining})` : ""}`.slice(0, 75),
+            },
             value: JSON.stringify({ channelId: battle.channelId, magicSlot: magic.slot }),
             ...(validation.ok ? {} : { value: JSON.stringify({ channelId: battle.channelId, magicSlot: magic.slot, unavailable: true }) }),
           };
@@ -617,38 +560,37 @@ function renderMagicRegisterElementPrompt({ pokemon, elements, maxSlots }) {
 }
 
 function renderPokemonBlock(player) {
-  const magicText = Array.isArray(player.magicActions) && player.magicActions.length
-    ? player.magicActions.map((magic) => `${magic.icon || "✨"} ${magic.name}${player.elementalCooldowns?.[magic.id] > 0 ? ` [CD ${player.elementalCooldowns[magic.id]}]` : ""}`).join("\n")
-    : "Nenhuma registrada";
-  const statusText = Array.isArray(player.activeStatuses) && player.activeStatuses.length
-    ? player.activeStatuses.map((status) => `${status.name} x${status.stacks} (${status.remainingRounds}r)`).join(", ")
-    : "Sem status";
-  const effectText = Array.isArray(player.activeEffects) && player.activeEffects.length
-    ? player.activeEffects.map((effect) => `${effect.name}${effect.chargesRemaining != null ? ` [${effect.chargesRemaining} carga(s)]` : ""}${effect.remainingRounds != null ? ` (${effect.remainingRounds}r)` : ""}`).join(", ")
-    : "Sem efeitos";
-
   return (
     `*<@${player.userId}>*\n` +
     `*${player.selectedPokemonName}* (Nv. ${player.level})${player.starText !== "-" ? ` | ${player.starText}` : ""}\n` +
     `${buildPokemonTypesLabel(player.selectedPokemonTypes) ? `🧪 ${buildPokemonTypesLabel(player.selectedPokemonTypes)}\n` : ""}` +
     `❤️ ${player.hpCurrent}/${player.hpMax}\n` +
     `⚔️ ATK ${player.attack} | ✨ MAG ${player.magic}\n` +
-    `🛡️ DEF ${player.defense}\n` +
-    `💨 SPD ${player.speed} | ⚡ Iniciativa ${player.initiativeGauge}/${player.initiativeThreshold}\n` +
-    `🧪 Poções: ${player.potionsRemaining}\n` +
-    `⏳ Cooldown magia padrão: ${player.magicCooldownRemaining}\n` +
-    `🧬 Status: ${statusText}\n` +
-    `🛡️ Efeitos: ${effectText}\n` +
-    `✨ Magias/Skills:\n${magicText}\n` +
-    `🔁 Reservas:\n${renderReserveLines(player)}`
+    `🛡️ DEF ${player.defense} | 💨 SPD ${player.speed}\n` +
+    `⚡ Iniciativa ${player.initiativeGauge}/${player.initiativeThreshold}` +
+    `${renderReserveLines(player)}`
   );
 }
 
 function renderReserveLines(player) {
-  if (!Array.isArray(player.reserves) || !player.reserves.length) return "_Sem reservas_";
-  return player.reserves
-    .map((reserve) => `• ${reserve.name} (${reserve.hpCurrent}/${reserve.hpMax})${reserve.isAlive ? "" : " 💀"}`)
-    .join("\n");
+  if (!Array.isArray(player.reserves) || !player.reserves.length) return "";
+  const lines = player.reserves.map((reserve) => `• ${reserve.name}: ${reserve.hpCurrent}/${reserve.hpMax}`);
+  return `\n🔁 Reservas:\n${lines.join("\n")}`;
+}
+
+function buildPokemonAccessory(player) {
+  if (!player?.selectedPokemonSpriteUrl) return null;
+  const border = getLevelBorderStyle(player.level || 1);
+  return {
+    type: "image",
+    image_url: player.selectedPokemonSpriteUrl,
+    alt_text: `${border.emoji} ${player.selectedPokemonName || "Pokémon"} ${border.emoji}`,
+  };
+}
+
+function resolveMagicCooldownRemaining({ magic, actorPlayer }) {
+  if (magic?.kind === "elemental") return Number(magic.cooldownRemaining || 0);
+  return Math.max(0, Number(actorPlayer?.magicCooldown?.blockedOwnTurnsRemaining || 0));
 }
 
 function renderPokemonLine(player) {
