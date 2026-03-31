@@ -31,6 +31,7 @@ function buildPlayerViewModel(userId, playerState, initiative, battle) {
     activePokemonId: playerState.selectedPokemon?.id || null,
     selectedPokemonName: playerState.selectedPokemon?.name || null,
     selectedPokemonTypes: playerState.selectedPokemon?.elementTypes || [],
+    selectedPokemonSpriteUrl: playerState.selectedPokemon?.spriteUrl || null,
     level: playerState.selectedPokemon?.level || null,
     stars: playerState.selectedPokemon?.stars || 0,
     starText: playerState.selectedPokemon?.starText || "-",

@@ -443,7 +443,7 @@ async function usePotion({ event, say }) {
     skillIcon: "🧪",
     damageTypes: [],
     baseDamage: 0,
-    modifiers: [`cura ${result.healAmount}`],
+    modifiers: [`cura ${result.healAmount}`, `poções restantes ${result.remainingPotions}`],
     critical: false,
     finalDamage: 0,
   });
