@@ -200,7 +200,10 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     if (normalized.kind === "action_summary") {
       summaries[lane].actionLabel = `${normalized.skillIcon || "✨"} ${normalized.skillName || "Ação"}`;
       summaries[lane].directDamage = Math.max(0, Number(summaries[lane].directDamage || 0) + Number(normalized.finalDamage || 0));
-      if (normalized.critical) {
+      if (Number(normalized.statusDamage || 0) > 0) {
+        summaries[lane].statusDamage.push({ label: "Status", value: Number(normalized.statusDamage || 0) });
+      }
+      if (normalized.critical || normalized.isCrit) {
         const critBonus = normalized.extraDamage != null
           ? Number(normalized.extraDamage || 0)
           : Math.max(0, Number(normalized.finalDamage || 0) - Number(normalized.baseDamage || 0));
