@@ -196,6 +196,8 @@ function buildCombatantSummary({ battle, userId, ownerLabel }) {
     directDamage: 0,
     critDamageBonus: 0,
     healingReceived: [],
+    buffs: [],
+    debuffs: [],
     potionEvents: [],
     currentHp: Number(player?.battleHp?.current || 0),
     maxHp: Number(player?.battleHp?.max || 0),
@@ -210,6 +212,8 @@ function formatCombatantSummaryLines(summary) {
     `• Dano: ${summary.directDamage || 0}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}`,
     `• Cura recebida: ${summary.healingReceived.length ? summary.healingReceived.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
     `• Vida: ${summary.currentHp}/${summary.maxHp}`,
+    `• Buffs: ${summary.buffs.length ? summary.buffs.join(" | ") : "—"}`,
+    `• Debuffs: ${summary.debuffs.length ? summary.debuffs.join(" | ") : "—"}`,
   ];
 }
 
@@ -235,31 +239,43 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     player: buildCombatantSummary({ battle, userId: laneIds.playerId, ownerLabel: "user" }),
     enemy: buildCombatantSummary({ battle, userId: laneIds.enemyId, ownerLabel: "enemy" }),
   };
+  const hasStructuredSummaries = lines.some((entry) => entry && typeof entry === "object" && entry.kind === "action_summary");
 
   const extras = [];
   for (const rawEntry of lines) {
     const normalized = normalizeLogEntry(rawEntry);
     if (!normalized) continue;
     if (normalized.kind !== 'action_summary') {
-      const textLane = classifyTextLane(normalized.text, laneIds);
-      applyTextMetricsToSummary(summaries[textLane], normalized.text);
+      if (!hasStructuredSummaries) {
+        const textLane = classifyTextLane(normalized.text, laneIds);
+        applyTextMetricsToSummary(summaries[textLane], normalized.text);
+      }
       extras.push(compactCombatLogLine(normalized.text));
       continue;
     }
     const lane = classifySummaryLane(normalized, laneIds);
     const summary = summaries[lane];
     summary.actionLabel = `${normalized.skillIcon || "✨"} ${normalized.skillName || normalized.actionName || "Ação"}`;
-    summary.directDamage += Number(normalized.finalDamage || 0);
+    summary.directDamage = Number(normalized.finalDamage || 0);
     if (Number(normalized.statusDamage || 0) > 0) {
-      summary.statusDamage.push({ label: 'Status', value: Number(normalized.statusDamage || 0) });
+      summary.statusDamage = [{ label: 'Status', value: Number(normalized.statusDamage || 0) }];
+    } else {
+      summary.statusDamage = [];
     }
     if (normalized.critical || normalized.isCrit) {
-      const critBonus = Math.max(0, Number(normalized.finalDamage || 0) - Number(normalized.baseDamage || 0));
-      summary.critDamageBonus += critBonus;
+      summary.critDamageBonus = Math.max(0, Number(normalized.critBonusDamage || 0));
+    } else {
+      summary.critDamageBonus = 0;
     }
     if (Number(normalized.healingDone || 0) > 0) {
-      summary.healingReceived.push({ label: 'Cura', value: Number(normalized.healingDone || 0) });
+      summary.healingReceived = [{ label: 'Cura', value: Number(normalized.healingDone || 0) }];
+    } else {
+      summary.healingReceived = [];
     }
+    summary.currentHp = Number(normalized.actorCurrentHp || summary.currentHp || 0);
+    summary.maxHp = Number(normalized.actorMaxHp || summary.maxHp || 0);
+    summary.buffs = Array.isArray(normalized.activeBuffs) ? normalized.activeBuffs : [];
+    summary.debuffs = Array.isArray(normalized.activeDebuffs) ? normalized.activeDebuffs : [];
     for (const effect of (Array.isArray(normalized.appliedEffects) ? normalized.appliedEffects : [])) {
       if (effect && !summary.continuousEffects.includes(effect)) summary.continuousEffects.push(effect);
     }
@@ -307,7 +323,12 @@ function normalizeLogEntry(entry) {
         normalized.healingDone = resolved.healingDone;
         normalized.isCrit = resolved.isCrit;
         normalized.critical = resolved.isCrit;
+        normalized.critBonusDamage = resolved.critBonusDamage;
         normalized.appliedEffects = resolved.appliedEffects;
+        normalized.activeBuffs = resolved.activeBuffs;
+        normalized.activeDebuffs = resolved.activeDebuffs;
+        normalized.actorCurrentHp = resolved.actorCurrentHp;
+        normalized.actorMaxHp = resolved.actorMaxHp;
         normalized.blockedReason = resolved.blockedReason;
         normalized.extraNotes = resolved.extraNotes;
       }

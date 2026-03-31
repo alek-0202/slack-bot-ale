@@ -74,6 +74,57 @@ function listNewEffects({ before = [], playerState = null }) {
     .filter(Boolean);
 }
 
+function formatEffectImpact(effect = {}) {
+  const parts = [];
+  const pushStat = (label, value, unit = "%") => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric === 0) return;
+    const sign = numeric > 0 ? "+" : "-";
+    parts.push(`${sign}${Math.abs(numeric)}${unit} ${label}`.trim());
+  };
+  const pushMultiplier = (label, value, invert = false) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric === 1) return;
+    const delta = Math.round((numeric - 1) * 100);
+    const normalized = invert ? -delta : delta;
+    pushStat(label, normalized);
+  };
+
+  pushMultiplier("dano", effect.outgoingDamageMultiplier);
+  pushMultiplier("dano recebido", effect.incomingDamageTakenMultiplier, true);
+  pushMultiplier("DEF", effect.defenseMultiplier);
+  pushMultiplier("velocidade", effect.speedMultiplier);
+  pushMultiplier("chance crítica", effect.critChanceMultiplier);
+
+  pushStat("ATK", effect.attackFlatBonus, "");
+  pushStat("MAG", effect.magicFlatBonus, "");
+  pushStat("DEF", effect.defenseFlatBonus, "");
+  pushStat("dano", effect.damageFlatBonus, "");
+  pushStat("chance crítica", Math.round(Number(effect.critChanceBonus || 0) * 100));
+  if (Number(effect.shieldCurrentHp || 0) > 0) parts.push(`escudo ${Math.round(Number(effect.shieldCurrentHp || 0))}`);
+  if (effect.immuneToDamageAndControl) parts.push("bloqueia dano/controle");
+  if (effect.cannotAct || effect.skipTurn || effect.blockAction) parts.push("bloqueia ação");
+  if (effect.dotDamage || effect.damagePerTurn) parts.push(`dano contínuo ${Math.round(Number(effect.dotDamage || effect.damagePerTurn || 0))}`);
+  if (effect.taunt || effect.forcedAction) parts.push("força ataque básico");
+  return parts;
+}
+
+function splitActiveEffectsByPolarity(playerState) {
+  const effects = (ensureElementalState(playerState).effects || [])
+    .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0);
+  const buffs = [];
+  const debuffs = [];
+  for (const effect of effects) {
+    const impacts = formatEffectImpact(effect);
+    if (!impacts.length) continue;
+    const label = `${effect.name || effect.id}: ${impacts.join(", ")}`;
+    const harmful = impacts.some((item) => item.includes("-") || /bloqueia ação|força ataque|dano contínuo|dano recebido/i.test(item));
+    if (harmful) debuffs.push(label);
+    else buffs.push(label);
+  }
+  return { buffs, debuffs };
+}
+
 function buildResolvedActionPayload({
   battle,
   actorUserId,
@@ -90,6 +141,11 @@ function buildResolvedActionPayload({
   extraNotes = [],
   blockedReason = null,
 }) {
+  const actorState = battle.players?.[actorUserId];
+  const targetState = targetUserId ? battle.players?.[targetUserId] : null;
+  const { buffs, debuffs } = splitActiveEffectsByPolarity(actorState);
+  const safeBaseDamage = Math.max(0, Number(baseDamage) || 0);
+  const safeFinalDamage = Math.max(0, Number(finalDamage) || 0);
   return {
     actorId: actorUserId,
     actorName: battle.players?.[actorUserId]?.selectedPokemon?.name || `<@${actorUserId}>`,
@@ -99,11 +155,18 @@ function buildResolvedActionPayload({
     targetName: targetUserId ? (battle.players?.[targetUserId]?.selectedPokemon?.name || `<@${targetUserId}>`) : null,
     didHit: Boolean(didHit),
     isCrit: Boolean(isCrit),
-    baseDamage: Math.max(0, Number(baseDamage) || 0),
-    finalDamage: Math.max(0, Number(finalDamage) || 0),
+    critBonusDamage: Boolean(isCrit) ? Math.max(0, safeFinalDamage - safeBaseDamage) : 0,
+    baseDamage: safeBaseDamage,
+    finalDamage: safeFinalDamage,
     statusDamage: Math.max(0, Number(statusDamage) || 0),
     healingDone: Math.max(0, Number(healingDone) || 0),
     appliedEffects: Array.isArray(appliedEffects) ? appliedEffects.filter(Boolean) : [],
+    activeBuffs: buffs,
+    activeDebuffs: debuffs,
+    actorCurrentHp: Math.max(0, Number(actorState?.battleHp?.current || 0)),
+    actorMaxHp: Math.max(0, Number(actorState?.battleHp?.max || 0)),
+    targetCurrentHp: Math.max(0, Number(targetState?.battleHp?.current || 0)),
+    targetMaxHp: Math.max(0, Number(targetState?.battleHp?.max || 0)),
     blockedReason: blockedReason || null,
     extraNotes: Array.isArray(extraNotes) ? extraNotes.filter(Boolean) : [],
   };
