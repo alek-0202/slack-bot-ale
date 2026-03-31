@@ -46,21 +46,14 @@ test("calculateDamage aplica crítico e arredondamento", () => {
   }
 });
 
-test("calculateMagicDamage aplica vantagem elemental + eficiência e crítico real", () => {
+test("calculateMagicDamage aplica vantagem elemental + eficiência sem crítico", () => {
   const originalRandom = Math.random;
-  let calls = 0;
-  Math.random = () => {
-    calls += 1;
-    if (calls === 1) return 0.99; // esquiva falha
-    if (calls === 2) return 0.1; // crítico ativa
-    return 0.5;
-  };
+  Math.random = () => 0.99; // esquiva falha
   try {
     const result = calculateMagicDamage({
       attacker: { stats: { elementalChance: 0.3 } },
       attackerAttack: 10,
       attackerMagic: 14,
-      attackerCritChance: 0.4,
       defenderDodgeChance: 0.1,
       magicElement: "electric",
       defenderElements: ["water"],
@@ -68,12 +61,12 @@ test("calculateMagicDamage aplica vantagem elemental + eficiência e crítico re
       d6Roll: 2,
     });
 
-    assert.equal(result.isCritical, true);
+    assert.equal(result.isCritical, false);
     assert.equal(result.baseStatUsed, "magic");
     assert.equal(result.elementalOutcome, "advantage");
-    assert.equal(result.critMultiplier, 1.6);
+    assert.equal(result.critMultiplier, 1);
     assert.equal(result.multiplier, 2.6);
-    assert.equal(result.finalDamage, 104);
+    assert.equal(result.finalDamage, 65);
   } finally {
     Math.random = originalRandom;
   }
@@ -81,18 +74,11 @@ test("calculateMagicDamage aplica vantagem elemental + eficiência e crítico re
 
 test("calculateMagicDamage aplica fallback para attack e desvantagem elemental", () => {
   const originalRandom = Math.random;
-  let calls = 0;
-  Math.random = () => {
-    calls += 1;
-    if (calls === 1) return 0.99; // esquiva falha
-    if (calls === 2) return 0.99; // sem crítico
-    return 0.5;
-  };
+  Math.random = () => 0.99; // esquiva falha
   try {
     const result = calculateMagicDamage({
       attacker: { stats: { elementalChance: 0 } },
       attackerAttack: 10,
-      attackerCritChance: 0,
       defenderDodgeChance: 0,
       magicElement: "fire",
       defenderElements: ["water"],
@@ -117,7 +103,6 @@ test("calculateMagicDamage respeita esquiva do alvo e zera dano", () => {
       attacker: { stats: { elementalChance: 0.2 } },
       attackerAttack: 10,
       attackerMagic: 14,
-      attackerCritChance: 0.9,
       defenderDodgeChance: 0.18,
       magicElement: "electric",
       defenderElements: ["water"],
