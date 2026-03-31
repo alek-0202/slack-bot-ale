@@ -95,6 +95,22 @@ function getExtraChance(level, perPoint, cap) {
   return Math.max(0, Math.min(cap, safeLevel * perPoint));
 }
 
+function normalizeChance(rawChance, cap = 0.95) {
+  const numeric = Number(rawChance);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  const normalized = numeric > 1 ? numeric / 100 : numeric;
+  return Math.max(0, Math.min(Number(cap) || 0.95, normalized));
+}
+
+function resolveCritChance(pokemon) {
+  const directCritChance = normalizeChance(
+    pokemon?.crit_chance ?? pokemon?.critChance ?? pokemon?.critical_chance,
+    0.95,
+  );
+  if (directCritChance > 0) return directCritChance;
+  return getExtraChance(pokemon?.crit_level, 0.04, 0.4);
+}
+
 function getExpectedPickerId(battle) {
   return battle.selectionStatus === SELECTION_STATUS.WAITING_CHALLENGER
     ? battle.challengerId
@@ -112,7 +128,7 @@ function buildTeamMemberFromPokemon(pokemon) {
     critLevel: Math.max(0, Math.min(10, Number(pokemon.crit_level) || 0)),
     dodgeLevel: Math.max(0, Math.min(10, Number(pokemon.dodge_level) || 0)),
     elementalLevel: Math.max(0, Math.min(10, Number(pokemon.elemental_level) || 0)),
-    critChance: getExtraChance(pokemon.crit_level, 0.04, 0.4),
+    critChance: resolveCritChance(pokemon),
     dodgeChance: getExtraChance(pokemon.dodge_level, 0.018, 0.18),
     elementalChance: getExtraChance(pokemon.elemental_level, 0.03, 0.3),
   };
