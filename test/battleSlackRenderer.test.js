@@ -89,6 +89,24 @@ test("formatBattleLogForSlack mantém perspectiva correta por lado e round no to
   assert.match(text, /DOT\/Contínuo/);
 });
 
+test("formatBattleLogForSlack usa fallback textual quando não há action_summary", () => {
+  const battle = createBattleStub();
+  battle.metadata = {
+    slackUserId: "U1",
+    turnLog: [
+      "⚔️ <@U1> atacou <@U2> e causou *35* de dano.",
+      "🔥 Burn causou 9 em <@U2>.",
+      "🧪 <@U1> usou poção e recuperou *18* HP.",
+    ],
+  };
+
+  const text = formatBattleLogForSlack({ battle, lines: battle.metadata.turnLog, title: "LOG" });
+  assert.doesNotMatch(text, /Ação: —/);
+  assert.match(text, /Dano: 35/);
+  assert.match(text, /Cura recebida: Cura 18/);
+  assert.match(text, /DOT\/Contínuo: Burn/);
+});
+
 function createBattleStub({ withReserves = false } = {}) {
   return {
     channelId: "C-battle",
