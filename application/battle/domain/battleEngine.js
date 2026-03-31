@@ -1,6 +1,15 @@
 const { randomCoinflip } = require("../../../utils/helpers");
-const { resolveElementalRelation } = require("../../../services/pokemonElementsService");
-const { resolveElementalDamageRule, getElementalEfficiencyMultiplier } = require("./elementalRules");
+const {
+  resolveElementalRelation,
+} = require("../../../services/pokemonElementsService");
+const {
+  resolveElementalDamageRule,
+  getElementalEfficiencyMultiplier,
+} = require("./elementalRules");
+const {
+  resolveElementalDamageRule,
+  getElementalEfficiencyMultiplier,
+} = require("./elementalRules");
 
 const BATTLE_HP_MULTIPLIER = 12.5;
 const MAX_POTIONS_PER_BATTLE = 5;
@@ -48,12 +57,21 @@ function calculateBattleHp(baseHp) {
   return Math.max(1, Math.round(safeBaseHp * BATTLE_HP_MULTIPLIER));
 }
 
-function calculateDamage({ attackerAttack, defenderDefense, attackerCritChance = 0, defenderDodgeChance = 0, varianceRoll }) {
+function calculateDamage({
+  attackerAttack,
+  defenderDefense,
+  attackerCritChance = 0,
+  defenderDodgeChance = 0,
+  varianceRoll,
+}) {
   const attack = Math.max(1, Number(attackerAttack) || 1);
   const defense = Math.max(0, Number(defenderDefense) || 0);
-  const damageVariance = varianceRoll || ((Math.random() * 0.28) + 0.86);
+  const damageVariance = varianceRoll || Math.random() * 0.28 + 0.86;
 
-  const baseDamage = Math.max(1, Math.round((attack * damageVariance) - (defense * 0.42)));
+  const baseDamage = Math.max(
+    1,
+    Math.round(attack * damageVariance - defense * 0.42),
+  );
   const critChanceRaw = Number(attackerCritChance) || 0;
   const critChance = normalizeChance(attackerCritChance, 0.95);
   const dodgeChance = normalizeChance(defenderDodgeChance, 0.95);
@@ -117,8 +135,14 @@ function calculateMagicDamage({
   const attack = Math.max(1, Number(attackerAttack) || 1);
   const magic = Math.max(1, Number(attackerMagic) || attack);
   const baseStatUsed = Number(attackerMagic) > 0 ? "magic" : "attack";
-  const elemental = resolveElementalRelation({ attackElement: magicElement, defenderElements });
-  const elementalRule = resolveElementalDamageRule({ attackElement: magicElement, defenderElements });
+  const elemental = resolveElementalRelation({
+    attackElement: magicElement,
+    defenderElements,
+  });
+  const elementalRule = resolveElementalDamageRule({
+    attackElement: magicElement,
+    defenderElements,
+  });
   const efficiencyMultiplier = getElementalEfficiencyMultiplier(attacker);
   const primaryRoll = d12Roll || rollDie(12);
   const bonusRoll = d6Roll || rollDie(6);
@@ -153,13 +177,20 @@ function calculateMagicDamage({
       isCritical: false,
       elemental,
       elementalBaseMultiplier: Number(elementalRule.multiplier || 1),
-      elementalModifier: Number((elementalRule.multiplier || 1) * efficiencyMultiplier),
+      elementalModifier: Number(
+        (elementalRule.multiplier || 1) * efficiencyMultiplier,
+      ),
       elementalOutcome: elementalRule.relation || "neutral",
       efficiencyMultiplier,
-      multiplier: Number((elementalRule.multiplier || 1) * efficiencyMultiplier),
+      multiplier: Number(
+        (elementalRule.multiplier || 1) * efficiencyMultiplier,
+      ),
     };
   }
-  const crit = rollCriticalStrike({ critChance: attackerCritChance, critMultiplier: 1.6 });
+  const crit = rollCriticalStrike({
+    critChance: attackerCritChance,
+    critMultiplier: 1.6,
+  });
   const critMultiplier = Number(crit.critMultiplier || 1);
   const elementalBaseMultiplier = Number(elementalRule.multiplier || 1);
   const elementalModifier = elementalBaseMultiplier * efficiencyMultiplier;
@@ -206,15 +237,24 @@ function resolveAttackTurn({ attacker, defender }) {
     defenderDodgeChance,
   });
 
-  const finalDamage = result.dodged ? 0 : Math.max(0, Number(result.finalDamage || 0));
+  const finalDamage = result.dodged
+    ? 0
+    : Math.max(0, Number(result.finalDamage || 0));
   const elemental = {
-    elemental: { relation: "neutral", hasAdvantage: false, hasDisadvantage: false },
+    elemental: {
+      relation: "neutral",
+      hasAdvantage: false,
+      hasDisadvantage: false,
+    },
     multiplier: 1,
     relation: "neutral",
     finalDamage,
   };
 
-  defender.battleHp.current = Math.max(0, defender.battleHp.current - finalDamage);
+  defender.battleHp.current = Math.max(
+    0,
+    defender.battleHp.current - finalDamage,
+  );
 
   return {
     ...result,
@@ -240,7 +280,10 @@ function resolveMagicTurn({ attacker, defender, magicEntry }) {
     defenderElements: defender.selectedPokemon?.elementTypes || [],
   });
 
-  defender.battleHp.current = Math.max(0, defender.battleHp.current - result.finalDamage);
+  defender.battleHp.current = Math.max(
+    0,
+    defender.battleHp.current - result.finalDamage,
+  );
 
   return {
     ok: true,
@@ -256,7 +299,10 @@ function resolvePotionTurn(playerState) {
     return { ok: false, reason: "limit" };
   }
 
-  const missingHp = Math.max(0, playerState.battleHp.max - playerState.battleHp.current);
+  const missingHp = Math.max(
+    0,
+    playerState.battleHp.max - playerState.battleHp.current,
+  );
   if (missingHp <= 0) {
     return { ok: false, reason: "full_hp" };
   }
@@ -306,16 +352,33 @@ function resolveNextTurnBySpeed({ battle, actorUserId, energyPenalty = 0 }) {
   const threshold = battle.initiative?.threshold || INITIATIVE_THRESHOLD;
   const appliedPenalty = Math.max(0, Number(energyPenalty) || 0);
 
-  gauges[actorUserId] = Math.max(0, (Number(gauges[actorUserId]) || 0) - threshold - appliedPenalty);
+  gauges[actorUserId] = Math.max(
+    0,
+    (Number(gauges[actorUserId]) || 0) - threshold - appliedPenalty,
+  );
 
   let ticks = 0;
-  while (!playerIds.some((userId) => (Number(gauges[userId]) || 0) >= threshold) && ticks < 1000) {
+  while (
+    !playerIds.some((userId) => (Number(gauges[userId]) || 0) >= threshold) &&
+    ticks < 1000
+  ) {
     for (const userId of playerIds) {
-      const baseSpeed = Math.max(1, Number(battle.players[userId]?.stats?.speed) || 1);
+      const baseSpeed = Math.max(
+        1,
+        Number(battle.players[userId]?.stats?.speed) || 1,
+      );
       const effects = battle.players[userId]?.elementalState?.effects || [];
       const speedMultiplier = effects
-        .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0 && effect?.speedMultiplier != null)
-        .reduce((acc, effect) => acc * Math.max(0.1, Number(effect.speedMultiplier || 1)), 1);
+        .filter(
+          (effect) =>
+            Number(effect?.remainingRounds ?? 1) > 0 &&
+            effect?.speedMultiplier != null,
+        )
+        .reduce(
+          (acc, effect) =>
+            acc * Math.max(0.1, Number(effect.speedMultiplier || 1)),
+          1,
+        );
       const speed = Math.max(1, Math.round(baseSpeed * speedMultiplier));
       gauges[userId] = (Number(gauges[userId]) || 0) + speed;
     }
@@ -337,7 +400,8 @@ function resolveNextTurnBySpeed({ battle, actorUserId, energyPenalty = 0 }) {
     });
 
   const nextActorUserId = sortedCandidates[0]?.userId || actorUserId;
-  const opponentId = playerIds.find((userId) => userId !== actorUserId) || actorUserId;
+  const opponentId =
+    playerIds.find((userId) => userId !== actorUserId) || actorUserId;
   const extraTurn = nextActorUserId === actorUserId;
 
   const debug = {
@@ -347,8 +411,15 @@ function resolveNextTurnBySpeed({ battle, actorUserId, energyPenalty = 0 }) {
     ticks,
     threshold,
     energyPenalty: appliedPenalty,
-    gauges: Object.fromEntries(playerIds.map((userId) => [userId, Number(gauges[userId]) || 0])),
-    speeds: Object.fromEntries(playerIds.map((userId) => [userId, Math.max(1, Number(battle.players[userId]?.stats?.speed) || 1)])),
+    gauges: Object.fromEntries(
+      playerIds.map((userId) => [userId, Number(gauges[userId]) || 0]),
+    ),
+    speeds: Object.fromEntries(
+      playerIds.map((userId) => [
+        userId,
+        Math.max(1, Number(battle.players[userId]?.stats?.speed) || 1),
+      ]),
+    ),
     reason: extraTurn
       ? "same_actor_retained_turn_due_to_higher_initiative"
       : "turn_passed_after_initiative_resolution",
