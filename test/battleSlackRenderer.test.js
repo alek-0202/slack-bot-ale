@@ -162,11 +162,15 @@ test("formatBattleLogForSlack exibe absorção de barreira e duração restante 
   assert.match(text, /Debuffs: Burn \[3\]/);
 });
 
-test("formatBattleLogForSlack inclui bloco Details com efeitos ativos do estado real", () => {
+test("formatBattleLogForSlack inclui Details global com explicação útil e sem duplicar", () => {
   const battle = createBattleStub();
   battle.players.U1.elementalState = {
-    effects: [{ id: "mind_control", name: "Controle Mental", remainingRounds: 2, outgoingDamageMultiplier: 1.2 }],
+    effects: [{ id: "psychic_barrier", name: "Barreira Psíquica", remainingRounds: 2, shieldCurrentHp: 55 }],
     statuses: [{ id: "burn", name: "Burn", stacks: 1, remainingRounds: 2, damagePerStack: 10 }],
+  };
+  battle.players.U2.elementalState = {
+    effects: [{ id: "psychic_barrier", name: "Barreira Psíquica", remainingRounds: 1, shieldCurrentHp: 20 }],
+    statuses: [],
   };
 
   const text = formatBattleLogForSlack({
@@ -175,8 +179,21 @@ test("formatBattleLogForSlack inclui bloco Details com efeitos ativos do estado 
     lines: [{ kind: "text", text: "rodada" }],
   });
   assert.match(text, /\*Details\*/);
-  assert.match(text, /Controle Mental \[2\]: aumenta dano em 20%/);
-  assert.match(text, /Burn \[2\]: causa 10 de dano por turno/);
+  assert.match(text, /Barreira Psíquica -> absorve dano antes do HP/);
+  assert.match(text, /Burn -> causa dano ao longo do tempo no turno do afetado/);
+  assert.equal((text.match(/Barreira Psíquica ->/g) || []).length, 1);
+  assert.doesNotMatch(text, /Pikachu:|Charmander:/);
+});
+
+test("formatBattleLogForSlack não exibe Details sem buff\/debuff ativo", () => {
+  const battle = createBattleStub();
+  const text = formatBattleLogForSlack({
+    battle,
+    title: "LOG",
+    lines: [{ kind: "text", text: "rodada" }],
+  });
+
+  assert.doesNotMatch(text, /\*Details\*/);
 });
 
 test("formatBattleLogForSlack usa fallback textual quando não há action_summary", () => {

@@ -3,6 +3,7 @@ const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService
 const { getAvailableElementalSkills } = require("../../../application/battle/domain/elementalRules");
 const { canUseSkillAction } = require("../../../application/battle/domain/skillActionValidator");
 const { sanitizeResolvedAction } = require("../../../application/battle/domain/resolvedAction");
+const { describeEffectGameplayImpact, normalizeEffectKey } = require("../../../application/battle/domain/effectDetailsRegistry");
 const { getLevelBorderStyle } = require("./pokemonVisualTier");
 
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
@@ -323,69 +324,54 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     `*[${enemyLabel}]*`,
     ...formatCombatantSummaryLines(summaries.enemy),
     "",
-    ...formatDetailsSection(battle, laneIds, { playerLabel, enemyLabel }),
+    ...formatDetailsSection(battle, laneIds),
     extras.length ? "" : null,
     extras.length ? '*Eventos:*' : null,
     ...extras.slice(-6).map((line) => `• ${line}`),
   ].filter(Boolean).join("\n");
 }
 
-function formatDetailsSection(battle, laneIds, labels) {
+function formatDetailsSection(battle, laneIds) {
+  const details = collectBattleActiveEffectDetails(battle, laneIds);
+  if (!details.length) return [];
   const lines = ["*Details*"];
-  const appendDetails = (label, userId) => {
-    const details = collectLiveEffectDetails(battle?.players?.[userId]);
-    if (!details.length) {
-      lines.push(`• ${label}: —`);
-      return;
-    }
-    lines.push(`• ${label}:`);
-    for (const item of details.slice(0, 6)) {
-      const effectName = item?.name || item?.id || "Efeito";
-      const description = item?.description || "efeito ativo";
-      lines.push(`  ◦ ${effectName}: ${description}`);
-    }
-  };
-  appendDetails(labels.playerLabel || "Jogador", laneIds.playerId);
-  appendDetails(labels.enemyLabel || "Inimigo", laneIds.enemyId);
+  for (const item of details.slice(0, 8)) {
+    lines.push(`• ${item.name} -> ${item.description}`);
+  }
   return lines;
 }
 
-function collectLiveEffectDetails(player = {}) {
-  const effectDetails = (player?.elementalState?.effects || [])
-    .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0)
-    .map((effect) => ({
-      name: `${effect?.name || effect?.id || "Efeito"}${effect?.remainingRounds != null ? ` [${Math.max(0, Number(effect.remainingRounds || 0))}]` : ""}`,
-      description: describeLiveEntry(effect),
-    }));
-  const statusDetails = (player?.elementalState?.statuses || [])
-    .filter((status) => Number(status?.remainingRounds ?? status?.durationTurnsRemaining ?? 1) > 0 && Number(status?.stacks || 1) > 0)
-    .map((status) => ({
-      name: `${status?.name || status?.id || "Status"} [${Math.max(0, Number(status?.remainingRounds ?? status?.durationTurnsRemaining ?? 0))}]`,
-      description: describeLiveEntry(status),
-    }));
-  return [...effectDetails, ...statusDetails];
-}
+function collectBattleActiveEffectDetails(battle = {}, laneIds = {}) {
+  const playerIds = [laneIds?.playerId, laneIds?.enemyId].filter(Boolean);
+  const unique = new Map();
 
-function describeLiveEntry(entry = {}) {
-  if (entry?.description) return String(entry.description);
-  const parts = [];
-  const damagePerTick = Number(entry.dotDamage || entry.damagePerTurn || entry.damagePerStack || 0);
-  if (damagePerTick > 0) parts.push(`causa ${Math.round(damagePerTick)} de dano por turno`);
-  if (entry.outgoingDamageMultiplier != null && Number(entry.outgoingDamageMultiplier) !== 1) {
-    const pct = Math.round((Number(entry.outgoingDamageMultiplier) - 1) * 100);
-    parts.push(`${pct > 0 ? "aumenta" : "reduz"} dano em ${Math.abs(pct)}%`);
+  for (const userId of playerIds) {
+    const player = battle?.players?.[userId] || {};
+    const effectEntries = (player?.elementalState?.effects || [])
+      .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0)
+      .map((effect) => ({
+        id: effect?.id || null,
+        key: normalizeEffectKey(effect),
+        name: effect?.name || effect?.id || "Efeito",
+        description: describeEffectGameplayImpact(effect),
+      }));
+    const statusEntries = (player?.elementalState?.statuses || [])
+      .filter((status) => Number(status?.remainingRounds ?? status?.durationTurnsRemaining ?? 1) > 0 && Number(status?.stacks || 1) > 0)
+      .map((status) => ({
+        id: status?.id || null,
+        key: normalizeEffectKey(status),
+        name: status?.name || status?.id || "Status",
+        description: describeEffectGameplayImpact(status),
+      }));
+
+    for (const entry of [...effectEntries, ...statusEntries]) {
+      const uniqueKey = entry.key || entry.id || entry.name;
+      if (!uniqueKey || unique.has(uniqueKey)) continue;
+      unique.set(uniqueKey, entry);
+    }
   }
-  if (entry.incomingDamageTakenMultiplier != null && Number(entry.incomingDamageTakenMultiplier) !== 1) {
-    const pct = Math.round((Number(entry.incomingDamageTakenMultiplier) - 1) * 100);
-    parts.push(`${pct > 0 ? "recebe" : "mitiga"} ${Math.abs(pct)}% de dano`);
-  }
-  if (entry.speedMultiplier != null && Number(entry.speedMultiplier) !== 1) {
-    const pct = Math.round((Number(entry.speedMultiplier) - 1) * 100);
-    parts.push(`${pct > 0 ? "aumenta" : "reduz"} velocidade em ${Math.abs(pct)}%`);
-  }
-  if (entry.shieldCurrentHp != null && Number(entry.shieldCurrentHp) > 0) parts.push("absorve dano antes do HP");
-  if (entry.cannotAct || entry.skipTurn || entry.blockAction) parts.push("impede ação");
-  return parts.join(", ") || "efeito ativo";
+
+  return [...unique.values()];
 }
 
 function normalizeLogEntry(entry) {
