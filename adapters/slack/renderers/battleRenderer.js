@@ -200,8 +200,20 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     if (normalized.kind === "action_summary") {
       summaries[lane].actionLabel = `${normalized.skillIcon || "✨"} ${normalized.skillName || "Ação"}`;
       summaries[lane].directDamage = Math.max(0, Number(summaries[lane].directDamage || 0) + Number(normalized.finalDamage || 0));
-      if (normalized.critical && normalized.extraDamage != null) {
-        summaries[lane].critDamageBonus = Math.max(0, Number(summaries[lane].critDamageBonus || 0) + Number(normalized.extraDamage || 0));
+      if (normalized.critical) {
+        const critBonus = normalized.extraDamage != null
+          ? Number(normalized.extraDamage || 0)
+          : Math.max(0, Number(normalized.finalDamage || 0) - Number(normalized.baseDamage || 0));
+        summaries[lane].critDamageBonus = Math.max(0, Number(summaries[lane].critDamageBonus || 0) + critBonus);
+      }
+      if (Number(normalized.healingDone || 0) > 0) {
+        summaries[lane].healingReceived.push({ label: "Cura", value: Number(normalized.healingDone || 0) });
+      }
+      if (Array.isArray(normalized.appliedEffects)) {
+        for (const effectName of normalized.appliedEffects) {
+          if (!effectName) continue;
+          if (!summaries[lane].continuousEffects.includes(effectName)) summaries[lane].continuousEffects.push(effectName);
+        }
       }
       const healingFromModifiers = (normalized.modifiers || []).find((value) => /cura\s+\d+/i.test(String(value || "")));
       if (healingFromModifiers) {
@@ -314,8 +326,11 @@ function normalizeOutcomeEntry(entry) {
     actorName: entry.actorName || null,
     skillName: actionType === "attack" ? "Ataque Básico" : magicName,
     skillIcon: actionType === "attack" ? "⚔️" : "✨",
+    baseDamage: Number(outcome.resolvedAction?.baseDamage ?? outcome.normalDamage ?? 0),
     finalDamage: Number(outcome.finalDamage || 0),
-    critical: Boolean(outcome.isCritical),
+    healingDone: Number(outcome.resolvedAction?.healingDone || 0),
+    appliedEffects: Array.isArray(outcome.resolvedAction?.appliedEffects) ? outcome.resolvedAction.appliedEffects : [],
+    critical: Boolean(outcome.resolvedAction?.isCrit ?? outcome.isCritical),
     extraDamage: outcome.extraDamage || 0,
   };
 }
