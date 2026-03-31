@@ -194,6 +194,9 @@ function buildCombatantSummary({ battle, userId, ownerLabel }) {
     statusDamage: [],
     continuousEffects: [],
     directDamage: 0,
+    absorbedDamage: 0,
+    elementalTag: null,
+    dodged: false,
     critDamageBonus: 0,
     healingReceived: [],
     buffs: [],
@@ -209,7 +212,7 @@ function formatCombatantSummaryLines(summary) {
     `• Ação: ${summary.actionLabel ? `*${summary.actorName}* usou ${summary.actionLabel}` : "—"}`,
     `• DOT/Contínuo: ${summary.continuousEffects.length ? summary.continuousEffects.join(", ") : "—"}`,
     `• Dano status: ${summary.statusDamage.length ? summary.statusDamage.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
-    `• Dano: ${summary.directDamage || 0}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}`,
+    `• Dano: ${summary.directDamage || 0}${summary.absorbedDamage ? ` (barreira absorveu ${summary.absorbedDamage})` : ""}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}${summary.dodged ? " (esquivado)" : ""}${summary.elementalTag ? ` (${summary.elementalTag})` : ""}`,
     `• Cura recebida: ${summary.healingReceived.length ? summary.healingReceived.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
     `• Vida: ${summary.currentHp}/${summary.maxHp}`,
     `• Buffs: ${summary.buffs.length ? summary.buffs.join(" | ") : "—"}`,
@@ -257,6 +260,13 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     const summary = summaries[lane];
     summary.actionLabel = `${normalized.skillIcon || "✨"} ${normalized.skillName || normalized.actionName || "Ação"}`;
     summary.directDamage = Number(normalized.finalDamage || 0);
+    summary.absorbedDamage = Number(normalized.shieldAbsorbedDamage || 0);
+    summary.dodged = Boolean(normalized.dodged);
+    summary.elementalTag = normalized.elementalRelation === "advantage"
+      ? "vantagem elemental"
+      : normalized.elementalRelation === "disadvantage"
+        ? "resistido"
+        : null;
     if (Number(normalized.statusDamage || 0) > 0) {
       summary.statusDamage = [{ label: 'Status', value: Number(normalized.statusDamage || 0) }];
     } else {
@@ -321,6 +331,10 @@ function normalizeLogEntry(entry) {
         normalized.finalDamage = resolved.finalDamage;
         normalized.statusDamage = resolved.statusDamage;
         normalized.healingDone = resolved.healingDone;
+        normalized.shieldAbsorbedDamage = resolved.shieldAbsorbedDamage;
+        normalized.elementalMultiplier = resolved.elementalMultiplier;
+        normalized.elementalRelation = resolved.elementalRelation;
+        normalized.dodged = resolved.dodged;
         normalized.isCrit = resolved.isCrit;
         normalized.critical = resolved.isCrit;
         normalized.critBonusDamage = resolved.critBonusDamage;

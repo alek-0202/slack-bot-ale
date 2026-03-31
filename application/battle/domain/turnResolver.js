@@ -116,9 +116,24 @@ function splitActiveEffectsByPolarity(playerState) {
   const debuffs = [];
   for (const effect of effects) {
     const impacts = formatEffectImpact(effect);
-    if (!impacts.length) continue;
-    const label = `${effect.name || effect.id}: ${impacts.join(", ")}`;
-    const harmful = impacts.some((item) => item.includes("-") || /bloqueia ação|força ataque|dano contínuo|dano recebido/i.test(item));
+    const baseLabel = effect.name || effect.id;
+    if (!baseLabel) continue;
+    const remaining = effect?.remainingRounds == null ? null : Math.max(0, Number(effect.remainingRounds || 0));
+    const label = remaining == null ? baseLabel : `${baseLabel} [${remaining}]`;
+    const harmfulByFlag = Boolean(
+      effect.cannotAct
+      || effect.skipTurn
+      || effect.blockAction
+      || effect.taunt
+      || effect.forcedAction
+      || Number(effect.dotDamage || effect.damagePerTurn || 0) > 0
+      || Number(effect.incomingDamageTakenMultiplier || 1) > 1
+      || Number(effect.outgoingDamageMultiplier || 1) < 1
+      || Number(effect.speedMultiplier || 1) < 1
+      || Number(effect.defenseMultiplier || 1) < 1
+    );
+    const harmful = harmfulByFlag
+      || impacts.some((item) => item.includes("-") || /bloqueia ação|força ataque|dano contínuo|dano recebido/i.test(item));
     if (harmful) debuffs.push(label);
     else buffs.push(label);
   }
@@ -140,6 +155,10 @@ function buildResolvedActionPayload({
   appliedEffects = [],
   extraNotes = [],
   blockedReason = null,
+  shieldAbsorbedDamage = 0,
+  elementalMultiplier = 1,
+  elementalRelation = "neutral",
+  dodged = false,
 }) {
   const actorState = battle.players?.[actorUserId];
   const targetState = targetUserId ? battle.players?.[targetUserId] : null;
@@ -168,6 +187,10 @@ function buildResolvedActionPayload({
     targetCurrentHp: Math.max(0, Number(targetState?.battleHp?.current || 0)),
     targetMaxHp: Math.max(0, Number(targetState?.battleHp?.max || 0)),
     blockedReason: blockedReason || null,
+    shieldAbsorbedDamage: Math.max(0, Number(shieldAbsorbedDamage) || 0),
+    elementalMultiplier: Math.max(0, Number(elementalMultiplier) || 0),
+    elementalRelation,
+    dodged: Boolean(dodged),
     extraNotes: Array.isArray(extraNotes) ? extraNotes.filter(Boolean) : [],
   };
 }
@@ -183,6 +206,8 @@ function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDama
   const before = applyBeforeDamageHooks({ battle, attackerId, defenderId, damage: initialDamage });
   const onHit = applyOnHitHooks({ battle, attackerId, defenderId, damage: before.finalDamage });
   let finalDamage = Math.max(0, Number(onHit.finalDamage || 0));
+  const initialDamageAfterHooks = finalDamage;
+  let shieldAbsorbedDamage = 0;
   const defender = battle.players[defenderId];
   const defenderEffects = ensureElementalState(defender).effects || [];
   for (const effect of defenderEffects) {
@@ -195,6 +220,7 @@ function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDama
     const absorbed = Math.min(finalDamage, Math.max(0, Number(effect.shieldCurrentHp || 0)));
     effect.shieldCurrentHp = Math.max(0, Number(effect.shieldCurrentHp || 0) - absorbed);
     finalDamage = Math.max(0, finalDamage - absorbed);
+    shieldAbsorbedDamage += absorbed;
     if (effect.id === PSYCHIC_EFFECT_BARRIER && Number(effect.shieldCurrentHp || 0) <= 0) {
       const stacks = Math.max(0, Number(effect.psychicEnergyStacks || 0));
       addOrRefreshEffect(defender, {
@@ -225,6 +251,8 @@ function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDama
   }
   return {
     finalDamage,
+    damageBeforeShield: Math.max(0, initialDamageAfterHooks),
+    shieldAbsorbedDamage: Math.max(0, Math.round(shieldAbsorbedDamage)),
     logs: [...before.logs, ...onHit.logs],
   };
 }
@@ -554,6 +582,9 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         isCrit: Boolean(result.isCritical),
         baseDamage: Number(result.normalDamage || 0),
         finalDamage: Number(damageWithHooks.finalDamage || 0),
+        shieldAbsorbedDamage: Number(damageWithHooks.shieldAbsorbedDamage || 0),
+        elementalMultiplier: Number(result?.multiplier || 1),
+        elementalRelation: result?.elemental?.relation || "neutral",
         appliedEffects: [
           ...listNewEffects({ before: defenderEffectsBefore, playerState: defender }),
           ...listNewEffects({ before: attackerEffectsBefore, playerState: attacker }),
@@ -679,6 +710,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
           initialDamage: castResult.damageDealt,
         });
         castResult.damageDealt = hooksDamage.finalDamage;
+        castResult.shieldAbsorbedDamage = Number(hooksDamage.shieldAbsorbedDamage || 0);
         castResult.defenderRemainingHp = battle.players[defenderId].battleHp.current;
         mergeRoundLogs(battle, hooksDamage.logs);
         const defenderArmor = ensureElementalState(defender).effects?.find((effect) => effect.id === ICE_EFFECT_ARMOR);
@@ -733,6 +765,9 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       isCrit: Boolean(castResult.isCritical),
       baseDamage: Number(castResult.baseDamage || castResult.normalDamage || 0),
       finalDamage: Number(castResult.damageDealt || 0),
+      shieldAbsorbedDamage: Number(castResult?.damageType === "true" ? 0 : castResult?.shieldAbsorbedDamage || 0),
+      elementalMultiplier: Number(resolveElementalDamageRule({ attackElement: magicAction.element, defenderElements: defender.selectedPokemon?.elementTypes || [] }).multiplier || 1),
+      elementalRelation: resolveElementalDamageRule({ attackElement: magicAction.element, defenderElements: defender.selectedPokemon?.elementTypes || [] }).relation || "neutral",
       healingDone: Number(castResult.healAmount || 0),
       appliedEffects: [
         ...listNewEffects({ before: defenderEffectsBefore, playerState: defender }),
@@ -808,7 +843,9 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     const attackerEffectsBefore = collectAppliedEffectsSnapshot(attacker);
     const result = resolveAttackTurn({ attacker, defender });
     result.finalDamage = Math.max(0, Math.round(Number(result.finalDamage || 0) * consumeFightingFinisher(attacker)));
-    result.finalDamage += consumeStanceReleaseBonus(attacker);
+    if (!result.dodged) {
+      result.finalDamage += consumeStanceReleaseBonus(attacker);
+    }
     result.finalDamage = Math.max(0, Math.round(Number(result.finalDamage || 0) * Number(actionStart.damageMultiplier || 1)));
     defender.battleHp.current = Math.min(defender.battleHp.max, defender.battleHp.current + Number(result.finalDamage || 0));
 
@@ -892,6 +929,10 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       isCrit: Boolean(result.isCritical),
       baseDamage: Number(result.normalDamage || 0),
       finalDamage: Number(damageWithHooks.finalDamage || 0),
+      shieldAbsorbedDamage: Number(damageWithHooks.shieldAbsorbedDamage || 0),
+      elementalMultiplier: Number(result?.elemental?.multiplier || 1),
+      elementalRelation: result?.elemental?.elemental?.relation || "neutral",
+      dodged: Boolean(result.dodged),
       appliedEffects: [
         ...listNewEffects({ before: defenderEffectsBefore, playerState: defender }),
         ...listNewEffects({ before: attackerEffectsBefore, playerState: attacker }),
@@ -908,6 +949,9 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       dodged: result.dodged,
       baseDamage: result.normalDamage,
       finalDamage: damageWithHooks.finalDamage,
+      shieldAbsorbedDamage: damageWithHooks.shieldAbsorbedDamage,
+      elementalRelation: result?.elemental?.elemental?.relation || "neutral",
+      elementalMultiplier: result?.elemental?.multiplier || 1,
       appliedEffects: resolvedAction.appliedEffects,
     });
 

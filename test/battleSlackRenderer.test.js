@@ -125,6 +125,42 @@ test("formatBattleLogForSlack usa critBonusDamage e resolvedAction como fonte ú
   assert.match(text, /Buffs: Foco: \+15% chance crítica/);
 });
 
+test("formatBattleLogForSlack exibe absorção de barreira e duração restante de efeitos", () => {
+  const battle = createBattleStub();
+  const text = formatBattleLogForSlack({
+    battle,
+    title: "LOG",
+    lines: [{
+      kind: "action_summary",
+      actorUserId: "U1",
+      resolvedAction: {
+        actorId: "U1",
+        actorName: "Pikachu",
+        actionType: "attack",
+        actionName: "Ataque Básico",
+        didHit: true,
+        isCrit: false,
+        dodged: false,
+        baseDamage: 40,
+        finalDamage: 0,
+        shieldAbsorbedDamage: 40,
+        elementalRelation: "advantage",
+        critBonusDamage: 0,
+        statusDamage: 0,
+        healingDone: 0,
+        activeBuffs: ["Controle Mental [2]", "Barreira Psíquica [1]"],
+        activeDebuffs: ["Burn [3]"],
+        actorCurrentHp: 120,
+        actorMaxHp: 150,
+      },
+    }],
+  });
+
+  assert.match(text, /Dano: 0 \(barreira absorveu 40\) \(vantagem elemental\)/);
+  assert.match(text, /Buffs: Controle Mental \[2\] \| Barreira Psíquica \[1\]/);
+  assert.match(text, /Debuffs: Burn \[3\]/);
+});
+
 test("formatBattleLogForSlack usa fallback textual quando não há action_summary", () => {
   const battle = createBattleStub();
   battle.metadata = {
