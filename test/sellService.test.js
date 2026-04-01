@@ -23,15 +23,32 @@ test("calculatePokemonSellPrice usa valor base do pokémon somado a todo o inves
   assert.equal(upgraded.finalPrice, "1350");
 });
 
-test("sumFragmentBonuses aplica regra de fragmento épico e prismático na venda", () => {
+test("sumFragmentBonuses aplica regras de fragmento por raridade e shiny", () => {
   const bonus = sumFragmentBonuses([
-    { level: 50, shiny: false, pokemon_species: { rarity: "epic" } },
-    { level: 49, shiny: true, pokemon_species: { rarity: "epic" } },
-    { level: 30, shiny: true, pokemon_species: { rarity: "rare" } },
+    { shiny: false, pokemon_species: { rarity: "epic" } },
+    { shiny: true, pokemon_species: { rarity: "epic" } },
+    { shiny: true, pokemon_species: { rarity: "rare" } },
   ]);
 
   assert.deepEqual(bonus, {
-    epicFragment: 1,
+    commonFragment: 43,
+    epicFragment: 2,
+    legendaryFragment: 0,
+    mythicalFragment: 0,
     prismaticFragment: 2,
+  });
+});
+
+test("sumFragmentBonuses concede fragmento prismático para shiny prime épico", () => {
+  const bonus = sumFragmentBonuses([
+    { shiny: true, shiny_type: "prime", pokemon_species: { rarity: "epic" } },
+  ]);
+
+  assert.deepEqual(bonus, {
+    commonFragment: 20,
+    epicFragment: 1,
+    legendaryFragment: 0,
+    mythicalFragment: 0,
+    prismaticFragment: 20,
   });
 });
