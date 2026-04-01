@@ -149,7 +149,7 @@ function buildFusionHud({ slackUserId }) {
       type: 'actions',
       elements: FUSION_QUANTITIES.map((qty) => ({
         type: 'button',
-        action_id: FUSION_BUY_ACTION_ID,
+        action_id: `${FUSION_BUY_ACTION_ID}__${item.itemKey}__${qty}`,
         text: { type: 'plain_text', text: `Comprar x${qty}`, emoji: true },
         value: JSON.stringify({ ownerSlackUserId: slackUserId, itemKey: item.itemKey, quantity: qty }),
       })),
