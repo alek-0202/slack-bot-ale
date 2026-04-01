@@ -4,6 +4,7 @@ const { getUserItemQuantity, removeItem, addItem } = require('./inventoryService
 const { getFusionItem, listFusionItems } = require('./fusionCatalogService');
 const { assertPokemonAvailableForAction } = require('./healingStationService');
 const { rollPokemonIvOffsets, calculatePokemonStats } = require('./pokemonStatsService');
+const { getUser } = require('./userService');
 
 const FUSION_BUY_ACTION_ID = 'fusion_buy_item';
 const FUSION_QUANTITIES = [1, 10, 50, 100];
@@ -92,6 +93,13 @@ async function useReroll({ slackUserId, pokemonId }) {
   const consume = await removeItem(slackUserId, 'magic_reroll_orb', 1);
   if (!consume.ok) return { ok: false, reason: 'missing_item' };
 
+  const previousIvOffsets = {
+    attack_iv: Number(pokemon.attack_iv || 0),
+    defense_iv: Number(pokemon.defense_iv || 0),
+    magic_iv: Number(pokemon.magic_iv || 0),
+    speed_iv: Number(pokemon.speed_iv || 0),
+    hp_iv: Number(pokemon.hp_iv || 0),
+  };
   const nextIvOffsets = rollPokemonIvOffsets({ shiny: pokemon.shiny, shinyType: pokemon.shiny_type, rarity: pokemon.pokemon_species?.rarity });
   const updated = await updatePokemonAfterMutation({
     pokemon,
@@ -100,7 +108,7 @@ async function useReroll({ slackUserId, pokemonId }) {
     shinyType: pokemon.shiny ? (pokemon.shiny_type || 'normal') : null,
   });
 
-  return { ok: true, updated };
+  return { ok: true, updated, previousIvOffsets, nextIvOffsets, pokemon };
 }
 
 async function useTransform({ slackUserId, pokemonId, prime = false }) {
@@ -133,10 +141,40 @@ async function useTransform({ slackUserId, pokemonId, prime = false }) {
   return { ok: true, updated };
 }
 
-function buildFusionHud({ slackUserId }) {
+async function getFusionHudResources(slackUserId) {
+  const [user, epicFragments, prismaticFragments] = await Promise.all([
+    getUser(slackUserId),
+    getUserItemQuantity(slackUserId, 'epic_fragment'),
+    getUserItemQuantity(slackUserId, 'prismatic_fragment'),
+  ]);
+
+  return {
+    gold: user?.gold || '0',
+    epicFragments,
+    prismaticFragments,
+  };
+}
+
+function buildFusionHud({ slackUserId, resources = {} }) {
+  const {
+    gold = '0',
+    epicFragments = 0,
+    prismaticFragments = 0,
+  } = resources;
   const blocks = [
     { type: 'header', text: { type: 'plain_text', text: '🧪 Fusão de Fragmentos', emoji: true } },
-    { type: 'section', text: { type: 'mrkdwn', text: `Treinador: <@${slackUserId}>\nEscolha um item e a quantidade para craftar.` } },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text:
+          `Treinador: <@${slackUserId}>\n` +
+          `Gold: *${gold}*\n` +
+          `Fragmentos épicos: *${Number(epicFragments || 0)}*\n` +
+          `Fragmentos prismáticos: *${Number(prismaticFragments || 0)}*\n` +
+          'Escolha um item e a quantidade para craftar.',
+      },
+    },
   ];
 
   for (const item of listFusionItems()) {
@@ -163,6 +201,7 @@ module.exports = {
   FUSION_BUY_ACTION_ID,
   FUSION_QUANTITIES,
   buildFusionHud,
+  getFusionHudResources,
   craftFusionItem,
   useReroll,
   useTransform,

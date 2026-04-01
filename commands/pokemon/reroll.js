@@ -1,6 +1,14 @@
 const { parsePositiveInt } = require('../../utils/number');
 const { useReroll } = require('../../services/fusionService');
 
+const REROLL_IV_LABELS = [
+  ['attack_iv', 'Attack'],
+  ['defense_iv', 'Defense'],
+  ['magic_iv', 'Magic'],
+  ['speed_iv', 'Speed'],
+  ['hp_iv', 'HP'],
+];
+
 module.exports = {
   name: 'reroll',
   async execute({ event, args, say }) {
@@ -22,6 +30,12 @@ module.exports = {
       return;
     }
 
-    await say(`🎲 Reroll concluído para o Pokémon #${pokemonId}. Novos IVs aplicados com sucesso.`);
+    const pokemonName = result.pokemon?.pokemon_species?.name || `Pokémon #${pokemonId}`;
+    const level = Number(result.pokemon?.level || 1);
+    const comparison = REROLL_IV_LABELS
+      .map(([key, label]) => `${label}: +${Number(result.previousIvOffsets?.[key] || 0)} -> +${Number(result.nextIvOffsets?.[key] || 0)}`)
+      .join('\n');
+
+    await say(`🎲 ${pokemonName} Nvl ${level}\n${comparison}`);
   },
 };
