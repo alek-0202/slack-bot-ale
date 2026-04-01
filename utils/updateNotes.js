@@ -1,44 +1,35 @@
 const CURRENT_UPDATE = {
-  versionLabel: 'Atualização de Produção — PvP, Dungeon 60 e Essência',
+  versionLabel: 'Atualização de Produção — Fusão, Fragmentos e Novos Itens',
   sections: {
     combate: [
-      'PvP agora suporta até *3 Pokémons* por jogador.',
-      'Troca de Pokémon durante a batalha com fluxo mais estável.',
-      'Novo comando `!surrender` para desistir da partida.',
-      'PvP com entrada de *2000 gold* e recompensa de *4000 gold* ao vencedor.',
-      'Contador de vitórias PvP no acompanhamento das partidas.',
-      'Ajustes no cálculo de crítico e melhoria dos logs de combate.',
+      'Logs de batalha mais claros para acompanhar cada turno sem confusão.',
+      'Efeitos e ações de combate com leitura mais limpa durante as lutas.',
     ],
-    dungeons: [
-      'Nova *Dungeon 60* disponível.',
-      'Tabela de recompensas da dungeon atualizada.',
-      'Melhorias de estabilidade e correções no fluxo da dungeon.',
+    magias: [
+      'O `!magicregister` agora registra somente as magias corretas, sem incluir magias características.',
+      'O `!mrskill` foi ajustado e está funcionando corretamente na seleção de magias.',
+      'As habilidades agora exibem descrição para facilitar decisões no time.',
     ],
-    visual: [
-      'Fundos por raridade adicionados: lendário (roxo) e mítico (dourado/laranja).',
-      'Shiny prime com novo visual (borda preta/vermelha).',
-      'Bordas de nível mantidas junto dos novos fundos.',
-      'Melhorias gerais de renderização nas cartas e listagens.',
+    sistemaMochila: [
+      'Compras por quantidade disponíveis na mochila: x1, x10, x50 e x100.',
+      'Novo item *Roleta Mágica*: permite reroll de IV no Pokémon escolhido.',
+      'Novo item *Prisma*: transforma o Pokémon em shiny.',
+      'Novo item *Prisma PRIME*: transforma o Pokémon em shiny prime.',
+      'IV agora aparece no `!pa` e no `!pokeid`, com visual mais direto.',
     ],
-    economia: [
-      '*Essência Pokémon* integrada ao sistema de progressão.',
-      '`!sell` agora gera gold + essência.',
-      'Ajustes nas recompensas de dungeon, `!daily` e outros fluxos.',
+    fusao: [
+      'Novo sistema `!fusão` já disponível no jogo.',
+      'Fluxo de fusão mais estável, sem fechar no meio da ação.',
+      'Feedback da fusão mais claro em cada etapa para evitar dúvidas.',
+    ],
+    fragmentos: [
+      'Novo *Fragmento Épico*: obtido ao vender Pokémon épico no nível 50.',
+      'Novo *Fragmento Prismático*: obtido ao vender Pokémon shiny.',
+      'Fragmentos entram como recurso importante para evolução da conta.',
     ],
     qualidadeDeVida: [
-      '`!battleon` para definir quais Pokémons ficam disponíveis para batalha.',
-      'Favoritos agora influenciam listagens e proteções de venda.',
-      'Melhorias no `!mochila` com informações mais claras.',
-      'Melhorias no `!sell`, incluindo identificação de shiny.',
-      '`!sellall` disponível para venda em lote com proteção de favoritos.',
-      'Filtros ativos `!prarity` e `!pelement` para facilitar consultas.',
-    ],
-    correcoes: [
-      'Correções na Dungeon 60 (finalização e resultado).',
-      'Correções na healstation e no fluxo de cura.',
-      'Correções em ações de botões no Slack.',
-      'Ajustes de reset e persistência de HP.',
-      'Ajustes de shiny e balanceamento geral.',
+      'Leitura geral das telas e comandos melhorada para reduzir cliques e retrabalho.',
+      'Ajustes de usabilidade em menus e respostas para deixar a progressão mais fluida.',
     ],
   },
 };
@@ -47,25 +38,25 @@ function buildUpdateMessage() {
   const { versionLabel, sections } = CURRENT_UPDATE;
 
   const text = [
-    `📣 *${versionLabel}*`,
+    `📢 *${versionLabel}*`,
     '',
-    '*⚔️ Combate / PvP*',
+    '*⚔️ Combate*',
     sections.combate.map((item) => `• ${item}`).join('\n'),
     '',
-    '*🧭 Dungeons*',
-    sections.dungeons.map((item) => `• ${item}`).join('\n'),
+    '*🧠 Magias*',
+    sections.magias.map((item) => `• ${item}`).join('\n'),
     '',
-    '*🎨 Visual*',
-    sections.visual.map((item) => `• ${item}`).join('\n'),
+    '*🎒 Sistema / Mochila*',
+    sections.sistemaMochila.map((item) => `• ${item}`).join('\n'),
     '',
-    '*📦 Economia*',
-    sections.economia.map((item) => `• ${item}`).join('\n'),
+    '*🧪 Fusão*',
+    sections.fusao.map((item) => `• ${item}`).join('\n'),
     '',
-    '*🧠 Qualidade de vida*',
+    '*💎 Fragmentos*',
+    sections.fragmentos.map((item) => `• ${item}`).join('\n'),
+    '',
+    '*📊 Qualidade de vida*',
     sections.qualidadeDeVida.map((item) => `• ${item}`).join('\n'),
-    '',
-    '*🛠️ Correções*',
-    sections.correcoes.map((item) => `• ${item}`).join('\n'),
   ].join('\n');
 
   return {
@@ -75,7 +66,7 @@ function buildUpdateMessage() {
         type: 'header',
         text: {
           type: 'plain_text',
-          text: '📣 Atualização atual do bot',
+          text: '📢 Atualização!',
           emoji: true,
         },
       },
@@ -83,7 +74,7 @@ function buildUpdateMessage() {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*${versionLabel}*\nPrincipais melhorias recentes já implementadas e ativas.`,
+          text: `*${versionLabel}*\nConfira tudo que já entrou no jogo nesta rodada de melhorias.`,
         },
       },
       { type: 'divider' },
@@ -91,42 +82,42 @@ function buildUpdateMessage() {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*⚔️ Combate / PvP*\n${sections.combate.map((item) => `• ${item}`).join('\n')}`,
+          text: `*⚔️ Combate*\n${sections.combate.map((item) => `• ${item}`).join('\n')}`,
         },
       },
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*🧭 Dungeons*\n${sections.dungeons.map((item) => `• ${item}`).join('\n')}`,
+          text: `*🧠 Magias*\n${sections.magias.map((item) => `• ${item}`).join('\n')}`,
         },
       },
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*🎨 Visual*\n${sections.visual.map((item) => `• ${item}`).join('\n')}`,
+          text: `*🎒 Sistema / Mochila*\n${sections.sistemaMochila.map((item) => `• ${item}`).join('\n')}`,
         },
       },
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*📦 Economia*\n${sections.economia.map((item) => `• ${item}`).join('\n')}`,
+          text: `*🧪 Fusão*\n${sections.fusao.map((item) => `• ${item}`).join('\n')}`,
         },
       },
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*🧠 Qualidade de vida*\n${sections.qualidadeDeVida.map((item) => `• ${item}`).join('\n')}`,
+          text: `*💎 Fragmentos*\n${sections.fragmentos.map((item) => `• ${item}`).join('\n')}`,
         },
       },
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*🛠️ Correções*\n${sections.correcoes.map((item) => `• ${item}`).join('\n')}`,
+          text: `*📊 Qualidade de vida*\n${sections.qualidadeDeVida.map((item) => `• ${item}`).join('\n')}`,
         },
       },
     ],
