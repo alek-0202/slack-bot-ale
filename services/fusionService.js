@@ -142,15 +142,21 @@ async function useTransform({ slackUserId, pokemonId, prime = false }) {
 }
 
 async function getFusionHudResources(slackUserId) {
-  const [user, epicFragments, prismaticFragments] = await Promise.all([
+  const [user, commonFragments, epicFragments, legendaryFragments, mythicalFragments, prismaticFragments] = await Promise.all([
     getUser(slackUserId),
+    getUserItemQuantity(slackUserId, 'common_fragment'),
     getUserItemQuantity(slackUserId, 'epic_fragment'),
+    getUserItemQuantity(slackUserId, 'legendary_fragment'),
+    getUserItemQuantity(slackUserId, 'mythical_fragment'),
     getUserItemQuantity(slackUserId, 'prismatic_fragment'),
   ]);
 
   return {
     gold: user?.gold || '0',
+    commonFragments,
     epicFragments,
+    legendaryFragments,
+    mythicalFragments,
     prismaticFragments,
   };
 }
@@ -158,7 +164,10 @@ async function getFusionHudResources(slackUserId) {
 function buildFusionHud({ slackUserId, resources = {} }) {
   const {
     gold = '0',
+    commonFragments = 0,
     epicFragments = 0,
+    legendaryFragments = 0,
+    mythicalFragments = 0,
     prismaticFragments = 0,
   } = resources;
   const blocks = [
@@ -170,7 +179,10 @@ function buildFusionHud({ slackUserId, resources = {} }) {
         text:
           `Treinador: <@${slackUserId}>\n` +
           `Gold: *${gold}*\n` +
+          `Fragmentos comuns: *${Number(commonFragments || 0)}*\n` +
           `Fragmentos épicos: *${Number(epicFragments || 0)}*\n` +
+          `Fragmentos lendários: *${Number(legendaryFragments || 0)}*\n` +
+          `Fragmentos míticos: *${Number(mythicalFragments || 0)}*\n` +
           `Fragmentos prismáticos: *${Number(prismaticFragments || 0)}*\n` +
           'Escolha um item e a quantidade para craftar.',
       },

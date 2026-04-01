@@ -4,7 +4,7 @@ const FUSION_ITEMS = Object.freeze({
     itemName: 'Roleta Mágica',
     description: 'Rerolla IVs do Pokémon (pode subir ou descer).',
     useCommand: '!reroll <id>',
-    costs: [{ itemKey: 'epic_fragment', quantity: 3 }],
+    costs: [{ itemKey: 'common_fragment', quantity: 5 }],
   },
   prism_shiny: {
     itemKey: 'prism_shiny',
