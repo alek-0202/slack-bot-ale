@@ -12,13 +12,14 @@ function buildGeneralHelp() {
   return [
     "📘 *HELP DO BOT*",
     "",
-    "Use `!help pokemon` para sistema Pokémon, `!help dungeon` para dungeons e `!help battle` para batalha.",
+    "Use `!help pokemon` para sistema Pokémon, `!help dungeon` para dungeons, `!help battle` para batalha e `!help admin` para comandos administrativos.",
     "",
     "*Gerais*",
     "`!help` → mostra esta página geral",
     "`!help pokemon` → mostra a categoria Pokémon",
     "`!help battle` → mostra a categoria de batalha",
     "`!help dungeon` → mostra a categoria de dungeon",
+    "`!help admin` → mostra a categoria administrativa",
     "`!ping` → testa se o bot está vivo",
     "`!gif <termo>` → manda um GIF aleatório",
     "`!ia <pergunta>` → pergunta para a IA",
@@ -154,6 +155,22 @@ function buildDungeonHelp() {
   ].join("\n");
 }
 
+function buildAdminHelp() {
+  return [
+    "🛡️ *HELP — ADMIN*",
+    "",
+    "⚠️ Comandos restritos ao mesmo admin do `!closebattles`.",
+    "",
+    "`!closebattles` → abre confirmação para encerramento administrativo de batalhas",
+    "`!givegold @usuario <quantidade>` → adiciona gold ao alvo",
+    "`!giveenergy @usuario <quantidade>` → adiciona energia ao alvo (respeitando limite atual)",
+    "`!givec @usuario <quantidade>` → adiciona Pokebola (!c) ao alvo",
+    "`!givebook @usuario <quantidade>` → adiciona Livro Ancião ao alvo",
+    "`!givebag @usuario <quantidade>` → adiciona Bag de Suprimentos (Dungeon 60) ao alvo",
+    "`!openbag` → consome 1 bag da sua mochila e aplica a recompensa da dungeon 60",
+  ].join("\n");
+}
+
 function buildBattleCategoryHelp() {
   return [
     "⚔️ *HELP — BATALHA*",
@@ -168,6 +185,7 @@ function resolveHelpCategory(args) {
   if (["pokemon", "poke", "pokémon"].includes(normalized)) return "pokemon";
   if (["battle", "batalha", "pvp"].includes(normalized)) return "battle";
   if (["dungeon", "dg", "masmorra"].includes(normalized)) return "dungeon";
+  if (["admin", "adm", "administrativo"].includes(normalized)) return "admin";
   return "unknown";
 }
 
@@ -188,12 +206,14 @@ module.exports = {
       text = buildBattleCategoryHelp();
     } else if (category === "dungeon") {
       text = buildDungeonHelp();
+    } else if (category === "admin") {
+      text = buildAdminHelp();
     } else if (category === "general") {
       text = buildGeneralHelp();
     } else {
       text = [
         "❓ Categoria de help não reconhecida.",
-        "Use `!help`, `!help pokemon`, `!help dungeon` ou `!help battle`.",
+        "Use `!help`, `!help pokemon`, `!help dungeon`, `!help battle` ou `!help admin`.",
       ].join("\n");
     }
 

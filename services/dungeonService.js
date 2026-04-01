@@ -122,6 +122,10 @@ function weightedPickByConfiguredChances(speciesList, chances) {
   return pool[pool.length - 1] || null;
 }
 
+function pickFarmDungeonLevel60CapturedSpecies(speciesList) {
+  return weightedPickByConfiguredChances(speciesList, { epic: 95, legendary: 4, mythical: 1 });
+}
+
 const DUNGEON_PVE_RELEVANT_STATS = ['attack', 'magic', 'defense', 'hp', 'speed'];
 const DUNGEON_RARITY_STAT_MODIFIER = {
   common: 1.2,
@@ -418,7 +422,20 @@ async function grantDungeonRewards({ slackUserId, reward, transactionType, captu
     }
   }
 
-  return { goldReward: formatGold(reward.gold), xpResult, items, captured, goldTransaction: Array.isArray(goldData) ? goldData[0] : goldData };
+  return {
+    goldReward: formatGold(reward.gold),
+    xpResult,
+    items,
+    captured,
+    rewardSnapshot: {
+      accountXp: Number(reward.accountXp) || 0,
+      gold: Number(reward.gold) || 0,
+      ancientBookQty: Number(reward.ancientBookQty) || 0,
+      pokeballCQty: Number(reward.pokeballCQty) || 0,
+      pokemonEssenceQty: Number(reward.pokemonEssenceQty) || 0,
+    },
+    goldTransaction: Array.isArray(goldData) ? goldData[0] : goldData,
+  };
 }
 
 async function ensureDailyEntry(slackUserId, mode, metadata = {}) {
@@ -911,7 +928,7 @@ async function finalizeDungeonBattle(battle) {
 
   if (battle.metadata?.dungeonType === 'farm' && Number(battle.metadata?.dungeonLevel) === 60) {
     const speciesList = await getAllSpecies();
-    capturedSpecies = weightedPickByConfiguredChances(speciesList, { epic: 95, legendary: 4, mythical: 1 });
+    capturedSpecies = pickFarmDungeonLevel60CapturedSpecies(speciesList);
   }
 
   const rewards = await grantDungeonRewards({
@@ -941,6 +958,25 @@ async function finalizeDungeonBattle(battle) {
   const victoryCompletion = { ok: true, outcome: 'victory', rewards, capturedSpecies };
   battle.metadata.finalCompletion = victoryCompletion;
   return victoryCompletion;
+}
+
+async function grantFarmDungeonLevel60Reward({ slackUserId, transactionType = 'dungeon_farm_reward' }) {
+  const reward = getFarmReward(60);
+  const speciesList = await getAllSpecies();
+  const capturedSpecies = pickFarmDungeonLevel60CapturedSpecies(speciesList);
+
+  const rewards = await grantDungeonRewards({
+    slackUserId,
+    reward,
+    transactionType,
+    capturedSpecies,
+    enemyLevel: 60,
+  });
+
+  return {
+    rewards,
+    capturedSpecies,
+  };
 }
 
 async function processDungeonTurn({ channelId, actorUserId, actionType, actionPayload = {} }) {
@@ -1081,11 +1117,13 @@ module.exports = {
   getDungeonFarmList,
   getFarmReward,
   getFarmPokeballRewardRange,
+  pickFarmDungeonLevel60CapturedSpecies,
   decideAiAction,
   processEnemyTurnIfNeeded,
   getEligibleDungeonPokemons,
   validateDungeonPokemonSelection,
   mapDungeonFailureReason,
+  grantFarmDungeonLevel60Reward,
   startFarmDungeon,
   startDailyDungeon,
   processDungeonTurn,
