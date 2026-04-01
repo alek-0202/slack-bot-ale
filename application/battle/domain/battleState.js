@@ -95,14 +95,6 @@ function getExtraChance(level, perPoint, cap) {
   return Math.max(0, Math.min(cap, safeLevel * perPoint));
 }
 
-function readNumericCandidate(...candidates) {
-  for (const candidate of candidates) {
-    const numeric = Number(candidate);
-    if (Number.isFinite(numeric)) return numeric;
-  }
-  return null;
-}
-
 function normalizeChance(rawChance, cap = 0.95) {
   const numeric = Number(rawChance);
   if (!Number.isFinite(numeric) || numeric <= 0) return 0;
@@ -112,74 +104,11 @@ function normalizeChance(rawChance, cap = 0.95) {
 
 function resolveCritChance(pokemon) {
   const directCritChance = normalizeChance(
-    readNumericCandidate(
-      pokemon?.crit_chance,
-      pokemon?.critChance,
-      pokemon?.critical_chance,
-      pokemon?.criticalChance,
-      pokemon?.extra_stats?.crit_chance,
-      pokemon?.extraStats?.critChance,
-      pokemon?.battle_stats?.crit_chance,
-      pokemon?.battleStats?.critChance,
-    ),
+    pokemon?.crit_chance ?? pokemon?.critChance ?? pokemon?.critical_chance,
     0.95,
   );
   if (directCritChance > 0) return directCritChance;
-  const critLevel = readNumericCandidate(
-    pokemon?.crit_level,
-    pokemon?.critLevel,
-    pokemon?.extra_stats?.crit_level,
-    pokemon?.extraStats?.critLevel,
-  );
-  return getExtraChance(critLevel, 0.04, 0.4);
-}
-
-function resolveDodgeChance(pokemon) {
-  const directDodgeChance = normalizeChance(
-    readNumericCandidate(
-      pokemon?.dodge_chance,
-      pokemon?.dodgeChance,
-      pokemon?.evade_chance,
-      pokemon?.evadeChance,
-      pokemon?.extra_stats?.dodge_chance,
-      pokemon?.extraStats?.dodgeChance,
-      pokemon?.battle_stats?.dodge_chance,
-      pokemon?.battleStats?.dodgeChance,
-    ),
-    0.95,
-  );
-  if (directDodgeChance > 0) return directDodgeChance;
-  const dodgeLevel = readNumericCandidate(
-    pokemon?.dodge_level,
-    pokemon?.dodgeLevel,
-    pokemon?.extra_stats?.dodge_level,
-    pokemon?.extraStats?.dodgeLevel,
-  );
-  return getExtraChance(dodgeLevel, 0.018, 0.18);
-}
-
-function resolveElementalChance(pokemon) {
-  const directElementalChance = normalizeChance(
-    readNumericCandidate(
-      pokemon?.elemental_chance,
-      pokemon?.elementalChance,
-      pokemon?.elemental_efficiency,
-      pokemon?.elementalEfficiency,
-      pokemon?.extra_stats?.elemental_chance,
-      pokemon?.extraStats?.elementalChance,
-      pokemon?.battle_stats?.elemental_chance,
-      pokemon?.battleStats?.elementalChance,
-    ),
-    0.95,
-  );
-  if (directElementalChance > 0) return directElementalChance;
-  const elementalLevel = readNumericCandidate(
-    pokemon?.elemental_level,
-    pokemon?.elementalLevel,
-    pokemon?.extra_stats?.elemental_level,
-    pokemon?.extraStats?.elementalLevel,
-  );
-  return getExtraChance(elementalLevel, 0.03, 0.3);
+  return getExtraChance(pokemon?.crit_level, 0.04, 0.4);
 }
 
 function getExpectedPickerId(battle) {
@@ -197,11 +126,11 @@ function buildTeamMemberFromPokemon(pokemon) {
     hp: Number(pokemon.hp) || 1,
     speed: Number(pokemon.speed) || 1,
     critLevel: Math.max(0, Math.min(10, Number(pokemon.crit_level) || 0)),
-    dodgeLevel: Math.max(0, Math.min(10, Number(readNumericCandidate(pokemon.dodge_level, pokemon.dodgeLevel)) || 0)),
-    elementalLevel: Math.max(0, Math.min(10, Number(readNumericCandidate(pokemon.elemental_level, pokemon.elementalLevel)) || 0)),
+    dodgeLevel: Math.max(0, Math.min(10, Number(pokemon.dodge_level) || 0)),
+    elementalLevel: Math.max(0, Math.min(10, Number(pokemon.elemental_level) || 0)),
     critChance: resolveCritChance(pokemon),
-    dodgeChance: resolveDodgeChance(pokemon),
-    elementalChance: resolveElementalChance(pokemon),
+    dodgeChance: getExtraChance(pokemon.dodge_level, 0.018, 0.18),
+    elementalChance: getExtraChance(pokemon.elemental_level, 0.03, 0.3),
   };
 
   const hpMax = calculateBattleHp(stats.hp);
@@ -243,9 +172,6 @@ function syncPlayerActiveState(playerState) {
     spriteUrl: active.spriteUrl,
     elementTypes: active.elementTypes,
     baseHp: active.stats.hp,
-    critChance: Number(active?.stats?.critChance || 0),
-    dodgeChance: Number(active?.stats?.dodgeChance || 0),
-    elementalChance: Number(active?.stats?.elementalChance || 0),
   } : null;
   playerState.stats = active?.stats || null;
   playerState.battleHp = active?.battleHp || null;

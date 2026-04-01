@@ -2,14 +2,7 @@ const { randomCoinflip } = require("../../../utils/helpers");
 const {
   resolveElementalRelation,
 } = require("../../../services/pokemonElementsService");
-const {
-  resolveElementalDamageRule,
-  getElementalEfficiencyMultiplier,
-} = require("./elementalRules");
-const {
-  resolveElementalDamageRule,
-  getElementalEfficiencyMultiplier,
-} = require("./elementalRules");
+const { ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER } = require("./elementalRules");
 
 const BATTLE_HP_MULTIPLIER = 12.5;
 const MAX_POTIONS_PER_BATTLE = 5;
@@ -174,6 +167,7 @@ function calculateMagicDamage({
   attacker,
   attackerAttack,
   attackerMagic,
+  attackerCritChance = 0,
   defenderDodgeChance = 0,
   defenderDodgeChance = 0,
   magicElement,
@@ -188,62 +182,23 @@ function calculateMagicDamage({
     attackElement: magicElement,
     defenderElements,
   });
-  const elementalRule = resolveElementalDamageRule({
-    attackElement: magicElement,
-    defenderElements,
-  });
-  const efficiencyMultiplier = getElementalEfficiencyMultiplier(attacker);
   const primaryRoll = d12Roll || rollDie(12);
   const bonusRoll = d6Roll || rollDie(6);
   const attackBonusBase = Math.max(1, Math.round(attack * 0.15));
   const normalDamage = magic + primaryRoll + attackBonusBase + bonusRoll;
-  const dodgeChance = normalizeChance(defenderDodgeChance, 0.95);
-  const dodgeRoll = Math.random();
-  const dodged = dodgeRoll < dodgeChance;
 
-  if (dodged) {
-    return {
-      baseStatUsed,
-      magicStat: magic,
-      attackStat: attack,
-      primaryRollSides: 12,
-      primaryRollValue: primaryRoll,
-      bonusRollSides: 6,
-      bonusRollValue: bonusRoll,
-      attackBonusBase,
-      normalDamage: Math.round(normalDamage),
-      finalDamage: 0,
-      didHit: false,
-      didDodge: true,
-      wasDodged: true,
-      dodged: true,
-      dodgeChance,
-      dodgeRoll: Number(dodgeRoll.toFixed(4)),
-      critChanceRaw: 0,
-      critChance: 0,
-      critRoll: null,
-      critMultiplier: 1,
-      isCritical: false,
-      elemental,
-      elementalBaseMultiplier: Number(elementalRule.multiplier || 1),
-      elementalModifier: Number(
-        (elementalRule.multiplier || 1) * efficiencyMultiplier,
-      ),
-      elementalOutcome: elementalRule.relation || "neutral",
-      efficiencyMultiplier,
-      multiplier: Number(
-        (elementalRule.multiplier || 1) * efficiencyMultiplier,
-      ),
-    };
+  let finalDamage = normalDamage;
+  let isCritical = false;
+  let multiplier = 1;
+
+  if (elemental.hasAdvantage) {
+    multiplier = 2.0;
+    isCritical = true;
+    finalDamage = normalDamage * multiplier;
+  } else if (elemental.hasDisadvantage) {
+    multiplier = ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER;
+    finalDamage = normalDamage * multiplier;
   }
-  const crit = rollCriticalStrike({
-    critChance: attackerCritChance,
-    critMultiplier: 1.6,
-  });
-  const critMultiplier = Number(crit.critMultiplier || 1);
-  const elementalBaseMultiplier = Number(elementalRule.multiplier || 1);
-  const elementalModifier = elementalBaseMultiplier * efficiencyMultiplier;
-  const finalDamage = normalDamage * elementalModifier;
 
   return {
     baseStatUsed,
@@ -264,11 +219,11 @@ function calculateMagicDamage({
     elementalBaseMultiplier: Number(elementalBaseMultiplier),
     efficiencyMultiplier,
     finalDamage: Math.max(0, Math.round(finalDamage)),
-    isCritical: false,
-    critMultiplier: 1,
-    critChanceRaw: 0,
-    critChance: 0,
-    critRoll: null,
+    isCritical: Boolean(crit.isCrit),
+    critMultiplier,
+    critChanceRaw: Number(attackerCritChance) || 0,
+    critChance: Number(crit.critChanceNormalized || 0),
+    critRoll: Number(crit.critRoll),
     dodgeChance,
     dodgeRoll: Number(dodgeRoll.toFixed(4)),
     dodged: false,
@@ -300,8 +255,8 @@ function resolveAttackTurn({ attacker, defender }) {
   const result = calculateDamage({
     attackerAttack: attacker.stats.attack,
     defenderDefense: defender.stats.defense,
-    attackerCritChance,
-    defenderDodgeChance,
+    attackerCritChance: attacker.stats.critChance,
+    defenderDodgeChance: defender.stats.dodgeChance,
   });
 
   const finalDamage = result.dodged
@@ -314,7 +269,6 @@ function resolveAttackTurn({ attacker, defender }) {
       hasDisadvantage: false,
     },
     multiplier: 1,
-    relation: "neutral",
     finalDamage,
   };
 
@@ -340,6 +294,7 @@ function resolveAttackTurn({ attacker, defender }) {
 }
 
 function resolveMagicTurn({ attacker, defender, magicEntry }) {
+  const attackerCritChance = resolveBattleChance(attacker, "critChance");
   const defenderDodgeChance = resolveBattleChance(defender, "dodgeChance");
   const defenderDodgeChance = resolveBattleChance(defender, "dodgeChance");
   const result = calculateMagicDamage({
@@ -347,8 +302,6 @@ function resolveMagicTurn({ attacker, defender, magicEntry }) {
     attacker,
     attackerAttack: attacker.stats.attack,
     attackerMagic: attacker.stats.magic,
-    attackerCritChance,
-    defenderDodgeChance,
     magicElement: magicEntry?.element,
     defenderElements: defender.selectedPokemon?.elementTypes || [],
   });

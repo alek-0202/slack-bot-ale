@@ -654,8 +654,7 @@ async function castMagic({ event, say, magicSlot }) {
     `✨ <@${event.user}> lançou *${result.magicEntry.name}* ${result.magicEntry.icon} em <@${result.defenderId}>!\n` +
     `🎲 d12: ${result.primaryRollValue} | d6 bônus: ${result.bonusRollValue}\n` +
     `🧠 Base: *${result.baseStatUsed.toUpperCase()}* (${result.magicStat}) | bônus ataque 15%: *${result.attackBonusBase}*\n` +
-    `${result.dodged ? "💨 ESQUIVA! O dano foi evitado.\n" : ""}` +
-    `${result.isCritical ? "💥 CRÍTICO!\n" : ""}` +
+    `${result.isCritical ? "💥 CRÍTICO MÁGICO GARANTIDO!\n" : ""}` +
     relationMessage +
     `Multiplicador: *x${result.multiplier}* | Energia consumida: *${result.energyConsumed}*\n` +
     `Dano final: *${result.finalDamage}*\n` +
