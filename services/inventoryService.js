@@ -23,6 +23,36 @@ const ITEM_CATALOG = {
     description: 'Consumível. Use !openbag para abrir e receber exatamente a recompensa da dungeon 60.',
     extraData: { kind: 'consumable', category: 'dungeon_reward', dungeonLevel: 60 },
   },
+  epic_fragment: {
+    itemKey: 'epic_fragment',
+    itemName: 'Fragmento Épico',
+    description: 'Material raro obtido em vendas especiais para fusão.',
+    extraData: { kind: 'material', category: 'fusion' },
+  },
+  prismatic_fragment: {
+    itemKey: 'prismatic_fragment',
+    itemName: 'Fragmento Prismático',
+    description: 'Material prismático obtido ao vender Pokémon shiny.',
+    extraData: { kind: 'material', category: 'fusion' },
+  },
+  magic_reroll_orb: {
+    itemKey: 'magic_reroll_orb',
+    itemName: 'Roleta Mágica',
+    description: 'Consumível para rerollar IVs com `!reroll <id>`.',
+    extraData: { kind: 'consumable', category: 'fusion', command: '!reroll' },
+  },
+  prism_shiny: {
+    itemKey: 'prism_shiny',
+    itemName: 'Prisma',
+    description: 'Consumível para transformar em SHINE normal com `!transform <id>`.',
+    extraData: { kind: 'consumable', category: 'fusion', command: '!transform' },
+  },
+  prism_prime: {
+    itemKey: 'prism_prime',
+    itemName: 'Prisma PRIME',
+    description: 'Consumível para transformar em SHINE PRIME com `!transformprime <id>`.',
+    extraData: { kind: 'consumable', category: 'fusion', command: '!transformprime' },
+  },
 };
 
 function getItemDefinition(itemKey) {

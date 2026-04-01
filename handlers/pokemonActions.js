@@ -11,6 +11,7 @@ const {
 const { MRSKILL_TOGGLE_ACTION_ID, buildMrSkillBlocks } = require('../commands/mrskill');
 const { getOwnedPokemonById } = require('../services/pokemonLookupService');
 const { getMrSkillSetup, saveMrSkillSelection } = require('../services/pokemonMagicService');
+const { FUSION_BUY_ACTION_ID, craftFusionItem, buildFusionHud } = require('../services/fusionService');
 const {
   upgradePokemonExtraStat,
   transferShiny,
@@ -397,6 +398,11 @@ function registerPokemonActions(app) {
         : (result.pokemons || [result.pokemon])
           .map((pokemon, index) => `• ${pokemon?.shiny ? "✨ " : ""}*${pokemon?.pokemon_species?.name || "Pokémon"}* (#${pokemon.id})${result.items?.[index] ? ` — *${result.items[index].priceBreakdown?.finalPrice || "0"}* gold` : ""}`)
           .join("\n");
+      const epicFragments = Number(result.fragmentBonus?.epicFragment || 0);
+      const prismFragments = Number(result.fragmentBonus?.prismaticFragment || 0);
+      const fragmentBonusLine = epicFragments > 0 || prismFragments > 0
+        ? `\n🧩 Bônus de fragmentos: *+${epicFragments} épico* | *+${prismFragments} prismático*`
+        : "";
       const updated = buildUpdatedMessage(
         `💸 *Venda concluída!*
 
@@ -404,6 +410,7 @@ ${pokemonSummary}
 
 💰 Valor recebido: *${result.goldReceived}* gold
 🧪 Essência recebida: *${result.essenceReceived || "0"}*
+${fragmentBonusLine}
 💳 Gold atual: *${result.currentGold}*
 🎒 Essência total: *${result.currentEssence || "0"}*`,
       );
@@ -572,6 +579,49 @@ ${pokemonSummary}
       ts: body.message.ts,
       ...buildMrSkillBlocks({ slackUserId: actorUserId, setup: refreshed }),
     });
+  });
+
+  app.action(FUSION_BUY_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parseActionValue(action?.value);
+    if (!payload?.ownerSlackUserId || actorUserId !== payload.ownerSlackUserId) {
+      await respond({ response_type: 'ephemeral', text: 'Somente quem abriu o HUD de fusão pode usar esses botões.' });
+      return;
+    }
+
+    try {
+      const result = await craftFusionItem({
+        slackUserId: actorUserId,
+        itemKey: payload.itemKey,
+        quantity: payload.quantity,
+      });
+
+      if (!result.ok) {
+        if (result.reason === 'insufficient_materials') {
+          await respond({
+            response_type: 'ephemeral',
+            text: `Fragmentos insuficientes para craftar ${result.item?.itemName || 'este item'} x${payload.quantity}.`,
+          });
+          return;
+        }
+        await respond({ response_type: 'ephemeral', text: 'Não consegui concluir essa fusão agora.' });
+        return;
+      }
+
+      await client.chat.update({
+        channel: body.channel.id,
+        ts: body.message.ts,
+        ...buildFusionHud({ slackUserId: actorUserId }),
+      });
+      await respond({
+        response_type: 'ephemeral',
+        text: `✅ Fusão concluída: ${result.item.itemName} x${result.quantity} adicionada à mochila.`,
+      });
+    } catch (error) {
+      logger.error('Falha ao processar compra de fusão', { actorUserId, payload, error });
+      await respond({ response_type: 'ephemeral', text: 'Erro ao processar fusão 😵' });
+    }
   });
 
 

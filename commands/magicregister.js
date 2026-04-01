@@ -1,10 +1,28 @@
 const { parsePositiveInt } = require("../utils/number");
-const { upsertPokemonMagicLoadout, buildMagicSummary } = require("../services/pokemonMagicService");
+const {
+  upsertPokemonMagicLoadout,
+  buildMagicSummary,
+  clearLegacyCharacteristicSkillsFromAllLoadouts,
+} = require("../services/pokemonMagicService");
 const { renderMagicRegisterElementPrompt } = require("../services/battleRenderService");
+const { createLogger } = require("../utils/logger");
+
+const logger = createLogger("command:magicregister");
+let legacyCharacteristicCleanupDone = false;
 
 module.exports = {
   name: "magicregister",
   async execute({ event, args, say }) {
+    if (!legacyCharacteristicCleanupDone) {
+      try {
+        await clearLegacyCharacteristicSkillsFromAllLoadouts();
+      } catch (error) {
+        logger.error("Falha ao limpar registros legados de skills características no !magicregister", { error });
+      } finally {
+        legacyCharacteristicCleanupDone = true;
+      }
+    }
+
     const pokemonId = parsePositiveInt(args);
     if (!pokemonId) {
       await say("Use `!magicregister <pokeid>` com um ID válido da sua coleção.");

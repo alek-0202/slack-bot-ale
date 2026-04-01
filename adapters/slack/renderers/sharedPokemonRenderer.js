@@ -11,6 +11,7 @@ function renderSlackProfileSummary({ slackUserId, profile }) {
     `✨ XP: *${profile.accountXp || 0} / ${profile.accountXpToNextLevel || 100}* ${profile.accountXpBar || ''}\n` +
     `⚡ Energia: *${profile.energyCurrent || 0} / ${profile.energyMax || 5}* (próxima em ${profile.energyNextIn || 'cheia'})\n` +
     `🧿 Pokebola (!c): *${profile.pokeballCQty || 0}*\n` +
+    `🧪 Essência Pokémon: *${profile.pokemonEssence || 0}*\n` +
     `🕒 Cooldown !capture: *${profile.captureCooldownText || 'pronto'}*\n` +
     `🎯 Total capturado: *${profile.totalCaptured}*\n` +
     `📘 Pokédex descoberta: *${profile.uniqueCount}*\n` +
