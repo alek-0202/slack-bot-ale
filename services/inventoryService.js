@@ -23,10 +23,28 @@ const ITEM_CATALOG = {
     description: 'Consumível. Use !openbag para abrir e receber exatamente a recompensa da dungeon 60.',
     extraData: { kind: 'consumable', category: 'dungeon_reward', dungeonLevel: 60 },
   },
+  common_fragment: {
+    itemKey: 'common_fragment',
+    itemName: 'Fragmento Comum',
+    description: 'Material base de fusão obtido ao vender Pokémon.',
+    extraData: { kind: 'material', category: 'fusion' },
+  },
   epic_fragment: {
     itemKey: 'epic_fragment',
     itemName: 'Fragmento Épico',
     description: 'Material raro obtido em vendas especiais para fusão.',
+    extraData: { kind: 'material', category: 'fusion' },
+  },
+  legendary_fragment: {
+    itemKey: 'legendary_fragment',
+    itemName: 'Fragmento Lendário',
+    description: 'Material raro obtido ao vender Pokémon lendário.',
+    extraData: { kind: 'material', category: 'fusion' },
+  },
+  mythical_fragment: {
+    itemKey: 'mythical_fragment',
+    itemName: 'Fragmento Mítico',
+    description: 'Material raro obtido ao vender Pokémon mítico.',
     extraData: { kind: 'material', category: 'fusion' },
   },
   prismatic_fragment: {
