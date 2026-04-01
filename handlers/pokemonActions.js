@@ -105,6 +105,26 @@ function buildUpdatedMessage(text) {
   };
 }
 
+function buildFragmentBonusLine(fragmentBonus) {
+  const commonFragments = Number(fragmentBonus?.commonFragment || 0);
+  const epicFragments = Number(fragmentBonus?.epicFragment || 0);
+  const legendaryFragments = Number(fragmentBonus?.legendaryFragment || 0);
+  const mythicalFragments = Number(fragmentBonus?.mythicalFragment || 0);
+  const prismFragments = Number(fragmentBonus?.prismaticFragment || 0);
+
+  if (
+    commonFragments <= 0 &&
+    epicFragments <= 0 &&
+    legendaryFragments <= 0 &&
+    mythicalFragments <= 0 &&
+    prismFragments <= 0
+  ) {
+    return "";
+  }
+
+  return `\n🧩 Bônus de fragmentos: *+${commonFragments} comum* | *+${epicFragments} épico* | *+${legendaryFragments} lendário* | *+${mythicalFragments} mítico* | *+${prismFragments} prismático*`;
+}
+
 function registerPokemonActions(app) {
   app.action(EVOLVE_CONFIRM_ACTION_ID, async ({ ack, body, action, client, respond }) => {
     await ack();
@@ -398,11 +418,7 @@ function registerPokemonActions(app) {
         : (result.pokemons || [result.pokemon])
           .map((pokemon, index) => `• ${pokemon?.shiny ? "✨ " : ""}*${pokemon?.pokemon_species?.name || "Pokémon"}* (#${pokemon.id})${result.items?.[index] ? ` — *${result.items[index].priceBreakdown?.finalPrice || "0"}* gold` : ""}`)
           .join("\n");
-      const epicFragments = Number(result.fragmentBonus?.epicFragment || 0);
-      const prismFragments = Number(result.fragmentBonus?.prismaticFragment || 0);
-      const fragmentBonusLine = epicFragments > 0 || prismFragments > 0
-        ? `\n🧩 Bônus de fragmentos: *+${epicFragments} épico* | *+${prismFragments} prismático*`
-        : "";
+      const fragmentBonusLine = buildFragmentBonusLine(result.fragmentBonus);
       const updated = buildUpdatedMessage(
         `💸 *Venda concluída!*
 
@@ -648,5 +664,6 @@ ${fragmentBonusLine}
 }
 
 module.exports = {
+  buildFragmentBonusLine,
   registerPokemonActions,
 };

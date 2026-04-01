@@ -17,6 +17,33 @@ const ESSENCE_BY_RARITY = {
   legendary: 50000,
   mythical: 100000,
 };
+const FRAGMENT_SELL_RULES = Object.freeze({
+  commonByRarity: {
+    common: 1,
+    uncommon: 1,
+    rare: 3,
+    epic: 20,
+    legendary: 50,
+    mythical: 100,
+  },
+  rarityFragments: {
+    epic: { epicFragment: 1 },
+    legendary: { legendaryFragment: 1 },
+    mythical: { mythicalFragment: 1 },
+  },
+  prismatic: {
+    normal: {
+      common: 1,
+      uncommon: 1,
+      rare: 2,
+    },
+    prime: {
+      epic: 20,
+      legendary: 500,
+      mythical: 500,
+    },
+  },
+});
 
 function getBaseSellPriceByRarity(rarity) {
   return BigInt(getBaseGoldByRarity(rarity));
@@ -58,25 +85,40 @@ function sumEssence(values) {
 
 function calculateFragmentBonusesForPokemon(pokemon) {
   const rarity = String(pokemon?.pokemon_species?.rarity || "").toLowerCase();
-  const level = Number(pokemon?.level || 0);
+  const shinyType = String(pokemon?.shiny_type || "").toLowerCase() === "prime" ? "prime" : "normal";
+  const commonFragment = Number(FRAGMENT_SELL_RULES.commonByRarity[rarity] || 0);
+  const rarityBonus = FRAGMENT_SELL_RULES.rarityFragments[rarity] || {};
+  const prismaticFragment = pokemon?.shiny
+    ? Number(FRAGMENT_SELL_RULES.prismatic[shinyType][rarity] || 0)
+    : 0;
+
   return {
-    epicFragment: rarity === "epic" && level >= 50 ? 1 : 0,
-    prismaticFragment: pokemon?.shiny ? 1 : 0,
+    commonFragment,
+    epicFragment: Number(rarityBonus.epicFragment || 0),
+    legendaryFragment: Number(rarityBonus.legendaryFragment || 0),
+    mythicalFragment: Number(rarityBonus.mythicalFragment || 0),
+    prismaticFragment,
   };
 }
 
 function sumFragmentBonuses(pokemons = []) {
   return (pokemons || []).reduce((acc, pokemon) => {
     const bonus = calculateFragmentBonusesForPokemon(pokemon);
+    acc.commonFragment += bonus.commonFragment;
     acc.epicFragment += bonus.epicFragment;
+    acc.legendaryFragment += bonus.legendaryFragment;
+    acc.mythicalFragment += bonus.mythicalFragment;
     acc.prismaticFragment += bonus.prismaticFragment;
     return acc;
-  }, { epicFragment: 0, prismaticFragment: 0 });
+  }, { commonFragment: 0, epicFragment: 0, legendaryFragment: 0, mythicalFragment: 0, prismaticFragment: 0 });
 }
 
 async function applySellFragmentBonuses({ slackUserId, pokemons = [] }) {
   const bonus = sumFragmentBonuses(pokemons);
+  if (bonus.commonFragment > 0) await addItem(slackUserId, "common_fragment", bonus.commonFragment);
   if (bonus.epicFragment > 0) await addItem(slackUserId, "epic_fragment", bonus.epicFragment);
+  if (bonus.legendaryFragment > 0) await addItem(slackUserId, "legendary_fragment", bonus.legendaryFragment);
+  if (bonus.mythicalFragment > 0) await addItem(slackUserId, "mythical_fragment", bonus.mythicalFragment);
   if (bonus.prismaticFragment > 0) await addItem(slackUserId, "prismatic_fragment", bonus.prismaticFragment);
   return bonus;
 }
@@ -403,7 +445,10 @@ async function sellAllPokemonBatch({ slackUserId }) {
   const soldPokemonIds = [];
   let totalGoldReceived = 0n;
   let totalEssenceReceived = 0n;
+  let totalCommonFragments = 0;
   let totalEpicFragments = 0;
+  let totalLegendaryFragments = 0;
+  let totalMythicalFragments = 0;
   let totalPrismaticFragments = 0;
   let currentGold = null;
   let currentEssence = null;
@@ -422,7 +467,10 @@ async function sellAllPokemonBatch({ slackUserId }) {
     soldPokemonIds.push(...chunkResult.pokemonIds);
     totalGoldReceived += toGoldBigInt(chunkResult.goldReceived);
     totalEssenceReceived += toGoldBigInt(chunkResult.essenceReceived || 0);
+    totalCommonFragments += Number(chunkResult.fragmentBonus?.commonFragment || 0);
     totalEpicFragments += Number(chunkResult.fragmentBonus?.epicFragment || 0);
+    totalLegendaryFragments += Number(chunkResult.fragmentBonus?.legendaryFragment || 0);
+    totalMythicalFragments += Number(chunkResult.fragmentBonus?.mythicalFragment || 0);
     totalPrismaticFragments += Number(chunkResult.fragmentBonus?.prismaticFragment || 0);
     currentGold = chunkResult.currentGold;
     currentEssence = chunkResult.currentEssence;
@@ -438,7 +486,13 @@ async function sellAllPokemonBatch({ slackUserId }) {
     blockedCount: preview.blockedCount || 0,
     goldReceived: formatGold(totalGoldReceived),
     essenceReceived: formatGold(totalEssenceReceived),
-    fragmentBonus: { epicFragment: totalEpicFragments, prismaticFragment: totalPrismaticFragments },
+    fragmentBonus: {
+      commonFragment: totalCommonFragments,
+      epicFragment: totalEpicFragments,
+      legendaryFragment: totalLegendaryFragments,
+      mythicalFragment: totalMythicalFragments,
+      prismaticFragment: totalPrismaticFragments,
+    },
     currentGold: currentGold || "0",
     currentEssence: currentEssence || "0",
   };
@@ -456,7 +510,13 @@ async function sellPokemon({ slackUserId, pokemonId }) {
     priceBreakdown: result.priceBreakdown,
     essenceReceived: result.essenceReceived,
     currentEssence: result.currentEssence,
-    fragmentBonus: result.fragmentBonus || { epicFragment: 0, prismaticFragment: 0 },
+    fragmentBonus: result.fragmentBonus || {
+      commonFragment: 0,
+      epicFragment: 0,
+      legendaryFragment: 0,
+      mythicalFragment: 0,
+      prismaticFragment: 0,
+    },
   };
 }
 
