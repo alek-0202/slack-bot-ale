@@ -52,6 +52,38 @@ function rollCriticalStrike({ critChance, critMultiplier = 1.6 }) {
   };
 }
 
+function normalizeChance(rawChance, cap = 1) {
+  const numeric = Number(rawChance);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  const normalized = numeric > 1 ? numeric / 100 : numeric;
+  return Math.max(0, Math.min(Number(cap) || 1, normalized));
+}
+
+function resolveBattleChance(playerState, key) {
+  const statsValue = playerState?.stats?.[key];
+  if (statsValue != null && Number.isFinite(Number(statsValue))) {
+    return Number(statsValue);
+  }
+  const selectedValue = playerState?.selectedPokemon?.[key];
+  if (selectedValue != null && Number.isFinite(Number(selectedValue))) {
+    return Number(selectedValue);
+  }
+  return 0;
+}
+
+function rollCriticalStrike({ critChance, critMultiplier = 1.6 }) {
+  const normalizedCritChance = normalizeChance(critChance, 0.95);
+  const roll = Math.random();
+  const isCrit = roll < normalizedCritChance;
+  return {
+    isCrit,
+    critMultiplier: isCrit ? Math.max(1, Number(critMultiplier) || 1.6) : 1,
+    critChanceRaw: Number(critChance) || 0,
+    critChanceNormalized: normalizedCritChance,
+    critRoll: Number(roll.toFixed(4)),
+  };
+}
+
 function calculateBattleHp(baseHp) {
   const safeBaseHp = Math.max(1, Number(baseHp) || 1);
   return Math.max(1, Math.round(safeBaseHp * BATTLE_HP_MULTIPLIER));
@@ -85,18 +117,26 @@ function calculateDamage({
       didHit: false,
       didDodge: true,
       wasDodged: true,
+      didHit: false,
+      didDodge: true,
+      wasDodged: true,
       normalDamage: baseDamage,
       finalDamage: 0,
       critChance,
+      critChanceRaw,
       critChanceRaw,
       dodgeChance,
       varianceRoll: Number(damageVariance.toFixed(4)),
       critRoll: null,
       critMultiplier: 1,
+      critMultiplier: 1,
       dodgeRoll: Number(dodgeRoll.toFixed(4)),
     };
   }
 
+  const crit = rollCriticalStrike({ critChance, critMultiplier: 1.6 });
+  const isCritical = crit.isCrit;
+  const critMultiplier = crit.critMultiplier;
   const crit = rollCriticalStrike({ critChance, critMultiplier: 1.6 });
   const isCritical = crit.isCrit;
   const critMultiplier = crit.critMultiplier;
@@ -109,8 +149,16 @@ function calculateDamage({
     finalDamage,
     critChance: crit.critChanceNormalized,
     critChanceRaw,
+    critChance: crit.critChanceNormalized,
+    critChanceRaw,
     dodgeChance,
     varianceRoll: Number(damageVariance.toFixed(4)),
+    critRollInputChance: crit.critChanceRaw,
+    critRoll: crit.critRoll,
+    critMultiplier,
+    didHit: true,
+    didDodge: false,
+    wasDodged: false,
     critRollInputChance: crit.critChanceRaw,
     critRoll: crit.critRoll,
     critMultiplier,
@@ -123,8 +171,10 @@ function calculateDamage({
 
 function calculateMagicDamage({
   attacker,
+  attacker,
   attackerAttack,
   attackerMagic,
+  defenderDodgeChance = 0,
   defenderDodgeChance = 0,
   magicElement,
   defenderElements = [],
@@ -209,7 +259,23 @@ function calculateMagicDamage({
     elementalModifier: Number(elementalModifier),
     elementalBaseMultiplier: Number(elementalBaseMultiplier),
     efficiencyMultiplier,
+    multiplier: Number(elementalModifier),
+    elementalModifier: Number(elementalModifier),
+    elementalBaseMultiplier: Number(elementalBaseMultiplier),
+    efficiencyMultiplier,
     finalDamage: Math.max(0, Math.round(finalDamage)),
+    isCritical: false,
+    critMultiplier: 1,
+    critChanceRaw: 0,
+    critChance: 0,
+    critRoll: null,
+    dodgeChance,
+    dodgeRoll: Number(dodgeRoll.toFixed(4)),
+    dodged: false,
+    didHit: true,
+    didDodge: false,
+    wasDodged: false,
+    elementalOutcome: elementalRule.relation || "neutral",
     isCritical: false,
     critMultiplier: 1,
     critChanceRaw: 0,
@@ -227,6 +293,8 @@ function calculateMagicDamage({
 }
 
 function resolveAttackTurn({ attacker, defender }) {
+  const attackerCritChance = resolveBattleChance(attacker, "critChance");
+  const defenderDodgeChance = resolveBattleChance(defender, "dodgeChance");
   const attackerCritChance = resolveBattleChance(attacker, "critChance");
   const defenderDodgeChance = resolveBattleChance(defender, "dodgeChance");
   const result = calculateDamage({
@@ -262,13 +330,20 @@ function resolveAttackTurn({ attacker, defender }) {
     elementalOutcome: "neutral",
     attackElement: null,
     finalDamage,
+    elemental,
+    elementalModifier: 1,
+    elementalOutcome: "neutral",
+    attackElement: null,
+    finalDamage,
     defenderRemainingHp: defender.battleHp.current,
   };
 }
 
 function resolveMagicTurn({ attacker, defender, magicEntry }) {
   const defenderDodgeChance = resolveBattleChance(defender, "dodgeChance");
+  const defenderDodgeChance = resolveBattleChance(defender, "dodgeChance");
   const result = calculateMagicDamage({
+    attacker,
     attacker,
     attackerAttack: attacker.stats.attack,
     attackerMagic: attacker.stats.magic,
@@ -445,6 +520,8 @@ module.exports = {
   MAGIC_ENERGY_COST,
   rollDie,
   calculateBattleHp,
+  normalizeChance,
+  rollCriticalStrike,
   normalizeChance,
   rollCriticalStrike,
   calculateDamage,
