@@ -38,6 +38,9 @@ const FRAGMENT_SELL_RULES = Object.freeze({
       rare: 2,
     },
     prime: {
+      common: 1,
+      uncommon: 1,
+      rare: 2,
       epic: 20,
       legendary: 500,
       mythical: 500,

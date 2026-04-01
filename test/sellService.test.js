@@ -52,3 +52,19 @@ test("sumFragmentBonuses concede fragmento prismático para shiny prime épico",
     prismaticFragment: 20,
   });
 });
+
+test("sumFragmentBonuses aplica regra prismática para shiny prime comum/incomum/raro", () => {
+  const bonus = sumFragmentBonuses([
+    { shiny: true, shiny_type: "prime", pokemon_species: { rarity: "common" } },
+    { shiny: true, shiny_type: "prime", pokemon_species: { rarity: "uncommon" } },
+    { shiny: true, shiny_type: "prime", pokemon_species: { rarity: "rare" } },
+  ]);
+
+  assert.deepEqual(bonus, {
+    commonFragment: 5,
+    epicFragment: 0,
+    legendaryFragment: 0,
+    mythicalFragment: 0,
+    prismaticFragment: 4,
+  });
+});
