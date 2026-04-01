@@ -17,6 +17,12 @@ const ITEM_CATALOG = {
     description: 'Permite capturar um Pokémon sem cooldown',
     extraData: { kind: 'consumable', category: 'capture' },
   },
+  dungeon_60_supply_bag: {
+    itemKey: 'dungeon_60_supply_bag',
+    itemName: 'Bag de Suprimentos (Dungeon 60)',
+    description: 'Consumível. Use !openbag para abrir e receber exatamente a recompensa da dungeon 60.',
+    extraData: { kind: 'consumable', category: 'dungeon_reward', dungeonLevel: 60 },
+  },
 };
 
 function getItemDefinition(itemKey) {

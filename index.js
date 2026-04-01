@@ -61,6 +61,12 @@ const magicregisterCommand = require("./commands/magicregister");
 const bhelpCommand = require("./commands/bhelp");
 const skillhelpCommand = require("./commands/skillhelp");
 const closeBattlesCommand = require("./commands/closebattles");
+const giveGoldCommand = require("./commands/givegold");
+const giveEnergyCommand = require("./commands/giveenergy");
+const giveCCommand = require("./commands/givec");
+const giveBookCommand = require("./commands/givebook");
+const giveBagCommand = require("./commands/givebag");
+const openBagCommand = require("./commands/openbag");
 const { registerPokedexActions } = require("./handlers/pokedexActions");
 const { registerCoffeActions } = require("./handlers/coffeActions");
 const { registerBattleActions } = require("./handlers/battleActions");
@@ -156,6 +162,12 @@ for (const commandModule of [
   bhelpCommand,
   skillhelpCommand,
   closeBattlesCommand,
+  giveGoldCommand,
+  giveEnergyCommand,
+  giveCCommand,
+  giveBookCommand,
+  giveBagCommand,
+  openBagCommand,
 ]) {
   commandRegistry.set(commandModule.name, commandModule);
 

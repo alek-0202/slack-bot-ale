@@ -1,14 +1,13 @@
 const {
   buildAdminCloseAllBattlesConfirmationMessage,
 } = require('../services/adminBattleControlViewService');
-
-const ADMIN_SLACK_USER_ID = 'U0ABLSVUZ41';
+const { ADMIN_SLACK_USER_ID, isAdminSlackUser } = require('../services/adminAuthService');
 
 module.exports = {
   name: 'closebattles',
   aliases: ['closebattle', 'fecharbatalhas', 'battlecloseall'],
   async execute({ event, say }) {
-    if (event.user !== ADMIN_SLACK_USER_ID) {
+    if (!isAdminSlackUser(event.user)) {
       await say('⛔ Apenas o administrador pode usar este comando.');
       return;
     }

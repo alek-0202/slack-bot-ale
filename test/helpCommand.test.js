@@ -24,6 +24,7 @@ test("!help padrão mostra apenas comandos gerais e aponta categorias", async ()
   assert.match(text, /!help pokemon/);
   assert.match(text, /!help battle/);
   assert.match(text, /!help dungeon/);
+  assert.match(text, /!help admin/);
   assert.doesNotMatch(text, /!bpick/);
   assert.doesNotMatch(text, /!capture/);
 });
@@ -60,6 +61,20 @@ test("!help battle concentra comandos de batalha sem defesa", async () => {
   assert.match(text, /!surrender/);
   assert.match(text, /!pocao/);
   assert.match(text, /!bpick ID/);
+});
+
+
+test("!help admin lista comandos administrativos novos", async () => {
+  const payload = await runCommand(helpCommand, "admin");
+  const text = extractMrkdwnText(payload);
+
+  assert.match(text, /!closebattles/);
+  assert.match(text, /!givegold @usuario <quantidade>/);
+  assert.match(text, /!giveenergy @usuario <quantidade>/);
+  assert.match(text, /!givec @usuario <quantidade>/);
+  assert.match(text, /!givebook @usuario <quantidade>/);
+  assert.match(text, /!givebag @usuario <quantidade>/);
+  assert.match(text, /!openbag/);
 });
 
 test("!pokemonhelp mantém compatibilidade e mostra categoria Pokémon", async () => {
