@@ -11,7 +11,7 @@ const {
 const { MRSKILL_TOGGLE_ACTION_ID, buildMrSkillBlocks } = require('../commands/mrskill');
 const { getOwnedPokemonById } = require('../services/pokemonLookupService');
 const { getMrSkillSetup, saveMrSkillSelection } = require('../services/pokemonMagicService');
-const { FUSION_BUY_ACTION_ID, craftFusionItem, buildFusionHud } = require('../services/fusionService');
+const { FUSION_BUY_ACTION_ID, craftFusionItem } = require('../services/fusionService');
 const {
   upgradePokemonExtraStat,
   transferShiny,
@@ -609,11 +609,6 @@ ${fragmentBonusLine}
         return;
       }
 
-      await client.chat.update({
-        channel: body.channel.id,
-        ts: body.message.ts,
-        ...buildFusionHud({ slackUserId: actorUserId }),
-      });
       await respond({
         response_type: 'ephemeral',
         text: `✅ Fusão concluída: ${result.item.itemName} x${result.quantity} adicionada à mochila.`,
