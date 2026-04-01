@@ -1,7 +1,5 @@
 const { randomCoinflip } = require("../../../utils/helpers");
-const {
-  resolveElementalRelation,
-} = require("../../../services/pokemonElementsService");
+const { resolveElementalRelation } = require("../../../services/pokemonElementsService");
 const { ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER } = require("./elementalRules");
 
 const BATTLE_HP_MULTIPLIER = 12.5;
@@ -18,50 +16,6 @@ function normalizeChance(rawChance, cap = 1) {
   if (!Number.isFinite(numeric) || numeric <= 0) return 0;
   const normalized = numeric > 1 ? numeric / 100 : numeric;
   return Math.max(0, Math.min(Number(cap) || 1, normalized));
-}
-
-function resolveBattleChance(playerState, key) {
-  const statsValue = playerState?.stats?.[key];
-  if (statsValue != null && Number.isFinite(Number(statsValue))) {
-    return Number(statsValue);
-  }
-  const selectedValue = playerState?.selectedPokemon?.[key];
-  if (selectedValue != null && Number.isFinite(Number(selectedValue))) {
-    return Number(selectedValue);
-  }
-  return 0;
-}
-
-function rollCriticalStrike({ critChance, critMultiplier = 1.6 }) {
-  const normalizedCritChance = normalizeChance(critChance, 0.95);
-  const roll = Math.random();
-  const isCrit = roll < normalizedCritChance;
-  return {
-    isCrit,
-    critMultiplier: isCrit ? Math.max(1, Number(critMultiplier) || 1.6) : 1,
-    critChanceRaw: Number(critChance) || 0,
-    critChanceNormalized: normalizedCritChance,
-    critRoll: Number(roll.toFixed(4)),
-  };
-}
-
-function normalizeChance(rawChance, cap = 1) {
-  const numeric = Number(rawChance);
-  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
-  const normalized = numeric > 1 ? numeric / 100 : numeric;
-  return Math.max(0, Math.min(Number(cap) || 1, normalized));
-}
-
-function resolveBattleChance(playerState, key) {
-  const statsValue = playerState?.stats?.[key];
-  if (statsValue != null && Number.isFinite(Number(statsValue))) {
-    return Number(statsValue);
-  }
-  const selectedValue = playerState?.selectedPokemon?.[key];
-  if (selectedValue != null && Number.isFinite(Number(selectedValue))) {
-    return Number(selectedValue);
-  }
-  return 0;
 }
 
 function rollCriticalStrike({ critChance, critMultiplier = 1.6 }) {
@@ -82,21 +36,12 @@ function calculateBattleHp(baseHp) {
   return Math.max(1, Math.round(safeBaseHp * BATTLE_HP_MULTIPLIER));
 }
 
-function calculateDamage({
-  attackerAttack,
-  defenderDefense,
-  attackerCritChance = 0,
-  defenderDodgeChance = 0,
-  varianceRoll,
-}) {
+function calculateDamage({ attackerAttack, defenderDefense, attackerCritChance = 0, defenderDodgeChance = 0, varianceRoll }) {
   const attack = Math.max(1, Number(attackerAttack) || 1);
   const defense = Math.max(0, Number(defenderDefense) || 0);
-  const damageVariance = varianceRoll || Math.random() * 0.28 + 0.86;
+  const damageVariance = varianceRoll || ((Math.random() * 0.28) + 0.86);
 
-  const baseDamage = Math.max(
-    1,
-    Math.round(attack * damageVariance - defense * 0.42),
-  );
+  const baseDamage = Math.max(1, Math.round((attack * damageVariance) - (defense * 0.42)));
   const critChanceRaw = Number(attackerCritChance) || 0;
   const critChance = normalizeChance(attackerCritChance, 0.95);
   const dodgeChance = normalizeChance(defenderDodgeChance, 0.95);
@@ -107,29 +52,17 @@ function calculateDamage({
     return {
       isCritical: false,
       dodged: true,
-      didHit: false,
-      didDodge: true,
-      wasDodged: true,
-      didHit: false,
-      didDodge: true,
-      wasDodged: true,
       normalDamage: baseDamage,
       finalDamage: 0,
       critChance,
       critChanceRaw,
-      critChanceRaw,
       dodgeChance,
       varianceRoll: Number(damageVariance.toFixed(4)),
       critRoll: null,
-      critMultiplier: 1,
-      critMultiplier: 1,
       dodgeRoll: Number(dodgeRoll.toFixed(4)),
     };
   }
 
-  const crit = rollCriticalStrike({ critChance, critMultiplier: 1.6 });
-  const isCritical = crit.isCrit;
-  const critMultiplier = crit.critMultiplier;
   const crit = rollCriticalStrike({ critChance, critMultiplier: 1.6 });
   const isCritical = crit.isCrit;
   const critMultiplier = crit.critMultiplier;
@@ -142,34 +75,17 @@ function calculateDamage({
     finalDamage,
     critChance: crit.critChanceNormalized,
     critChanceRaw,
-    critChance: crit.critChanceNormalized,
-    critChanceRaw,
     dodgeChance,
     varianceRoll: Number(damageVariance.toFixed(4)),
     critRollInputChance: crit.critChanceRaw,
     critRoll: crit.critRoll,
-    critMultiplier,
-    didHit: true,
-    didDodge: false,
-    wasDodged: false,
-    critRollInputChance: crit.critChanceRaw,
-    critRoll: crit.critRoll,
-    critMultiplier,
-    didHit: true,
-    didDodge: false,
-    wasDodged: false,
     dodgeRoll: Number(dodgeRoll.toFixed(4)),
   };
 }
 
 function calculateMagicDamage({
-  attacker,
-  attacker,
   attackerAttack,
   attackerMagic,
-  attackerCritChance = 0,
-  defenderDodgeChance = 0,
-  defenderDodgeChance = 0,
   magicElement,
   defenderElements = [],
   d12Roll,
@@ -178,10 +94,7 @@ function calculateMagicDamage({
   const attack = Math.max(1, Number(attackerAttack) || 1);
   const magic = Math.max(1, Number(attackerMagic) || attack);
   const baseStatUsed = Number(attackerMagic) > 0 ? "magic" : "attack";
-  const elemental = resolveElementalRelation({
-    attackElement: magicElement,
-    defenderElements,
-  });
+  const elemental = resolveElementalRelation({ attackElement: magicElement, defenderElements });
   const primaryRoll = d12Roll || rollDie(12);
   const bonusRoll = d6Roll || rollDie(6);
   const attackBonusBase = Math.max(1, Math.round(attack * 0.15));
@@ -210,48 +123,14 @@ function calculateMagicDamage({
     bonusRollValue: bonusRoll,
     attackBonusBase,
     normalDamage: Math.round(normalDamage),
-    multiplier: Number(elementalModifier),
-    elementalModifier: Number(elementalModifier),
-    elementalBaseMultiplier: Number(elementalBaseMultiplier),
-    efficiencyMultiplier,
-    multiplier: Number(elementalModifier),
-    elementalModifier: Number(elementalModifier),
-    elementalBaseMultiplier: Number(elementalBaseMultiplier),
-    efficiencyMultiplier,
+    multiplier,
     finalDamage: Math.max(0, Math.round(finalDamage)),
-    isCritical: Boolean(crit.isCrit),
-    critMultiplier,
-    critChanceRaw: Number(attackerCritChance) || 0,
-    critChance: Number(crit.critChanceNormalized || 0),
-    critRoll: Number(crit.critRoll),
-    dodgeChance,
-    dodgeRoll: Number(dodgeRoll.toFixed(4)),
-    dodged: false,
-    didHit: true,
-    didDodge: false,
-    wasDodged: false,
-    elementalOutcome: elementalRule.relation || "neutral",
-    isCritical: false,
-    critMultiplier: 1,
-    critChanceRaw: 0,
-    critChance: 0,
-    critRoll: null,
-    dodgeChance,
-    dodgeRoll: Number(dodgeRoll.toFixed(4)),
-    dodged: false,
-    didHit: true,
-    didDodge: false,
-    wasDodged: false,
-    elementalOutcome: elementalRule.relation || "neutral",
+    isCritical,
     elemental,
   };
 }
 
 function resolveAttackTurn({ attacker, defender }) {
-  const attackerCritChance = resolveBattleChance(attacker, "critChance");
-  const defenderDodgeChance = resolveBattleChance(defender, "dodgeChance");
-  const attackerCritChance = resolveBattleChance(attacker, "critChance");
-  const defenderDodgeChance = resolveBattleChance(defender, "dodgeChance");
   const result = calculateDamage({
     attackerAttack: attacker.stats.attack,
     defenderDefense: defender.stats.defense,
@@ -259,34 +138,18 @@ function resolveAttackTurn({ attacker, defender }) {
     defenderDodgeChance: defender.stats.dodgeChance,
   });
 
-  const finalDamage = result.dodged
-    ? 0
-    : Math.max(0, Number(result.finalDamage || 0));
+  const finalDamage = result.dodged ? 0 : Math.max(0, Number(result.finalDamage || 0));
   const elemental = {
-    elemental: {
-      relation: "neutral",
-      hasAdvantage: false,
-      hasDisadvantage: false,
-    },
+    elemental: { relation: "neutral", hasAdvantage: false, hasDisadvantage: false },
     multiplier: 1,
     finalDamage,
   };
 
-  defender.battleHp.current = Math.max(
-    0,
-    defender.battleHp.current - finalDamage,
-  );
+  defender.battleHp.current = Math.max(0, defender.battleHp.current - finalDamage);
 
   return {
     ...result,
     elemental,
-    elementalModifier: 1,
-    elementalOutcome: "neutral",
-    attackElement: null,
-    finalDamage,
-    elemental,
-    elementalModifier: 1,
-    elementalOutcome: "neutral",
     attackElement: null,
     finalDamage,
     defenderRemainingHp: defender.battleHp.current,
@@ -294,22 +157,14 @@ function resolveAttackTurn({ attacker, defender }) {
 }
 
 function resolveMagicTurn({ attacker, defender, magicEntry }) {
-  const attackerCritChance = resolveBattleChance(attacker, "critChance");
-  const defenderDodgeChance = resolveBattleChance(defender, "dodgeChance");
-  const defenderDodgeChance = resolveBattleChance(defender, "dodgeChance");
   const result = calculateMagicDamage({
-    attacker,
-    attacker,
     attackerAttack: attacker.stats.attack,
     attackerMagic: attacker.stats.magic,
     magicElement: magicEntry?.element,
     defenderElements: defender.selectedPokemon?.elementTypes || [],
   });
 
-  defender.battleHp.current = Math.max(
-    0,
-    defender.battleHp.current - result.finalDamage,
-  );
+  defender.battleHp.current = Math.max(0, defender.battleHp.current - result.finalDamage);
 
   return {
     ok: true,
@@ -325,10 +180,7 @@ function resolvePotionTurn(playerState) {
     return { ok: false, reason: "limit" };
   }
 
-  const missingHp = Math.max(
-    0,
-    playerState.battleHp.max - playerState.battleHp.current,
-  );
+  const missingHp = Math.max(0, playerState.battleHp.max - playerState.battleHp.current);
   if (missingHp <= 0) {
     return { ok: false, reason: "full_hp" };
   }
@@ -378,33 +230,16 @@ function resolveNextTurnBySpeed({ battle, actorUserId, energyPenalty = 0 }) {
   const threshold = battle.initiative?.threshold || INITIATIVE_THRESHOLD;
   const appliedPenalty = Math.max(0, Number(energyPenalty) || 0);
 
-  gauges[actorUserId] = Math.max(
-    0,
-    (Number(gauges[actorUserId]) || 0) - threshold - appliedPenalty,
-  );
+  gauges[actorUserId] = Math.max(0, (Number(gauges[actorUserId]) || 0) - threshold - appliedPenalty);
 
   let ticks = 0;
-  while (
-    !playerIds.some((userId) => (Number(gauges[userId]) || 0) >= threshold) &&
-    ticks < 1000
-  ) {
+  while (!playerIds.some((userId) => (Number(gauges[userId]) || 0) >= threshold) && ticks < 1000) {
     for (const userId of playerIds) {
-      const baseSpeed = Math.max(
-        1,
-        Number(battle.players[userId]?.stats?.speed) || 1,
-      );
+      const baseSpeed = Math.max(1, Number(battle.players[userId]?.stats?.speed) || 1);
       const effects = battle.players[userId]?.elementalState?.effects || [];
       const speedMultiplier = effects
-        .filter(
-          (effect) =>
-            Number(effect?.remainingRounds ?? 1) > 0 &&
-            effect?.speedMultiplier != null,
-        )
-        .reduce(
-          (acc, effect) =>
-            acc * Math.max(0.1, Number(effect.speedMultiplier || 1)),
-          1,
-        );
+        .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0 && effect?.speedMultiplier != null)
+        .reduce((acc, effect) => acc * Math.max(0.1, Number(effect.speedMultiplier || 1)), 1);
       const speed = Math.max(1, Math.round(baseSpeed * speedMultiplier));
       gauges[userId] = (Number(gauges[userId]) || 0) + speed;
     }
@@ -426,8 +261,7 @@ function resolveNextTurnBySpeed({ battle, actorUserId, energyPenalty = 0 }) {
     });
 
   const nextActorUserId = sortedCandidates[0]?.userId || actorUserId;
-  const opponentId =
-    playerIds.find((userId) => userId !== actorUserId) || actorUserId;
+  const opponentId = playerIds.find((userId) => userId !== actorUserId) || actorUserId;
   const extraTurn = nextActorUserId === actorUserId;
 
   const debug = {
@@ -437,15 +271,8 @@ function resolveNextTurnBySpeed({ battle, actorUserId, energyPenalty = 0 }) {
     ticks,
     threshold,
     energyPenalty: appliedPenalty,
-    gauges: Object.fromEntries(
-      playerIds.map((userId) => [userId, Number(gauges[userId]) || 0]),
-    ),
-    speeds: Object.fromEntries(
-      playerIds.map((userId) => [
-        userId,
-        Math.max(1, Number(battle.players[userId]?.stats?.speed) || 1),
-      ]),
-    ),
+    gauges: Object.fromEntries(playerIds.map((userId) => [userId, Number(gauges[userId]) || 0])),
+    speeds: Object.fromEntries(playerIds.map((userId) => [userId, Math.max(1, Number(battle.players[userId]?.stats?.speed) || 1)])),
     reason: extraTurn
       ? "same_actor_retained_turn_due_to_higher_initiative"
       : "turn_passed_after_initiative_resolution",
@@ -473,8 +300,6 @@ module.exports = {
   MAGIC_ENERGY_COST,
   rollDie,
   calculateBattleHp,
-  normalizeChance,
-  rollCriticalStrike,
   normalizeChance,
   rollCriticalStrike,
   calculateDamage,
