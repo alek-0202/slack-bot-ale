@@ -3,6 +3,7 @@ const { getUserPokemonById, getUserPokemonsByIds, getUserPokemons } = require(".
 const { getBaseGoldByRarity } = require("./economyService");
 const { createLogger } = require("../utils/logger");
 const { formatGold, toGoldBigInt } = require("../utils/gold");
+const { addItem } = require("./inventoryService");
 
 const logger = createLogger("sell-service");
 const PREVIEW_FETCH_CHUNK_SIZE = 300;
@@ -53,6 +54,31 @@ function calculatePokemonSellEssence({ rarity }) {
 
 function sumEssence(values) {
   return String((values || []).reduce((total, value) => total + Number.parseInt(value || 0, 10), 0));
+}
+
+function calculateFragmentBonusesForPokemon(pokemon) {
+  const rarity = String(pokemon?.pokemon_species?.rarity || "").toLowerCase();
+  const level = Number(pokemon?.level || 0);
+  return {
+    epicFragment: rarity === "epic" && level >= 50 ? 1 : 0,
+    prismaticFragment: pokemon?.shiny ? 1 : 0,
+  };
+}
+
+function sumFragmentBonuses(pokemons = []) {
+  return (pokemons || []).reduce((acc, pokemon) => {
+    const bonus = calculateFragmentBonusesForPokemon(pokemon);
+    acc.epicFragment += bonus.epicFragment;
+    acc.prismaticFragment += bonus.prismaticFragment;
+    return acc;
+  }, { epicFragment: 0, prismaticFragment: 0 });
+}
+
+async function applySellFragmentBonuses({ slackUserId, pokemons = [] }) {
+  const bonus = sumFragmentBonuses(pokemons);
+  if (bonus.epicFragment > 0) await addItem(slackUserId, "epic_fragment", bonus.epicFragment);
+  if (bonus.prismaticFragment > 0) await addItem(slackUserId, "prismatic_fragment", bonus.prismaticFragment);
+  return bonus;
 }
 
 function chunkArray(values, chunkSize) {
@@ -362,7 +388,11 @@ async function sellPokemonBatch({ slackUserId, pokemonIds }) {
       pokemonIds: preview.pokemonIds,
     };
   }
-  return runSellBatchRpc({ supabase, slackUserId, preview });
+  const result = await runSellBatchRpc({ supabase, slackUserId, preview });
+  if (result.ok) {
+    result.fragmentBonus = await applySellFragmentBonuses({ slackUserId, pokemons: preview.pokemons });
+  }
+  return result;
 }
 
 async function sellAllPokemonBatch({ slackUserId }) {
@@ -373,6 +403,8 @@ async function sellAllPokemonBatch({ slackUserId }) {
   const soldPokemonIds = [];
   let totalGoldReceived = 0n;
   let totalEssenceReceived = 0n;
+  let totalEpicFragments = 0;
+  let totalPrismaticFragments = 0;
   let currentGold = null;
   let currentEssence = null;
 
@@ -390,6 +422,8 @@ async function sellAllPokemonBatch({ slackUserId }) {
     soldPokemonIds.push(...chunkResult.pokemonIds);
     totalGoldReceived += toGoldBigInt(chunkResult.goldReceived);
     totalEssenceReceived += toGoldBigInt(chunkResult.essenceReceived || 0);
+    totalEpicFragments += Number(chunkResult.fragmentBonus?.epicFragment || 0);
+    totalPrismaticFragments += Number(chunkResult.fragmentBonus?.prismaticFragment || 0);
     currentGold = chunkResult.currentGold;
     currentEssence = chunkResult.currentEssence;
   }
@@ -404,6 +438,7 @@ async function sellAllPokemonBatch({ slackUserId }) {
     blockedCount: preview.blockedCount || 0,
     goldReceived: formatGold(totalGoldReceived),
     essenceReceived: formatGold(totalEssenceReceived),
+    fragmentBonus: { epicFragment: totalEpicFragments, prismaticFragment: totalPrismaticFragments },
     currentGold: currentGold || "0",
     currentEssence: currentEssence || "0",
   };
@@ -421,6 +456,7 @@ async function sellPokemon({ slackUserId, pokemonId }) {
     priceBreakdown: result.priceBreakdown,
     essenceReceived: result.essenceReceived,
     currentEssence: result.currentEssence,
+    fragmentBonus: result.fragmentBonus || { epicFragment: 0, prismaticFragment: 0 },
   };
 }
 
@@ -433,4 +469,6 @@ module.exports = {
   sellPokemon,
   sellPokemonBatch,
   sellAllPokemonBatch,
+  calculateFragmentBonusesForPokemon,
+  sumFragmentBonuses,
 };
