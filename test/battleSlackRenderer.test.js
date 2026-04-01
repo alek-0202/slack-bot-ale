@@ -76,8 +76,8 @@ test("formatBattleLogForSlack mantém perspectiva correta por lado e round no to
   battle.metadata = {
     slackUserId: "U1",
     turnLog: [
-      { kind: "action_summary", actorUserId: "U1", actorName: "Pikachu", skillName: "Ataque Básico", skillIcon: "⚔️", damageTypes: ["físico"], baseDamage: 50, modifiers: [], finalDamage: 50, critical: false },
-      { kind: "action_summary", actorUserId: "U2", actorName: "Charmander", skillName: "Garras Ardentes", skillIcon: "🔥", damageTypes: ["físico", "elemental"], baseDamage: 40, modifiers: ["+30%"], extraDamage: 12, finalDamage: 52, critical: false },
+      { kind: "action_summary", actorUserId: "U1", actorName: "Pikachu", skillName: "Ataque Básico", skillIcon: "⚔️", damageTypes: ["físico"], baseDamage: 50, modifiers: [], finalDamage: 50, critical: false, actorCurrentHp: 120, actorMaxHp: 150, activeBuffs: ["Ritmo: +10% dano"], activeDebuffs: [] },
+      { kind: "action_summary", actorUserId: "U2", actorName: "Charmander", skillName: "Garras Ardentes", skillIcon: "🔥", damageTypes: ["físico", "elemental"], baseDamage: 40, modifiers: ["+30%"], extraDamage: 12, finalDamage: 52, critical: false, actorCurrentHp: 98, actorMaxHp: 150, activeBuffs: [], activeDebuffs: ["Lentidão: -25% velocidade"] },
       "🔥 Burn causou 10 em <@U1>.",
     ],
   };
@@ -87,6 +87,131 @@ test("formatBattleLogForSlack mantém perspectiva correta por lado e round no to
   assert.match(text, /\*\[Pikachu\]\*[\s\S]*Ação: \*Pikachu\* usou/);
   assert.match(text, /\*\[Charmander\]\*[\s\S]*Ação: \*Charmander\* usou/);
   assert.match(text, /DOT\/Contínuo/);
+  assert.match(text, /Buffs: Ritmo: \+10% dano/);
+  assert.match(text, /Debuffs: Lentidão: -25% velocidade/);
+});
+
+test("formatBattleLogForSlack usa critBonusDamage e resolvedAction como fonte única do bloco individual", () => {
+  const battle = createBattleStub();
+  const text = formatBattleLogForSlack({
+    battle,
+    title: "LOG",
+    lines: [{
+      kind: "action_summary",
+      actorUserId: "U1",
+      resolvedAction: {
+        actorId: "U1",
+        actorName: "Pikachu",
+        actionType: "attack",
+        actionName: "Ataque Básico",
+        didHit: true,
+        isCrit: true,
+        baseDamage: 30,
+        finalDamage: 48,
+        critBonusDamage: 18,
+        statusDamage: 5,
+        healingDone: 0,
+        activeBuffs: ["Foco: +15% chance crítica"],
+        activeDebuffs: [],
+        actorCurrentHp: 111,
+        actorMaxHp: 150,
+        actorCurrentShield: 30,
+      },
+    }],
+  });
+
+  assert.match(text, /Dano: 48 \(\+crit 18\)/);
+  assert.match(text, /Dano status: Status 5/);
+  assert.match(text, /Vida: 111\/150 \| Barreira: 30/);
+  assert.match(text, /Buffs: Foco: \+15% chance crítica/);
+});
+
+test("formatBattleLogForSlack exibe absorção de barreira e duração restante de efeitos", () => {
+  const battle = createBattleStub();
+  const text = formatBattleLogForSlack({
+    battle,
+    title: "LOG",
+    lines: [{
+      kind: "action_summary",
+      actorUserId: "U1",
+      resolvedAction: {
+        actorId: "U1",
+        actorName: "Pikachu",
+        actionType: "attack",
+        actionName: "Ataque Básico",
+        didHit: true,
+        isCrit: false,
+        dodged: false,
+        baseDamage: 40,
+        finalDamage: 0,
+        shieldAbsorbedDamage: 40,
+        elementalRelation: "advantage",
+        critBonusDamage: 0,
+        statusDamage: 0,
+        healingDone: 0,
+        activeBuffs: ["Controle Mental [2]", "Barreira Psíquica [1]"],
+        activeDebuffs: ["Burn [3]"],
+        actorCurrentHp: 120,
+        actorMaxHp: 150,
+      },
+    }],
+  });
+
+  assert.match(text, /Dano: 0 \(barreira absorveu 40\) \(vantagem elemental\)/);
+  assert.match(text, /Buffs: Controle Mental \[2\] \| Barreira Psíquica \[1\]/);
+  assert.match(text, /Debuffs: Burn \[3\]/);
+});
+
+test("formatBattleLogForSlack inclui Details global com explicação útil e sem duplicar", () => {
+  const battle = createBattleStub();
+  battle.players.U1.elementalState = {
+    effects: [{ id: "psychic_barrier", name: "Barreira Psíquica", remainingRounds: 2, shieldCurrentHp: 55 }],
+    statuses: [{ id: "burn", name: "Burn", stacks: 1, remainingRounds: 2, damagePerStack: 10 }],
+  };
+  battle.players.U2.elementalState = {
+    effects: [{ id: "psychic_barrier", name: "Barreira Psíquica", remainingRounds: 1, shieldCurrentHp: 20 }],
+    statuses: [],
+  };
+
+  const text = formatBattleLogForSlack({
+    battle,
+    title: "LOG",
+    lines: [{ kind: "text", text: "rodada" }],
+  });
+  assert.match(text, /\*Details\*/);
+  assert.match(text, /Barreira Psíquica -> absorve dano antes do HP/);
+  assert.match(text, /Burn -> causa dano ao longo do tempo no turno do afetado/);
+  assert.equal((text.match(/Barreira Psíquica ->/g) || []).length, 1);
+  assert.doesNotMatch(text, /Pikachu:|Charmander:/);
+});
+
+test("formatBattleLogForSlack não exibe Details sem buff\/debuff ativo", () => {
+  const battle = createBattleStub();
+  const text = formatBattleLogForSlack({
+    battle,
+    title: "LOG",
+    lines: [{ kind: "text", text: "rodada" }],
+  });
+
+  assert.doesNotMatch(text, /\*Details\*/);
+});
+
+test("formatBattleLogForSlack usa fallback textual quando não há action_summary", () => {
+  const battle = createBattleStub();
+  battle.metadata = {
+    slackUserId: "U1",
+    turnLog: [
+      "⚔️ <@U1> atacou <@U2> e causou *35* de dano.",
+      "🔥 Burn causou 9 em <@U2>.",
+      "🧪 <@U1> usou poção e recuperou *18* HP.",
+    ],
+  };
+
+  const text = formatBattleLogForSlack({ battle, lines: battle.metadata.turnLog, title: "LOG" });
+  assert.doesNotMatch(text, /Ação: —/);
+  assert.match(text, /Dano: 35/);
+  assert.match(text, /Cura recebida: Cura 18/);
+  assert.match(text, /DOT\/Contínuo: Burn/);
 });
 
 function createBattleStub({ withReserves = false } = {}) {

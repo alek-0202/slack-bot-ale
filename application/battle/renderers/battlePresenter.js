@@ -1,6 +1,13 @@
 const { ENABLE_ELEMENTAL_SKILLS_BATTLE, getAvailableMagicActions, getSkillCooldownRemaining } = require("../domain/elementalRules");
 const { MAX_POTIONS_PER_BATTLE } = require("../domain/battleEngine");
 
+function resolveCurrentShield(playerState) {
+  const effects = playerState?.elementalState?.effects || [];
+  return effects
+    .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0 && effect?.shieldCurrentHp != null)
+    .reduce((total, effect) => total + Math.max(0, Number(effect.shieldCurrentHp || 0)), 0);
+}
+
 function buildBattleViewModel(battle) {
   const challenger = battle.players[battle.challengerId];
   const challenged = battle.players[battle.challengedId];
@@ -31,18 +38,20 @@ function buildPlayerViewModel(userId, playerState, initiative, battle) {
     activePokemonId: playerState.selectedPokemon?.id || null,
     selectedPokemonName: playerState.selectedPokemon?.name || null,
     selectedPokemonTypes: playerState.selectedPokemon?.elementTypes || [],
+    selectedPokemonSpriteUrl: playerState.selectedPokemon?.spriteUrl || null,
     level: playerState.selectedPokemon?.level || null,
     stars: playerState.selectedPokemon?.stars || 0,
     starText: playerState.selectedPokemon?.starText || "-",
     hpCurrent: playerState.battleHp?.current ?? null,
     hpMax: playerState.battleHp?.max ?? null,
+    shieldCurrent: resolveCurrentShield(playerState),
     attack: playerState.stats?.attack ?? null,
     magic: playerState.stats?.magic ?? playerState.stats?.attack ?? null,
     defense: playerState.stats?.defense ?? null,
     speed: playerState.stats?.speed ?? null,
     initiativeGauge: initiative?.gauges?.[userId] ?? null,
     initiativeThreshold: initiative?.threshold ?? null,
-    energyCurrent: battle?.metadata?.energyByUserId?.[userId] ?? null,
+    energyCurrent: playerState?.skillEnergy ?? null,
     potionsRemaining: Math.max(0, MAX_POTIONS_PER_BATTLE - (playerState.potionsUsed || 0)),
     magicCooldownRemaining: Math.max(0, playerState.magicCooldown?.blockedOwnTurnsRemaining || 0),
     magicSlots: Array.isArray(playerState.magicSlots) ? playerState.magicSlots : [],

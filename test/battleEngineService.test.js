@@ -95,6 +95,159 @@ test("calculateDamage respeita esquiva e zera o dano quando ativada", () => {
   }
 });
 
+test("ataque básico usa chance crítica direta do pokémon (40 => 40%)", () => {
+  const battle = createBattle({
+    battleId: "B1",
+    channelId: "C1",
+    challengerId: "U1",
+    challengedId: "U2",
+  });
+  acceptInvite(battle);
+  assignSelectedPokemon(battle, "U1", {
+    id: 1,
+    species_id: 1,
+    level: 20,
+    attack: 60,
+    magic: 30,
+    defense: 20,
+    hp: 100,
+    speed: 30,
+    crit_level: 0,
+    crit_chance: 40,
+    dodge_level: 0,
+    elemental_level: 0,
+    pokemon_species: { id: 1, name: "Pikachu", element_types: ["electric"] },
+  });
+  assignSelectedPokemon(battle, "U2", {
+    id: 2,
+    species_id: 2,
+    level: 20,
+    attack: 40,
+    magic: 20,
+    defense: 20,
+    hp: 100,
+    speed: 20,
+    crit_level: 0,
+    dodge_level: 0,
+    elemental_level: 0,
+    pokemon_species: { id: 2, name: "Bulbasaur", element_types: ["grass"] },
+  });
+  advanceSelectionState(battle);
+  advanceSelectionState(battle);
+  startBattle(battle);
+  battle.currentTurnUserId = "U1";
+  assert.equal(battle.players.U1.stats.critChance, 0.4);
+
+  const originalRandom = Math.random;
+  let calls = 0;
+  Math.random = () => {
+    calls += 1;
+    if (calls === 1) return 0.8; // variância
+    if (calls === 2) return 0.9; // esquiva não ativa
+    if (calls === 3) return 0.2; // crítico (0.2 < 0.4)
+    return 0.5;
+  };
+  try {
+    const result = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    assert.equal(result.outcome.isCritical, true);
+    assert.equal(result.outcome.resolvedAction.isCrit, true);
+    assert.ok(result.outcome.finalDamage > result.outcome.normalDamage);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test("ataque básico com 95% de crítico gera críticos perceptíveis em sequência", () => {
+  const battle = createReadyBattle();
+  battle.currentTurnUserId = "U1";
+  battle.players.U1.stats.critChance = 0.95;
+
+  const originalRandom = Math.random;
+  Math.random = () => 0.2;
+  try {
+    const first = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    battle.currentTurnUserId = "U1";
+    const second = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    assert.equal(first.outcome.isCritical, true);
+    assert.equal(second.outcome.isCritical, true);
+    assert.ok(first.outcome.finalDamage > first.outcome.normalDamage);
+    assert.ok(second.outcome.finalDamage > second.outcome.normalDamage);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test("dano em barreira registra absorção parcial e quebra no log", () => {
+  const battle = createReadyBattle();
+  battle.currentTurnUserId = "U1";
+  battle.players.U2.elementalState.effects.push({
+    id: "test_shield",
+    name: "Escudo de Teste",
+    remainingRounds: 2,
+    shieldCurrentHp: 1,
+    shieldMaxHp: 1,
+  });
+
+  const originalRandom = Math.random;
+  Math.random = () => 0.5;
+  try {
+    resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    const turnLog = battle.metadata.turnLog || [];
+    assert.ok(turnLog.some((line) => String(line).includes("absorveu")));
+    assert.ok(turnLog.some((line) => String(line).includes("quebrada")));
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test("ataque básico não aplica counter/vantagem elemental", () => {
+  const battle = createReadyBattle();
+  battle.currentTurnUserId = "U1";
+  battle.players.U1.selectedPokemon.elementTypes = ["electric"];
+  battle.players.U2.selectedPokemon.elementTypes = ["water"];
+
+  const originalRandom = Math.random;
+  let calls = 0;
+  Math.random = () => {
+    calls += 1;
+    if (calls === 1) return 0.5; // variância
+    if (calls === 2) return 0.9; // esquiva falha
+    if (calls === 3) return 0.9; // sem crítico
+    return 0.5;
+  };
+  try {
+    const result = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    assert.equal(result.outcome.ok, true);
+    assert.equal(result.outcome.elemental.elemental.relation, "neutral");
+    assert.equal(result.outcome.resolvedAction.elementalRelation, "neutral");
+    assert.equal(result.outcome.finalDamage, result.outcome.normalDamage);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test("ataque básico continua reduzido por defesa física", () => {
+  const battle = createReadyBattle();
+  battle.currentTurnUserId = "U1";
+  battle.players.U1.stats.attack = 80;
+  battle.players.U2.stats.defense = 5;
+
+  const originalRandom = Math.random;
+  Math.random = () => 0.9;
+  try {
+    const lowDefense = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    battle.currentTurnUserId = "U1";
+    battle.players.U2.battleHp.current = battle.players.U2.battleHp.max;
+    battle.players.U2.stats.defense = 70;
+    const highDefense = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+
+    assert.ok(lowDefense.outcome.finalDamage > highDefense.outcome.finalDamage);
+    assert.equal(highDefense.outcome.elemental.elemental.relation, "neutral");
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
 test("resolvePotionTurn limita em 5 poções e não passa HP máximo", () => {
   const player = {
     battleHp: { max: 100, current: 40 },

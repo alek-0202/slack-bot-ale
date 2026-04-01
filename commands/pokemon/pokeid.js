@@ -2,7 +2,7 @@ const { parsePositiveInt } = require("../../utils/number");
 const { createLogger } = require("../../utils/logger");
 const { getOwnedPokemonById } = require("../../services/pokemonLookupService");
 const { buildPokemonTypesLabel } = require("../../services/pokemonTypeService");
-const { buildPokemonStatAudit } = require("../../services/pokemonStatsService");
+const { buildPokemonStatAudit, IV_STAT_RANGES } = require("../../services/pokemonStatsService");
 const {
   buildPokemonVisualBlocks,
   buildPokemonVisualSummary,
@@ -124,6 +124,7 @@ module.exports = {
         Number(pokemon.book_bonus_speed || 0) > 0
           ? `\n📘 *Livro do Ancião:* ⚔️ +${pokemon.book_bonus_attack || 0} | ✨ +${pokemon.book_bonus_magic || 0} | 🛡️ +${pokemon.book_bonus_defense || 0} | ❤️ +${pokemon.book_bonus_hp || 0} | 💨 +${pokemon.book_bonus_speed || 0}`
           : "";
+      const sign = (value) => `${Number(value || 0) >= 0 ? "+" : ""}${Number(value || 0)}`;
 
       await say({
         text: `Consulta do Pokémon ID ${pokemonId}`,
@@ -137,8 +138,11 @@ module.exports = {
                 `*${species.name || "Pokémon"}* (#${species.id || "?"})\n` +
                 `🆔 *ID da coleção:* ${pokemon.id}\n` +
                 `🎚️ *Level:* ${pokemon.level}\n` +
-                `⚔️ *ATK:* ${recalculatedStats.attack || 0} | ✨ *MAG:* ${recalculatedStats.magic || 0}\n` +
-                `🛡️ *DEF:* ${recalculatedStats.defense || 0} | ❤️ *HP:* ${displayedCurrentHp}/${recalculatedStats.hp || 0} | 💨 *SPD:* ${recalculatedStats.speed || 0}\n` +
+                `⚔️ *ATK:* ${recalculatedStats.attack || 0} | IV ${sign(pokemon.attack_iv)} (${IV_STAT_RANGES.attack.max})\n` +
+                `✨ *MAG:* ${recalculatedStats.magic || 0} | IV ${sign(pokemon.magic_iv)} (${IV_STAT_RANGES.magic.max})\n` +
+                `🛡️ *DEF:* ${recalculatedStats.defense || 0} | IV ${sign(pokemon.defense_iv)} (${IV_STAT_RANGES.defense.max})\n` +
+                `❤️ *HP:* ${displayedCurrentHp}/${recalculatedStats.hp || 0} | IV ${sign(pokemon.hp_iv)} (${IV_STAT_RANGES.hp.max})\n` +
+                `💨 *SPD:* ${recalculatedStats.speed || 0} | IV ${sign(pokemon.speed_iv)} (${IV_STAT_RANGES.speed.max})\n` +
                 `⭐ *Estrelas:* ${visual.starsLabel}\n` +
                 `👤 *Dono:* <@${pokemon.slack_user_id}>` +
                 bookBonusLabel +

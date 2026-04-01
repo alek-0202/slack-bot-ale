@@ -50,12 +50,12 @@ function buildCharacteristicSkillEntriesFromElements(elements = [], pokemonLevel
   for (const element of normalized) {
     const rules = getElementalRules(element);
     if (!rules?.skills?.length) continue;
-    const activeSlots = Math.max(1, Number(rules.activeSkillSlots || 2));
-    for (const skill of rules.skills.slice(0, activeSlots)) {
+    for (const skill of rules.skills) {
       entries.push({
         kind: 'characteristic',
         id: skill.id,
         name: skill.name,
+        description: skill.description || null,
         element,
         icon: skill.icon || getElementIcon(element),
         cooldownRounds: skill.cooldownRounds || null,
@@ -112,8 +112,7 @@ async function upsertPokemonMagicLoadout({ slackUserId, pokemonId, selectedEleme
   }
 
   const regularSpells = buildMagicEntriesFromElements(finalElements);
-  const characteristicSkills = buildCharacteristicSkillEntriesFromElements(finalElements, pokemon.level);
-  const spells = [...regularSpells, ...characteristicSkills];
+  const spells = [...regularSpells];
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("pokemon_magic_loadouts")
@@ -192,6 +191,37 @@ async function clearCharacteristicSkillsFromLoadout({ slackUserId, pokemonId }) 
   if (error) throw error;
 
   return { ok: true, removed: spells.length - nextSpells.length };
+}
+
+async function clearLegacyCharacteristicSkillsFromAllLoadouts() {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.rpc("cleanup_characteristic_skills_from_magic_loadouts");
+  if (error) {
+    logger.warn("RPC de limpeza global indisponível, usando fallback local por lotes.", { error: error.message || error });
+    const pageSize = 500;
+    let from = 0;
+    while (true) {
+      const { data, error: loadError } = await supabase
+        .from("pokemon_magic_loadouts")
+        .select("pokemon_id, spells")
+        .range(from, from + pageSize - 1);
+      if (loadError) throw loadError;
+      if (!data?.length) break;
+      for (const row of data) {
+        const spells = Array.isArray(row.spells) ? row.spells : [];
+        const nextSpells = spells.filter((entry) => entry?.kind !== "characteristic");
+        if (nextSpells.length === spells.length) continue;
+        const { error: updateError } = await supabase
+          .from("pokemon_magic_loadouts")
+          .update({ spells: nextSpells })
+          .eq("pokemon_id", row.pokemon_id);
+        if (updateError) throw updateError;
+      }
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+  }
+  return { ok: true };
 }
 
 function dedupeBySkillId(entries = []) {
@@ -317,6 +347,7 @@ module.exports = {
   clearPendingMagicSelection,
   buildMagicSummary,
   clearCharacteristicSkillsFromLoadout,
+  clearLegacyCharacteristicSkillsFromAllLoadouts,
   getMrSkillSetup,
   saveMrSkillSelection,
 };

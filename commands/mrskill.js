@@ -32,20 +32,24 @@ function buildMrSkillBlocks({ slackUserId, setup }) {
       ...setup.availableSkills.map((skill) => {
         const isSelected = selected.has(String(skill.id));
         return {
-          type: 'actions',
-          elements: [
-            {
-              type: 'button',
-              action_id: MRSKILL_TOGGLE_ACTION_ID,
-              style: isSelected ? 'primary' : undefined,
-              text: { type: 'plain_text', text: `${isSelected ? '✅' : '⬜'} ${skill.icon || '✨'} ${skill.name}`.slice(0, 75), emoji: true },
-              value: JSON.stringify({
-                slackUserId,
-                pokemonId: setup.pokemon.id,
-                skillId: String(skill.id),
-              }),
-            },
-          ],
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text:
+              `*${skill.icon || '✨'} ${skill.name}* (${skill.element})\n` +
+              `${skill.description || `CD ${skill.cooldownRounds || 0} rodada(s) • Energia extra ${skill.extraEnergyCost || 0}`}`,
+          },
+          accessory: {
+            type: 'button',
+            action_id: MRSKILL_TOGGLE_ACTION_ID,
+            style: isSelected ? 'primary' : undefined,
+            text: { type: 'plain_text', text: `${isSelected ? '✅ Equipado' : 'Equipar'}`.slice(0, 75), emoji: true },
+            value: JSON.stringify({
+              slackUserId,
+              pokemonId: setup.pokemon.id,
+              skillId: String(skill.id),
+            }),
+          },
         };
       }),
     ],

@@ -7,6 +7,7 @@ const {
   summarizeImageReference,
 } = require("../adapters/slack/renderers/pokemonVisualBlocks");
 const { createLogger } = require("../utils/logger");
+const { IV_STAT_RANGES } = require("./pokemonStatsService");
 
 const POKEDEX_NAV_PREV_ACTION_ID = "pokedex_navigate_prev";
 const POKEDEX_NAV_NEXT_ACTION_ID = "pokedex_navigate_next";
@@ -108,11 +109,21 @@ async function buildPokedexMessage({
   const idsText = entry.quantity > 1 ? entry.pokemonIds.join(", ") : `${entry.id}`;
 
   const attributesText = isAttributesMode
-    ? `\n\n*📊 Atributos*\n` +
-      `⚔️ ATK: *${entry.attack || 0}* | ✨ MAG: *${entry.magic ?? entry.attack ?? 0}*\n` +
-      `🛡️ DEF: *${entry.defense || 0}*\n` +
-      `❤️ HP: *${entry.hp || 0}* | 💨 SPD: *${entry.speed || 0}*\n` +
-      `💸 Venda atual: *${sellPrice}* gold`
+    ? (() => {
+      const atkIv = Number(entry.attack_iv || 0);
+      const magIv = Number(entry.magic_iv || 0);
+      const defIv = Number(entry.defense_iv || 0);
+      const hpIv = Number(entry.hp_iv || 0);
+      const spdIv = Number(entry.speed_iv || 0);
+      const sign = (value) => `${value >= 0 ? "+" : ""}${value}`;
+      return `\n\n*📊 Atributos*\n` +
+      `⚔️ ATK: *${entry.attack || 0}* | IV ${sign(atkIv)} (${IV_STAT_RANGES.attack.max})\n` +
+      `✨ MAG: *${entry.magic ?? entry.attack ?? 0}* | IV ${sign(magIv)} (${IV_STAT_RANGES.magic.max})\n` +
+      `🛡️ DEF: *${entry.defense || 0}* | IV ${sign(defIv)} (${IV_STAT_RANGES.defense.max})\n` +
+      `❤️ HP: *${entry.hp || 0}* | IV ${sign(hpIv)} (${IV_STAT_RANGES.hp.max})\n` +
+      `💨 SPD: *${entry.speed || 0}* | IV ${sign(spdIv)} (${IV_STAT_RANGES.speed.max})\n` +
+      `💸 Venda atual: *${sellPrice}* gold`;
+    })()
     : `\n💸 Venda atual: *${sellPrice}* gold`;
 
   const detailsText =

@@ -30,30 +30,18 @@ const { applyGelidStacks } = require("./iceStatusRules");
 const { FIGHTING_EFFECT_RHYTHM, FIGHTING_EFFECT_FINISHER, FIGHTING_EFFECT_UNYIELDING, FIGHTING_EFFECT_STANCE_RELEASE } = require("./fightingElementRules");
 const { PSYCHIC_SKILLS, PSYCHIC_EFFECT_BARRIER, PSYCHIC_EFFECT_BARRIER_BREAK_BUFF, getReadState, clearReadState } = require("./psychicElementRules");
 const { GHOST_SKILLS, GHOST_EFFECT_ETHEREAL, GHOST_EFFECT_CURSE, GHOST_EFFECT_SHADOW_MARK } = require("./ghostElementRules");
+const { consumeSkillEnergy, restoreSkillEnergy, ensureSkillEnergyState } = require("./skillEnergy");
+const { validateSkillActionRequest } = require("./skillActionValidator");
+const { tickOwnerTurnTimers, processOwnerTurnEffects, EFFECT_TIMING } = require("./elementalRules");
 
-
-function getBattleEnergyPool(battle) {
-  battle.metadata = battle.metadata || {};
-  battle.metadata.energyByUserId = battle.metadata.energyByUserId || {};
-  return battle.metadata.energyByUserId;
-}
 
 function consumeBattleEnergy({ battle, userId, amount }) {
-  const cost = Math.max(0, Number(amount) || 0);
-  const energyByUserId = getBattleEnergyPool(battle);
-  if (energyByUserId[userId] == null) return { ok: true, currentEnergy: Infinity, consumed: 0 };
-
-  const current = Math.max(0, Number(energyByUserId[userId] || 0));
-  if (current < cost) return { ok: false, currentEnergy: current, requiredEnergy: cost };
-  energyByUserId[userId] = current - cost;
-  return { ok: true, currentEnergy: energyByUserId[userId], consumed: cost };
+  const actor = battle?.players?.[userId];
+  return consumeSkillEnergy(actor, amount);
 }
 
 function restoreBattleEnergy({ battle, userId, amount }) {
-  const gain = Math.max(0, Number(amount) || 0);
-  const energyByUserId = getBattleEnergyPool(battle);
-  if (energyByUserId[userId] == null) return;
-  energyByUserId[userId] = Math.max(0, Number(energyByUserId[userId] || 0) + gain);
+  restoreSkillEnergy(battle?.players?.[userId], amount);
 }
 
 function reduceAllElementalCooldowns(playerState, rounds = 0) {
@@ -71,10 +59,185 @@ function mergeRoundLogs(battle, ...logs) {
   battle.metadata.turnLog = merged;
 }
 
+function collectAppliedEffectsSnapshot(playerState) {
+  return (ensureElementalState(playerState).effects || [])
+    .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0)
+    .map((effect) => `${effect.id}:${effect.sourceUserId || "self"}`);
+}
+
+function listNewEffects({ before = [], playerState = null }) {
+  const existing = new Set(before);
+  return (ensureElementalState(playerState).effects || [])
+    .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0)
+    .filter((effect) => !existing.has(`${effect.id}:${effect.sourceUserId || "self"}`))
+    .map((effect) => effect.name || effect.id)
+    .filter(Boolean);
+}
+
+function formatEffectImpact(effect = {}) {
+  const parts = [];
+  const pushStat = (label, value, unit = "%") => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric === 0) return;
+    const sign = numeric > 0 ? "+" : "-";
+    parts.push(`${sign}${Math.abs(numeric)}${unit} ${label}`.trim());
+  };
+  const pushMultiplier = (label, value, invert = false) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric === 1) return;
+    const delta = Math.round((numeric - 1) * 100);
+    const normalized = invert ? -delta : delta;
+    pushStat(label, normalized);
+  };
+
+  pushMultiplier("dano", effect.outgoingDamageMultiplier);
+  pushMultiplier("dano recebido", effect.incomingDamageTakenMultiplier, true);
+  pushMultiplier("DEF", effect.defenseMultiplier);
+  pushMultiplier("velocidade", effect.speedMultiplier);
+  pushMultiplier("chance crítica", effect.critChanceMultiplier);
+
+  pushStat("ATK", effect.attackFlatBonus, "");
+  pushStat("MAG", effect.magicFlatBonus, "");
+  pushStat("DEF", effect.defenseFlatBonus, "");
+  pushStat("dano", effect.damageFlatBonus, "");
+  pushStat("chance crítica", Math.round(Number(effect.critChanceBonus || 0) * 100));
+  if (Number(effect.shieldCurrentHp || 0) > 0) parts.push(`escudo ${Math.round(Number(effect.shieldCurrentHp || 0))}`);
+  if (effect.immuneToDamageAndControl) parts.push("bloqueia dano/controle");
+  if (effect.cannotAct || effect.skipTurn || effect.blockAction) parts.push("bloqueia ação");
+  if (effect.dotDamage || effect.damagePerTurn) parts.push(`dano contínuo ${Math.round(Number(effect.dotDamage || effect.damagePerTurn || 0))}`);
+  if (effect.taunt || effect.forcedAction) parts.push("força ataque básico");
+  return parts;
+}
+
+function describeEffect(effect = {}) {
+  if (effect?.description) return String(effect.description);
+  const impacts = formatEffectImpact(effect);
+  if (impacts.length) return impacts.join(", ");
+  if (effect.immuneToDamageAndControl) return "absorve ou bloqueia dano recebido";
+  return "efeito ativo";
+}
+
+function splitActiveEffectsByPolarity(playerState) {
+  const effects = (ensureElementalState(playerState).effects || [])
+    .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0);
+  const buffs = [];
+  const debuffs = [];
+  const buffDetails = [];
+  const debuffDetails = [];
+  for (const effect of effects) {
+    const impacts = formatEffectImpact(effect);
+    const baseLabel = effect.name || effect.id;
+    if (!baseLabel) continue;
+    const remaining = effect?.remainingRounds == null ? null : Math.max(0, Number(effect.remainingRounds || 0));
+    const label = remaining == null ? baseLabel : `${baseLabel} [${remaining}]`;
+    const harmfulByFlag = Boolean(
+      effect.cannotAct
+      || effect.skipTurn
+      || effect.blockAction
+      || effect.taunt
+      || effect.forcedAction
+      || Number(effect.dotDamage || effect.damagePerTurn || 0) > 0
+      || Number(effect.incomingDamageTakenMultiplier || 1) > 1
+      || Number(effect.outgoingDamageMultiplier || 1) < 1
+      || Number(effect.speedMultiplier || 1) < 1
+      || Number(effect.defenseMultiplier || 1) < 1
+    );
+    const harmful = harmfulByFlag
+      || impacts.some((item) => item.includes("-") || /bloqueia ação|força ataque|dano contínuo|dano recebido/i.test(item));
+    const detailsEntry = {
+      id: effect.id || null,
+      name: label,
+      description: describeEffect(effect),
+    };
+    if (harmful) {
+      debuffs.push(label);
+      debuffDetails.push(detailsEntry);
+    } else {
+      buffs.push(label);
+      buffDetails.push(detailsEntry);
+    }
+  }
+  return { buffs, debuffs, buffDetails, debuffDetails };
+}
+
+function resolveCurrentShield(playerState) {
+  return (ensureElementalState(playerState).effects || [])
+    .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0 && effect?.shieldCurrentHp != null)
+    .reduce((total, effect) => total + Math.max(0, Number(effect.shieldCurrentHp || 0)), 0);
+}
+
+function buildResolvedActionPayload({
+  battle,
+  actorUserId,
+  targetUserId = null,
+  actionType,
+  actionName,
+  didHit = true,
+  isCrit = false,
+  baseDamage = 0,
+  finalDamage = 0,
+  statusDamage = 0,
+  healingDone = 0,
+  appliedEffects = [],
+  extraNotes = [],
+  blockedReason = null,
+  shieldAbsorbedDamage = 0,
+  elementalMultiplier = 1,
+  elementalRelation = "neutral",
+  dodged = false,
+}) {
+  const actorState = battle.players?.[actorUserId];
+  const targetState = targetUserId ? battle.players?.[targetUserId] : null;
+  const { buffs, debuffs, buffDetails, debuffDetails } = splitActiveEffectsByPolarity(actorState);
+  const safeBaseDamage = Math.max(0, Number(baseDamage) || 0);
+  const safeFinalDamage = Math.max(0, Number(finalDamage) || 0);
+  return {
+    actorId: actorUserId,
+    actorName: battle.players?.[actorUserId]?.selectedPokemon?.name || `<@${actorUserId}>`,
+    actionType,
+    actionName,
+    targetId: targetUserId,
+    targetName: targetUserId ? (battle.players?.[targetUserId]?.selectedPokemon?.name || `<@${targetUserId}>`) : null,
+    didHit: Boolean(didHit),
+    isCrit: Boolean(isCrit),
+    critBonusDamage: Boolean(isCrit) ? Math.max(0, safeFinalDamage - safeBaseDamage) : 0,
+    baseDamage: safeBaseDamage,
+    finalDamage: safeFinalDamage,
+    statusDamage: Math.max(0, Number(statusDamage) || 0),
+    healingDone: Math.max(0, Number(healingDone) || 0),
+    appliedEffects: Array.isArray(appliedEffects) ? appliedEffects.filter(Boolean) : [],
+    activeBuffs: buffs,
+    activeDebuffs: debuffs,
+    activeBuffDetails: buffDetails,
+    activeDebuffDetails: debuffDetails,
+    actorCurrentHp: Math.max(0, Number(actorState?.battleHp?.current || 0)),
+    actorMaxHp: Math.max(0, Number(actorState?.battleHp?.max || 0)),
+    actorCurrentShield: Math.max(0, resolveCurrentShield(actorState)),
+    targetCurrentHp: Math.max(0, Number(targetState?.battleHp?.current || 0)),
+    targetMaxHp: Math.max(0, Number(targetState?.battleHp?.max || 0)),
+    targetCurrentShield: Math.max(0, resolveCurrentShield(targetState)),
+    blockedReason: blockedReason || null,
+    shieldAbsorbedDamage: Math.max(0, Number(shieldAbsorbedDamage) || 0),
+    elementalMultiplier: Math.max(0, Number(elementalMultiplier) || 0),
+    elementalRelation,
+    dodged: Boolean(dodged),
+    extraNotes: Array.isArray(extraNotes) ? extraNotes.filter(Boolean) : [],
+  };
+}
+
+function logBattleDebug(event, payload) {
+  if (String(process.env.NODE_ENV || "").toLowerCase() === "production" && !process.env.BATTLE_DEBUG) return;
+  if (!process.env.BATTLE_DEBUG && String(process.env.NODE_ENV || "").toLowerCase() !== "development") return;
+  // eslint-disable-next-line no-console
+  console.debug(`[battle-debug] ${event}`, payload);
+}
+
 function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDamage }) {
   const before = applyBeforeDamageHooks({ battle, attackerId, defenderId, damage: initialDamage });
   const onHit = applyOnHitHooks({ battle, attackerId, defenderId, damage: before.finalDamage });
   let finalDamage = Math.max(0, Number(onHit.finalDamage || 0));
+  const initialDamageAfterHooks = finalDamage;
+  let shieldAbsorbedDamage = 0;
   const defender = battle.players[defenderId];
   const defenderEffects = ensureElementalState(defender).effects || [];
   for (const effect of defenderEffects) {
@@ -85,8 +248,21 @@ function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDama
       break;
     }
     const absorbed = Math.min(finalDamage, Math.max(0, Number(effect.shieldCurrentHp || 0)));
+    const shieldBefore = Math.max(0, Number(effect.shieldCurrentHp || 0));
     effect.shieldCurrentHp = Math.max(0, Number(effect.shieldCurrentHp || 0) - absorbed);
     finalDamage = Math.max(0, finalDamage - absorbed);
+    shieldAbsorbedDamage += absorbed;
+    if (absorbed > 0) {
+      const hpPassed = Math.max(0, finalDamage);
+      if (hpPassed > 0) {
+        onHit.logs.push(`🛡️ Barreira de <@${defenderId}> absorveu ${Math.round(absorbed)} e ${Math.round(hpPassed)} passaram para o HP.`);
+      } else {
+        onHit.logs.push(`🛡️ Barreira de <@${defenderId}> absorveu ${Math.round(absorbed)} de dano.`);
+      }
+      if (Number(effect.shieldCurrentHp || 0) <= 0 && shieldBefore > 0) {
+        onHit.logs.push(`💥 Barreira de <@${defenderId}> foi quebrada.`);
+      }
+    }
     if (effect.id === PSYCHIC_EFFECT_BARRIER && Number(effect.shieldCurrentHp || 0) <= 0) {
       const stacks = Math.max(0, Number(effect.psychicEnergyStacks || 0));
       addOrRefreshEffect(defender, {
@@ -117,6 +293,8 @@ function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDama
   }
   return {
     finalDamage,
+    damageBeforeShield: Math.max(0, initialDamageAfterHooks),
+    shieldAbsorbedDamage: Math.max(0, Math.round(shieldAbsorbedDamage)),
     logs: [...before.logs, ...onHit.logs],
   };
 }
@@ -191,7 +369,25 @@ function applyRoundEndAndCheck(battle, actorUserId) {
   return null;
 }
 
+function advanceTurnForActor(battle, actorUserId, options = {}) {
+  const ownerEndLogs = processOwnerTurnEffects({
+    playerState: battle.players?.[actorUserId],
+    ownerUserId: actorUserId,
+    timing: EFFECT_TIMING.ON_OWNER_TURN_END,
+  });
+  tickOwnerTurnTimers(battle.players?.[actorUserId]);
+  if (ownerEndLogs.length) mergeRoundLogs(battle, ownerEndLogs);
+  return passTurn(battle, actorUserId, options);
+}
+
 function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {} }) {
+  const ownerStartLogs = processOwnerTurnEffects({
+    playerState: battle.players?.[actorUserId],
+    ownerUserId: actorUserId,
+    timing: EFFECT_TIMING.ON_OWNER_TURN_START,
+  });
+  if (ownerStartLogs.length) mergeRoundLogs(battle, ownerStartLogs);
+
   const actionStart = evaluateActionStartModifiers({ battle, actorId: actorUserId, actionType });
   const actorRhythm = ensureElementalState(battle.players?.[actorUserId]).effects?.find((effect) => effect.id === FIGHTING_EFFECT_RHYTHM);
   const hasGroupControl = (ensureElementalState(battle.players?.[actorUserId]).effects || [])
@@ -202,7 +398,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
   }
   if (actionStart.logs?.length) mergeRoundLogs(battle, actionStart.logs);
   if (actionStart.cancelTurn) {
-    const turnFlow = passTurn(battle, actorUserId, { energyPenalty: Math.round((1 - Number(actionStart.initiativePenaltyMultiplier || 1)) * 20) });
+    const turnFlow = advanceTurnForActor(battle, actorUserId, { energyPenalty: Math.round((1 - Number(actionStart.initiativePenaltyMultiplier || 1)) * 20) });
     return {
       battle,
       actionType,
@@ -295,7 +491,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       };
     }
 
-    const turnFlow = passTurn(battle, actorUserId);
+    const turnFlow = advanceTurnForActor(battle, actorUserId);
     return {
       battle,
       actionType,
@@ -315,10 +511,13 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
 
   if (actionType === BATTLE_ACTION.MAGIC) {
     const attacker = battle.players[actorUserId];
+    ensureSkillEnergyState(attacker);
     const curse = ensureElementalState(attacker).effects?.find((effect) => effect.id === GHOST_EFFECT_CURSE);
     if (curse) curse.stacks = Math.max(0, Number(curse.stacks || 0) + 2);
     const defenderId = getOpponentId(battle, actorUserId);
     const defender = battle.players[defenderId];
+    const defenderEffectsBefore = collectAppliedEffectsSnapshot(defender);
+    const attackerEffectsBefore = collectAppliedEffectsSnapshot(attacker);
     const magicAction = resolveMagicActionEntry(attacker, actionPayload.magicSlot);
 
     if (!magicAction) {
@@ -349,29 +548,39 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         shouldPassTurn: false,
       };
     }
+    const usageValidation = validateSkillActionRequest({ battle, actorUserId, magicSlot: actionPayload.magicSlot, targetUserId: defenderId });
+    if (!usageValidation.ok) {
+      const mapped = usageValidation.reason === "INSUFFICIENT_ENERGY"
+        ? "insufficient_skill_energy"
+        : usageValidation.reason === "COOLDOWN"
+          ? (magicAction.kind === "regular" ? "magic_on_cooldown" : "elemental_skill_on_cooldown")
+          : usageValidation.reason === "NOT_YOUR_TURN"
+            ? "not_actor_turn"
+            : "magic_not_found";
+      return {
+        battle,
+        actionType,
+        outcome: {
+          ok: false,
+          reason: mapped,
+          type: "magic",
+          blockedOwnTurnsRemaining: magicAction?.kind === "regular"
+            ? Math.max(0, Number(attacker?.magicCooldown?.blockedOwnTurnsRemaining || 0))
+            : Math.max(0, Number(getElementalSkillCooldown(attacker, magicAction?.id) || 0)),
+          requiredEnergy: usageValidation.requiredEnergy,
+          currentEnergy: attacker?.skillEnergy,
+        },
+        finished: false,
+        shouldPassTurn: false,
+      };
+    }
+
     if (magicAction.kind === "regular") {
       const rhythm = ensureElementalState(attacker).effects?.find((effect) => effect.id === FIGHTING_EFFECT_RHYTHM);
       if (rhythm?.breakOnMagic) {
         rhythm.stacks = 0;
         rhythm.targetUserId = null;
       }
-      const blockedOwnTurnsRemaining = Math.max(0, Number(attacker?.magicCooldown?.blockedOwnTurnsRemaining) || 0);
-      if (blockedOwnTurnsRemaining > 0) {
-        return {
-          battle,
-          actionType,
-          outcome: {
-            ok: false,
-            reason: "magic_on_cooldown",
-            type: "magic",
-            blockedOwnTurnsRemaining,
-            magicName: attacker?.magicCooldown?.lastMagicName || null,
-          },
-          finished: false,
-          shouldPassTurn: false,
-        };
-      }
-
       const regularEnergyCheck = consumeBattleEnergy({ battle, userId: actorUserId, amount: MAGIC_ENERGY_COST });
       if (!regularEnergyCheck.ok) {
         return { battle, actionType, outcome: { ok: false, reason: "insufficient_skill_energy", type: "magic", requiredEnergy: MAGIC_ENERGY_COST, currentEnergy: regularEnergyCheck.currentEnergy }, finished: false, shouldPassTurn: false };
@@ -405,6 +614,36 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       };
 
       mergeRoundLogs(battle, damageWithHooks.logs, `✨ <@${actorUserId}> usou ${regularMagic?.name || "magia"} em <@${defenderId}>.`);
+      const resolvedAction = buildResolvedActionPayload({
+        battle,
+        actorUserId,
+        targetUserId: defenderId,
+        actionType: "magic",
+        actionName: regularMagic?.name || "Magia",
+        didHit: Number(damageWithHooks.finalDamage || 0) > 0,
+        isCrit: Boolean(result.isCritical),
+        baseDamage: Number(result.normalDamage || 0),
+        finalDamage: Number(damageWithHooks.finalDamage || 0),
+        shieldAbsorbedDamage: Number(damageWithHooks.shieldAbsorbedDamage || 0),
+        elementalMultiplier: Number(result?.multiplier || 1),
+        elementalRelation: result?.elemental?.relation || "neutral",
+        appliedEffects: [
+          ...listNewEffects({ before: defenderEffectsBefore, playerState: defender }),
+          ...listNewEffects({ before: attackerEffectsBefore, playerState: attacker }),
+        ],
+        extraNotes: damageWithHooks.logs,
+      });
+      logBattleDebug("resolved_magic_regular", {
+        actorUserId,
+        actionType: "magic",
+        critChanceRaw: result.critChanceRaw,
+        critChanceNormalized: result.critChance,
+        critRoll: result.critRoll,
+        isCrit: result.isCritical,
+        baseDamage: result.normalDamage,
+        finalDamage: damageWithHooks.finalDamage,
+        appliedEffects: resolvedAction.appliedEffects,
+      });
 
       const finalized = applyRoundEndAndCheck(battle, actorUserId);
       if (finalized) {
@@ -417,6 +656,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
           type: "magic",
           actorUserId,
           defenderId,
+          resolvedAction,
           selfDamage: actionStart.selfDamage || 0,
         },
           finished: true,
@@ -424,7 +664,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         };
       }
 
-      const turnFlow = passTurn(battle, actorUserId, { energyPenalty: result.energyConsumed });
+      const turnFlow = advanceTurnForActor(battle, actorUserId, { energyPenalty: result.energyConsumed });
       return {
         battle,
         actionType,
@@ -434,28 +674,12 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
           type: "magic",
           actorUserId,
           defenderId,
+          resolvedAction,
           selfDamage: actionStart.selfDamage || 0,
           turnFlow,
         },
         finished: false,
         shouldPassTurn: true,
-      };
-    }
-
-    const skillCooldown = getElementalSkillCooldown(attacker, magicAction.id);
-    if (skillCooldown > 0) {
-      return {
-        battle,
-        actionType,
-        outcome: {
-          ok: false,
-          reason: "elemental_skill_on_cooldown",
-          type: "magic",
-          blockedOwnTurnsRemaining: skillCooldown,
-          magicName: magicAction.name,
-        },
-        finished: false,
-        shouldPassTurn: false,
       };
     }
 
@@ -528,6 +752,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
           initialDamage: castResult.damageDealt,
         });
         castResult.damageDealt = hooksDamage.finalDamage;
+        castResult.shieldAbsorbedDamage = Number(hooksDamage.shieldAbsorbedDamage || 0);
         castResult.defenderRemainingHp = battle.players[defenderId].battleHp.current;
         mergeRoundLogs(battle, hooksDamage.logs);
         const defenderArmor = ensureElementalState(defender).effects?.find((effect) => effect.id === ICE_EFFECT_ARMOR);
@@ -539,10 +764,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         if (defenderFighting.logs.length) mergeRoundLogs(battle, defenderFighting.logs);
       }
     }
-    if (castResult.consumeAllEnergy) {
-      const pool = battle.metadata?.energyByUserId || {};
-      if (pool[actorUserId] != null) pool[actorUserId] = 0;
-    }
+    if (castResult.consumeAllEnergy) attacker.skillEnergy = 0;
 
     if (castResult.onKillSpread?.status === "gelid" && Number(battle.players[defenderId]?.battleHp?.current || 0) <= 0) {
       const next = resolveSkillTargets({
@@ -575,6 +797,34 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     if (castResult.killed && castResult.cooldownReductionOnKill) {
       reduceAllElementalCooldowns(attacker, castResult.cooldownReductionOnKill);
     }
+    const resolvedAction = buildResolvedActionPayload({
+      battle,
+      actorUserId,
+      targetUserId: defenderId,
+      actionType: "magic",
+      actionName: magicAction?.name || "Magia",
+      didHit: Number(castResult.damageDealt || 0) > 0 || multiTargetApplied.some((entry) => Number(entry.appliedDamage || 0) > 0),
+      isCrit: Boolean(castResult.isCritical),
+      baseDamage: Number(castResult.baseDamage || castResult.normalDamage || 0),
+      finalDamage: Number(castResult.damageDealt || 0),
+      shieldAbsorbedDamage: Number(castResult?.damageType === "true" ? 0 : castResult?.shieldAbsorbedDamage || 0),
+      elementalMultiplier: Number(resolveElementalDamageRule({ attackElement: magicAction.element, defenderElements: defender.selectedPokemon?.elementTypes || [] }).multiplier || 1),
+      elementalRelation: resolveElementalDamageRule({ attackElement: magicAction.element, defenderElements: defender.selectedPokemon?.elementTypes || [] }).relation || "neutral",
+      healingDone: Number(castResult.healAmount || 0),
+      appliedEffects: [
+        ...listNewEffects({ before: defenderEffectsBefore, playerState: defender }),
+        ...listNewEffects({ before: attackerEffectsBefore, playerState: attacker }),
+      ],
+      extraNotes: Array.isArray(castResult.battleLog) ? castResult.battleLog : [castResult.battleLog].filter(Boolean),
+    });
+    logBattleDebug("resolved_magic_elemental", {
+      actorUserId,
+      actionType: "magic",
+      isCrit: castResult.isCritical,
+      baseDamage: castResult.baseDamage || castResult.normalDamage || 0,
+      finalDamage: castResult.damageDealt || 0,
+      appliedEffects: resolvedAction.appliedEffects,
+    });
 
     const finalized = applyRoundEndAndCheck(battle, actorUserId);
     if (finalized) {
@@ -590,6 +840,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
           energyConsumed: MAGIC_ENERGY_COST + extraEnergyCost,
           elemental: resolveElementalDamageRule({ attackElement: magicAction.element, defenderElements: defender.selectedPokemon?.elementTypes || [] }),
           finalDamage: castResult.damageDealt || 0,
+          resolvedAction,
           multiTargetEvents: multiTargetApplied,
           defenderRemainingHp: battle.players[defenderId].battleHp.current,
           battleLog: castResult.battleLog,
@@ -599,7 +850,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       };
     }
 
-    const turnFlow = passTurn(battle, actorUserId, {
+    const turnFlow = advanceTurnForActor(battle, actorUserId, {
       energyPenalty: MAGIC_ENERGY_COST + extraEnergyCost,
       forceNextActorUserId: castResult.forcePassTurn ? defenderId : null,
     });
@@ -615,6 +866,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         energyConsumed: MAGIC_ENERGY_COST + extraEnergyCost,
         elemental: resolveElementalDamageRule({ attackElement: magicAction.element, defenderElements: defender.selectedPokemon?.elementTypes || [] }),
         finalDamage: castResult.damageDealt || 0,
+        resolvedAction,
         multiTargetEvents: multiTargetApplied,
         defenderRemainingHp: battle.players[defenderId].battleHp.current,
         turnFlow,
@@ -629,9 +881,13 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     const attacker = battle.players[actorUserId];
     const defenderId = getOpponentId(battle, actorUserId);
     const defender = battle.players[defenderId];
+    const defenderEffectsBefore = collectAppliedEffectsSnapshot(defender);
+    const attackerEffectsBefore = collectAppliedEffectsSnapshot(attacker);
     const result = resolveAttackTurn({ attacker, defender });
     result.finalDamage = Math.max(0, Math.round(Number(result.finalDamage || 0) * consumeFightingFinisher(attacker)));
-    result.finalDamage += consumeStanceReleaseBonus(attacker);
+    if (!result.dodged) {
+      result.finalDamage += consumeStanceReleaseBonus(attacker);
+    }
     result.finalDamage = Math.max(0, Math.round(Number(result.finalDamage || 0) * Number(actionStart.damageMultiplier || 1)));
     defender.battleHp.current = Math.min(defender.battleHp.max, defender.battleHp.current + Number(result.finalDamage || 0));
 
@@ -705,6 +961,41 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         }
       }
     }
+    const resolvedAction = buildResolvedActionPayload({
+      battle,
+      actorUserId,
+      targetUserId: defenderId,
+      actionType: "attack",
+      actionName: "Ataque Básico",
+      didHit: !result.dodged && Number(damageWithHooks.finalDamage || 0) > 0,
+      isCrit: Boolean(result.isCritical),
+      baseDamage: Number(result.normalDamage || 0),
+      finalDamage: Number(damageWithHooks.finalDamage || 0),
+      shieldAbsorbedDamage: Number(damageWithHooks.shieldAbsorbedDamage || 0),
+      elementalMultiplier: Number(result?.elemental?.multiplier || 1),
+      elementalRelation: result?.elemental?.elemental?.relation || "neutral",
+      dodged: Boolean(result.dodged),
+      appliedEffects: [
+        ...listNewEffects({ before: defenderEffectsBefore, playerState: defender }),
+        ...listNewEffects({ before: attackerEffectsBefore, playerState: attacker }),
+      ],
+      extraNotes: damageWithHooks.logs,
+    });
+    logBattleDebug("resolved_attack", {
+      actorUserId,
+      actionType: "attack",
+      critChanceRaw: result.critChanceRaw,
+      critChanceNormalized: result.critChance,
+      critRoll: result.critRoll,
+      isCrit: result.isCritical,
+      dodged: result.dodged,
+      baseDamage: result.normalDamage,
+      finalDamage: damageWithHooks.finalDamage,
+      shieldAbsorbedDamage: damageWithHooks.shieldAbsorbedDamage,
+      elementalRelation: result?.elemental?.elemental?.relation || "neutral",
+      elementalMultiplier: result?.elemental?.multiplier || 1,
+      appliedEffects: resolvedAction.appliedEffects,
+    });
 
     const finalized = applyRoundEndAndCheck(battle, actorUserId);
     if (finalized) {
@@ -718,6 +1009,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
           defenderId,
           ...result,
           finalDamage: damageWithHooks.finalDamage,
+          resolvedAction,
           defenderRemainingHp: battle.players[defenderId].battleHp.current,
           selfPenaltyDamage: mobilityInterception.damageTaken || 0,
           selfDamage: actionStart.selfDamage || 0,
@@ -727,7 +1019,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       };
     }
 
-    const turnFlow = passTurn(battle, actorUserId);
+    const turnFlow = advanceTurnForActor(battle, actorUserId);
     return {
       battle,
       actionType,
@@ -738,6 +1030,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         defenderId,
         ...result,
         finalDamage: damageWithHooks.finalDamage,
+        resolvedAction,
         defenderRemainingHp: battle.players[defenderId].battleHp.current,
         selfPenaltyDamage: mobilityInterception.damageTaken || 0,
         selfDamage: actionStart.selfDamage || 0,
@@ -750,6 +1043,15 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
 
   const player = battle.players[actorUserId];
   const result = resolvePotionTurn(player);
+  const resolvedPotionAction = buildResolvedActionPayload({
+    battle,
+    actorUserId,
+    actionType: "potion",
+    actionName: "Poção",
+    didHit: true,
+    healingDone: Number(result.healAmount || 0),
+    extraNotes: [`poções_restantes:${result.remainingPotions}`],
+  });
 
   if (!result.ok) {
     return {
@@ -775,13 +1077,14 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         ok: true,
         type: "potion",
         actorUserId,
+        resolvedAction: resolvedPotionAction,
       },
       finished: true,
       finalized,
     };
   }
 
-  const turnFlow = passTurn(battle, actorUserId);
+  const turnFlow = advanceTurnForActor(battle, actorUserId);
   return {
     battle,
     actionType,
@@ -790,6 +1093,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       ok: true,
       type: "potion",
       actorUserId,
+      resolvedAction: resolvedPotionAction,
       turnFlow,
     },
     finished: false,

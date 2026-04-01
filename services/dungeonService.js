@@ -1,6 +1,7 @@
 const { createBattle, assignSelectedPokemon, startBattle } = require('../application/battle/domain/battleState');
 const { resolveBattleTurn } = require('../application/battle/domain/turnResolver');
 const { BATTLE_ACTION, validateTurnAction } = require('../application/battle/domain/actionResolver');
+const { buildActionSummaryFromResolvedAction } = require('../application/battle/domain/resolvedAction');
 const { calculatePokemonStats } = require('./pokemonStatsService');
 const { getAllSpecies, getUserPokemonById, getUserPokemons, insertUserPokemon } = require('./pokemonService');
 const { getPokemonMagicLoadout, buildMagicEntriesFromElements } = require('./pokemonMagicService');
@@ -538,12 +539,17 @@ async function startFarmDungeon({ slackUserId, pokemonId, level }) {
     currentTurnUserId: battle.currentTurnUserId,
   });
 
+  const engineLogsBeforeAutoTurn = Array.isArray(battle.metadata.turnLog) ? [...battle.metadata.turnLog] : [];
   const { enemyTurns } = processEnemyTurnIfNeeded({ battle, trigger: 'start_farm' });
+  const roundEngineLogs = computeRoundEngineLogs({ before: engineLogsBeforeAutoTurn, after: battle.metadata.turnLog });
   battle.metadata.turnLog = buildDungeonTurnLog({
     battle,
     playerTurn: null,
     enemyTurn: enemyTurns[enemyTurns.length - 1] || null,
+    roundEngineLogs,
+    previousLog: battle.metadata.dungeonSummaryLog,
   });
+  battle.metadata.dungeonSummaryLog = [...battle.metadata.turnLog];
   battleStore.setBattle(battle.channelId, battle);
 
   let completion = null;
@@ -624,12 +630,17 @@ async function startDailyDungeon({ slackUserId, pokemonId, mode }) {
     enemyLevel,
   });
 
+  const engineLogsBeforeAutoTurn = Array.isArray(battle.metadata.turnLog) ? [...battle.metadata.turnLog] : [];
   const { enemyTurns } = processEnemyTurnIfNeeded({ battle, trigger: 'start_daily' });
+  const roundEngineLogs = computeRoundEngineLogs({ before: engineLogsBeforeAutoTurn, after: battle.metadata.turnLog });
   battle.metadata.turnLog = buildDungeonTurnLog({
     battle,
     playerTurn: null,
     enemyTurn: enemyTurns[enemyTurns.length - 1] || null,
+    roundEngineLogs,
+    previousLog: battle.metadata.dungeonSummaryLog,
   });
+  battle.metadata.dungeonSummaryLog = [...battle.metadata.turnLog];
   battleStore.setBattle(battle.channelId, battle);
 
   let completion = null;
@@ -703,26 +714,50 @@ function formatDungeonTurnLogEntry({ battle, actionType, outcome, actorUserId, p
   }
 
   if (actionType === BATTLE_ACTION.POTION) {
-    return `🧪 ${actorLabel} usou poção e recuperou *${outcome.healAmount}* HP (agora ${outcome.currentHp}/${battle.players?.[actorUserId]?.battleHp?.max || '?'})`;
+    return `🧪 ${actorLabel} usou poção e curou *${outcome.healAmount}* de vida. Poções restantes: *${outcome.remainingPotions ?? 0}*`;
   }
 
   return `🎯 ${actorLabel} executou ${actionType}.`;
 }
 
-function buildDungeonTurnLog({ battle, playerTurn, enemyTurn }) {
-  const log = [];
+function buildActionSummaryFromTurn({ battle, actionType, outcome, actorUserId }) {
+  if (!outcome?.ok || !actorUserId || !outcome.resolvedAction) return null;
+  return buildActionSummaryFromResolvedAction(outcome.resolvedAction, {
+    actorUserId,
+    actorName: battle.players?.[actorUserId]?.selectedPokemon?.name || null,
+    targetId: outcome.defenderId || null,
+    targetName: battle.players?.[outcome.defenderId]?.selectedPokemon?.name || null,
+    actionType,
+    skillName: actionType === BATTLE_ACTION.ATTACK ? 'Ataque Básico' : actionType === BATTLE_ACTION.POTION ? 'Poção' : (outcome.magicEntry?.name || 'Magia'),
+    skillIcon: actionType === BATTLE_ACTION.ATTACK ? '⚔️' : actionType === BATTLE_ACTION.POTION ? '🧪' : (outcome.magicEntry?.icon || '✨'),
+  });
+}
+
+
+function buildDungeonTurnLog({ battle, playerTurn, enemyTurn, roundEngineLogs = [], previousLog = [] }) {
+  const log = Array.isArray(previousLog) ? [...previousLog] : [];
   log.push(`🔁 Rodada ${battle.round} — início da resolução`);
 
   if (playerTurn?.outcome) {
+    const playerSummary = buildActionSummaryFromTurn({ battle, actionType: playerTurn.actionType, outcome: playerTurn.outcome, actorUserId: playerTurn.actorUserId });
+    if (playerSummary) log.push(playerSummary);
     log.push(formatDungeonTurnLogEntry({ battle, actionType: playerTurn.actionType, outcome: playerTurn.outcome, actorUserId: playerTurn.actorUserId, phase: 'turn' }));
     if (playerTurn.outcome?.defenderRemainingHp === 0) log.push(`💀 ${getBattleActorLabel(battle, playerTurn.outcome.defenderId)} foi derrotado.`);
   }
 
   if (enemyTurn?.resolution?.outcome) {
+    const enemySummary = buildActionSummaryFromTurn({
+      battle,
+      actionType: enemyTurn.action.actionType,
+      outcome: enemyTurn.resolution.outcome,
+      actorUserId: DUNGEON_ENEMY_USER_ID,
+    });
+    if (enemySummary) log.push(enemySummary);
     log.push('🤖 Turno automático do inimigo');
     log.push(formatDungeonTurnLogEntry({ battle, actionType: enemyTurn.action.actionType, outcome: enemyTurn.resolution.outcome, actorUserId: DUNGEON_ENEMY_USER_ID, phase: 'auto' }));
     if (enemyTurn.resolution.outcome?.defenderRemainingHp === 0) log.push(`💀 ${getBattleActorLabel(battle, enemyTurn.resolution.outcome.defenderId)} foi derrotado.`);
   }
+  if (Array.isArray(roundEngineLogs) && roundEngineLogs.length) log.push(...roundEngineLogs);
 
   if (battle.status === 'finished') {
     const winnerId = battle.metadata?.lastResolution?.finalized?.winnerId;
@@ -732,7 +767,25 @@ function buildDungeonTurnLog({ battle, playerTurn, enemyTurn }) {
     log.push(`✅ Rodada ${battle.round} — fim da resolução`);
   }
 
-  return log.slice(-8);
+  return log.slice(-24);
+}
+
+function computeRoundEngineLogs({ before = [], after = [] }) {
+  const safeBefore = Array.isArray(before) ? before : [];
+  const safeAfter = Array.isArray(after) ? after : [];
+  if (!safeAfter.length) return [];
+  if (!safeBefore.length) return [...safeAfter];
+  return safeAfter.slice(safeBefore.length);
+}
+
+function logDungeonPipelineDebug(step, payload) {
+  if (String(process.env.NODE_ENV || '').toLowerCase() !== 'development' && !process.env.BATTLE_DEBUG) return;
+  logger.info(`Dungeon pipeline debug: ${step}`, {
+    file: 'services/dungeonService.js',
+    method: 'logDungeonPipelineDebug',
+    step,
+    ...payload,
+  });
 }
 
 function resolveDungeonAiTurn(battle) {
@@ -1022,11 +1075,30 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
     });
 
     const roundBeforeResolution = lockedBattle.round;
+    const roundEngineLogsBefore = Array.isArray(lockedBattle.metadata.turnLog) ? [...lockedBattle.metadata.turnLog] : [];
+    logDungeonPipelineDebug('action_received', {
+      battleId: lockedBattle.id,
+      actorUserId,
+      actionType,
+      actionPayload,
+      actorPokemon: lockedBattle.players?.[actorUserId]?.selectedPokemon?.name,
+      targetPokemon: lockedBattle.players?.[DUNGEON_ENEMY_USER_ID]?.selectedPokemon?.name,
+    });
     const playerResolution = resolveBattleTurn({ battle: lockedBattle, actorUserId, actionType, actionPayload });
     if (!playerResolution?.outcome?.ok) {
       return { ok: false, reason: playerResolution.outcome.reason || 'unsupported_action', battle: lockedBattle };
     }
     lockedBattle.metadata.lastResolution = playerResolution;
+    logDungeonPipelineDebug('player_resolution', {
+      battleId: lockedBattle.id,
+      actionType,
+      outcomeType: playerResolution.outcome?.type,
+      baseDamage: playerResolution.outcome?.resolvedAction?.baseDamage ?? playerResolution.outcome?.normalDamage ?? 0,
+      finalDamage: playerResolution.outcome?.resolvedAction?.finalDamage ?? playerResolution.outcome?.finalDamage ?? 0,
+      isCrit: playerResolution.outcome?.resolvedAction?.isCrit ?? playerResolution.outcome?.isCritical ?? false,
+      appliedEffects: playerResolution.outcome?.resolvedAction?.appliedEffects || [],
+      resolvedAction: playerResolution.outcome?.resolvedAction || null,
+    });
     logger.info('Ação do player resolvida na dungeon', {
       file: 'services/dungeonService.js',
       method: 'processDungeonTurn',
@@ -1060,6 +1132,15 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
       enemyTurns = enemyTurnProcessing.enemyTurns;
       enemyTurn = enemyTurns[enemyTurns.length - 1] || null;
       for (const appliedEnemyTurn of enemyTurns) {
+        logDungeonPipelineDebug('enemy_resolution', {
+          battleId: lockedBattle.id,
+          actionType: appliedEnemyTurn.action.actionType,
+          baseDamage: appliedEnemyTurn.resolution?.outcome?.resolvedAction?.baseDamage ?? appliedEnemyTurn.resolution?.outcome?.normalDamage ?? 0,
+          finalDamage: appliedEnemyTurn.resolution?.outcome?.resolvedAction?.finalDamage ?? appliedEnemyTurn.resolution?.outcome?.finalDamage ?? 0,
+          isCrit: appliedEnemyTurn.resolution?.outcome?.resolvedAction?.isCrit ?? appliedEnemyTurn.resolution?.outcome?.isCritical ?? false,
+          appliedEffects: appliedEnemyTurn.resolution?.outcome?.resolvedAction?.appliedEffects || [],
+          resolvedAction: appliedEnemyTurn.resolution?.outcome?.resolvedAction || null,
+        });
         turnLog.push({
           actorUserId: DUNGEON_ENEMY_USER_ID,
           actionType: appliedEnemyTurn.action.actionType,
@@ -1068,10 +1149,31 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
       }
     }
 
+    const roundEngineLogs = computeRoundEngineLogs({
+      before: roundEngineLogsBefore,
+      after: lockedBattle.metadata.turnLog,
+    });
+    const previousSummaryLog = Array.isArray(lockedBattle.metadata.dungeonSummaryLog)
+      ? [...lockedBattle.metadata.dungeonSummaryLog]
+      : [];
+    logDungeonPipelineDebug('collector_payload', {
+      battleId: lockedBattle.id,
+      turnEvents: turnLog,
+      roundEngineLogs,
+      previousSummaryLogLength: previousSummaryLog.length,
+    });
+
     lockedBattle.metadata.turnLog = buildDungeonTurnLog({
       battle: lockedBattle,
       playerTurn: { actorUserId, actionType, outcome: playerResolution.outcome },
       enemyTurn,
+      roundEngineLogs,
+      previousLog: previousSummaryLog,
+    });
+    lockedBattle.metadata.dungeonSummaryLog = [...lockedBattle.metadata.turnLog];
+    logDungeonPipelineDebug('summary_before_render', {
+      battleId: lockedBattle.id,
+      summaryTurnLog: lockedBattle.metadata.turnLog,
     });
 
     logger.info('Renderização pós-resolução da dungeon preparada', {

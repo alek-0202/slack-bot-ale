@@ -40,6 +40,10 @@ const BATTLE_HOOK = {
   ON_HIT: "onHit",
   END_OF_ROUND: "endOfRound",
 };
+const EFFECT_TIMING = {
+  ON_OWNER_TURN_START: "ON_OWNER_TURN_START",
+  ON_OWNER_TURN_END: "ON_OWNER_TURN_END",
+};
 
 const elementalRegistry = new Map();
 
@@ -212,6 +216,54 @@ function tickRoundTimers(playerState) {
   }
 }
 
+function tickOwnerTurnTimers(playerState) {
+  const state = ensureElementalState(playerState);
+  state.skillCooldowns = Object.fromEntries(
+    Object.entries(state.skillCooldowns || {}).map(([skillId, value]) => [skillId, Math.max(0, Number(value || 0) - 1)]),
+  );
+  state.statuses = state.statuses
+    .map((status) => {
+      if (status.durationTurnsRemaining != null) return status;
+      return { ...status, remainingRounds: Math.max(0, Number(status.remainingRounds || 0) - 1) };
+    })
+    .filter((status) => (status.durationTurnsRemaining != null || Number(status.remainingRounds) > 0) && Number(status.stacks || 0) > 0);
+  state.effects = state.effects
+    .map((effect) => {
+      if (effect.durationTurnsRemaining != null) return effect;
+      return {
+        ...effect,
+        remainingRounds: effect.remainingRounds == null ? null : Math.max(0, Number(effect.remainingRounds || 0) - 1),
+      };
+    })
+    .filter((effect) => {
+      const expiredByRound = effect.durationTurnsRemaining == null && effect.remainingRounds != null && Number(effect.remainingRounds) <= 0;
+      const expiredByCharges = Number(effect.chargesRemaining ?? 1) <= 0;
+      return !(expiredByRound || expiredByCharges);
+    });
+}
+
+function processOwnerTurnEffects({ playerState, ownerUserId, timing }) {
+  const state = ensureElementalState(playerState);
+  const logs = [];
+  state.statuses = state.statuses.filter((status) => {
+    if (status.durationTurnsRemaining == null || status.activationTiming !== timing) return true;
+    if (status.skipFirstTick) {
+      status.skipFirstTick = false;
+      return true;
+    }
+    if (status.effectType === "burn") {
+      const damage = Math.max(0, Math.round(Number(status.damagePerStack || 0) * Number(status.stacks || 0)));
+      if (damage > 0) {
+        playerState.battleHp.current = Math.max(0, Number(playerState?.battleHp?.current || 0) - damage);
+        logs.push(`🔥 Burn causou ${damage} em <@${ownerUserId}> (${playerState.battleHp.current}/${playerState.battleHp.max}).`);
+      }
+    }
+    status.durationTurnsRemaining = Math.max(0, Number(status.durationTurnsRemaining || 0) - 1);
+    return Number(status.durationTurnsRemaining) > 0 && Number(status.stacks || 0) > 0;
+  });
+  return logs;
+}
+
 module.exports = {
   ENABLE_ELEMENTAL_SKILLS,
   ENABLE_ELEMENTAL_SKILLS_IN_DEV,
@@ -219,6 +271,7 @@ module.exports = {
   ENABLE_ELEMENTAL_SKILLS_MRSKILL,
   ENABLE_ELEMENTAL_SKILLS_BATTLE,
   BATTLE_HOOK,
+  EFFECT_TIMING,
   ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER,
   ELEMENTAL_ADVANTAGE_MULTIPLIER,
   registerElementalRules,
@@ -236,4 +289,6 @@ module.exports = {
   getSkillCooldownRemaining,
   setSkillCooldown,
   tickRoundTimers,
+  tickOwnerTurnTimers,
+  processOwnerTurnEffects,
 };

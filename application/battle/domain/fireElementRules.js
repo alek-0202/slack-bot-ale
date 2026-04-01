@@ -8,6 +8,7 @@ const {
   getStatus,
   hasStatus,
   setSkillCooldown,
+  EFFECT_TIMING,
 } = require("./elementalRules");
 
 const SKILL_IDS = {
@@ -32,6 +33,10 @@ function applyBurn({ target, sourceUserId, damagePerStack, rounds, maxStacks = F
     maxStacks,
     damagePerStack: Math.max(0, Math.round(damagePerStack || 0)),
     remainingRounds: Math.max(1, Number(rounds) || 1),
+    durationTurnsRemaining: Math.max(1, Number(rounds) || 1),
+    activationTiming: EFFECT_TIMING.ON_OWNER_TURN_START,
+    skipFirstTick: true,
+    effectType: "burn",
   });
 }
 
@@ -183,6 +188,7 @@ const fireRules = {
       for (const [userId, player] of Object.entries(battle.players || {})) {
         const burnStatus = getStatus(player, FIRE_BURN_STATUS_ID);
         if (!burnStatus) continue;
+        if (burnStatus.durationTurnsRemaining != null) continue;
         const damage = Math.max(0, Math.round(Number(burnStatus.damagePerStack || 0) * Number(burnStatus.stacks || 0)));
         if (damage > 0) {
           player.battleHp.current = Math.max(0, Number(player.battleHp.current || 0) - damage);

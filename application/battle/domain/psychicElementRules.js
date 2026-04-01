@@ -189,10 +189,12 @@ const psychicRules = {
         const efficiency = getElementalEfficiencyMultiplier(attacker);
         const flat = Math.round(5 * stacks);
         const bonus = Math.round((Number(attacker?.stats?.magic || 0) * 0.05 * efficiency) + flat);
+        const before = Number(barrier.shieldCurrentHp || 0);
         barrier.shieldCurrentHp = Math.min(Number(barrier.shieldMaxHp || 0), Number(barrier.shieldCurrentHp || 0) + Math.round(Number(barrier.shieldMaxHp || 0) * 0.15));
+        const restored = Math.max(0, Math.round(Number(barrier.shieldCurrentHp || 0) - before));
         return {
           extraDamageFlat: bonus,
-          battleLog: `🧠 Energia Psíquica reforçou o on-hit (+${bonus}).`,
+          battleLog: `🧠 Energia Psíquica reforçou o on-hit (+${bonus})${restored > 0 ? ` e restaurou ${restored} da barreira.` : "."}`,
         };
       },
     },
@@ -206,8 +208,10 @@ const psychicRules = {
         barrier.psychicEnergyStacks = Math.max(0, Number(barrier.psychicEnergyStacks || 0) + 1);
         const missing = Math.max(0, Number(barrier.shieldMaxHp || 0) - Number(barrier.shieldCurrentHp || 0));
         const regen = Math.round(missing * 0.1);
+        const before = Number(barrier.shieldCurrentHp || 0);
         barrier.shieldCurrentHp = Math.min(Number(barrier.shieldMaxHp || 0), Number(barrier.shieldCurrentHp || 0) + regen);
-        logs.push(`🧠 Barreira Psíquica de <@${userId}> acumulou energia (${barrier.psychicEnergyStacks}).`);
+        const restored = Math.max(0, Math.round(Number(barrier.shieldCurrentHp || 0) - before));
+        logs.push(`🧠 Barreira Psíquica de <@${userId}> acumulou energia (${barrier.psychicEnergyStacks})${restored > 0 ? ` e recuperou ${restored}.` : "."}`);
       }
       return logs;
     },
