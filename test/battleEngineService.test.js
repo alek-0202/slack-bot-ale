@@ -177,6 +177,50 @@ test("ataque básico com 95% de crítico gera críticos perceptíveis em sequên
   }
 });
 
+test("passiva lendária aplicada via !applycodex é carregada no combate e ativa em on-hit", () => {
+  const battle = createBattle({
+    battleId: "B-passive",
+    channelId: "C-passive",
+    challengerId: "U1",
+    challengedId: "U2",
+  });
+  acceptInvite(battle);
+  assignSelectedPokemon(battle, "U1", {
+    ...mockPokemon({ id: 1, speciesId: 25, name: "Pikachu" }),
+    legendary_passive_id: "sobreposicao_elemental",
+    legendary_passive_code: "ABC123",
+    legendary_passive_efficiency: 0.9,
+    legendary_passive_values: { chancePct: 100, magicDamagePct: 50 },
+  });
+  assignSelectedPokemon(battle, "U2", mockPokemon({ id: 2, speciesId: 4, name: "Charmander", elementTypes: ["water"] }));
+  advanceSelectionState(battle);
+  advanceSelectionState(battle);
+  startBattle(battle);
+  battle.currentTurnUserId = "U1";
+
+  const originalRandom = Math.random;
+  let calls = 0;
+  Math.random = () => {
+    calls += 1;
+    if (calls === 1) return 0.5; // variância
+    if (calls === 2) return 0.9; // esquiva não ativa
+    if (calls === 3) return 0.9; // sem crítico
+    return 0.1; // ativa on-hit da passiva
+  };
+  try {
+    assert.equal(battle.players.U1.selectedPokemon.legendaryPassive?.passiveId, "sobreposicao_elemental");
+    const initialHp = battle.players.U2.battleHp.current;
+    const result = resolveBattleTurn({ battle, actorUserId: "U1", actionType: BATTLE_ACTION.ATTACK });
+    const finalHp = battle.players.U2.battleHp.current;
+    const dealt = initialHp - finalHp;
+
+    assert.equal(result.outcome.ok, true);
+    assert.ok(dealt > result.outcome.finalDamage);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
 test("dano em barreira registra absorção parcial e quebra no log", () => {
   const battle = createReadyBattle();
   battle.currentTurnUserId = "U1";
