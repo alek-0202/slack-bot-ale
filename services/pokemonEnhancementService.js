@@ -1,4 +1,5 @@
 const { getSupabaseClient } = require('../database/supabase');
+const { getRarityTier } = require('./economyService');
 const { createLogger } = require('../utils/logger');
 
 const logger = createLogger('pokemon-enhancement-service');
@@ -11,7 +12,28 @@ const EXTRA_STAT_CONFIG = Object.freeze({
 
 const EXTRA_STAT_UPGRADE_GOLD_COST = 10000;
 const EXTRA_STAT_UPGRADE_ESSENCE_COST = 500;
-const SHINY_TRANSFER_GOLD_COST = 5000000;
+const SHINY_TRANSFER_BASE_GOLD_COST = 5000000;
+const SHINY_TRANSFER_STEP_GOLD_COST = 5000000;
+const SHINY_TRANSFER_MAX_TARGET_RARITY = 'epic';
+const SHINY_TRANSFER_BLOCKED_TARGET_RARITIES = Object.freeze(['legendary', 'mythical']);
+
+function normalizeRarity(rarity) {
+  return String(rarity || '').trim().toLowerCase();
+}
+
+function isShinyTransferTargetRarityAllowed(rarity) {
+  const normalizedRarity = normalizeRarity(rarity);
+  if (!normalizedRarity) return true;
+  if (SHINY_TRANSFER_BLOCKED_TARGET_RARITIES.includes(normalizedRarity)) return false;
+  return getRarityTier(normalizedRarity) <= getRarityTier(SHINY_TRANSFER_MAX_TARGET_RARITY);
+}
+
+function calculateShinyTransferGoldCost({ sourceRarity, targetRarity }) {
+  const sourceTier = getRarityTier(normalizeRarity(sourceRarity));
+  const targetTier = getRarityTier(normalizeRarity(targetRarity));
+  const upwardTierDiff = Math.max(targetTier - sourceTier, 0);
+  return SHINY_TRANSFER_BASE_GOLD_COST + (upwardTierDiff * SHINY_TRANSFER_STEP_GOLD_COST);
+}
 
 function parseActionValue(value) {
   try { return JSON.parse(value); } catch { return null; }
@@ -27,7 +49,7 @@ async function transferShiny({ slackUserId, sourcePokemonId, targetPokemonId }) 
   if (error) throw error;
   const result = data?.[0];
   if (!result) return { ok: false, reason: 'unknown' };
-  logger.info('Transferência de shiny processada', { slackUserId, sourcePokemonId, targetPokemonId, ok: result.ok, reason: result.reason || null });
+  logger.info('Transferência de shiny processada', { slackUserId, sourcePokemonId, targetPokemonId, ok: result.ok, reason: result.reason || null, costGold: result.cost_gold || null });
   return result;
 }
 
@@ -39,7 +61,7 @@ async function getShinyTransferPreview({ slackUserId, sourcePokemonId, targetPok
     supabase.from('users').select('gold').eq('slack_user_id', slackUserId).maybeSingle(),
     supabase
       .from('user_pokemons')
-      .select('id, slack_user_id, shiny, pokemon_species(name)')
+      .select('id, slack_user_id, shiny, pokemon_species(name, rarity)')
       .in('id', [sourcePokemonId, targetPokemonId]),
   ]);
 
@@ -53,13 +75,24 @@ async function getShinyTransferPreview({ slackUserId, sourcePokemonId, targetPok
   }
   if (!source.shiny) return { ok: false, reason: 'source_not_shiny' };
   if (target.shiny) return { ok: false, reason: 'target_already_shiny' };
-  if (Number(user?.gold || 0) < SHINY_TRANSFER_GOLD_COST) return { ok: false, reason: 'insufficient_gold' };
+
+  const sourceRarity = source.pokemon_species?.rarity;
+  const targetRarity = target.pokemon_species?.rarity;
+  if (!isShinyTransferTargetRarityAllowed(targetRarity)) {
+    return { ok: false, reason: 'target_invalid_rarity' };
+  }
+
+  const costGold = calculateShinyTransferGoldCost({ sourceRarity, targetRarity });
+  if (Number(user?.gold || 0) < costGold) return { ok: false, reason: 'insufficient_gold', costGold };
 
   return {
     ok: true,
     sourceName: source.pokemon_species?.name || 'Pokémon',
     targetName: target.pokemon_species?.name || 'Pokémon',
     currentGold: Number(user?.gold || 0),
+    sourceRarity,
+    targetRarity,
+    costGold,
   };
 }
 
@@ -81,8 +114,13 @@ module.exports = {
   EXTRA_STAT_CONFIG,
   EXTRA_STAT_UPGRADE_GOLD_COST,
   EXTRA_STAT_UPGRADE_ESSENCE_COST,
-  SHINY_TRANSFER_GOLD_COST,
+  SHINY_TRANSFER_BASE_GOLD_COST,
+  SHINY_TRANSFER_STEP_GOLD_COST,
+  SHINY_TRANSFER_MAX_TARGET_RARITY,
+  SHINY_TRANSFER_BLOCKED_TARGET_RARITIES,
   parseActionValue,
+  calculateShinyTransferGoldCost,
+  isShinyTransferTargetRarityAllowed,
   getShinyTransferPreview,
   transferShiny,
   upgradePokemonExtraStat,

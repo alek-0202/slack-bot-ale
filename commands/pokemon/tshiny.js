@@ -1,19 +1,25 @@
 const {
-  SHINY_TRANSFER_GOLD_COST,
+  SHINY_TRANSFER_BASE_GOLD_COST,
   getShinyTransferPreview,
 } = require('../../services/pokemonEnhancementService');
 
 const TSHINY_CONFIRM_ACTION_ID = 'tshiny_transfer_confirm';
 const TSHINY_CANCEL_ACTION_ID = 'tshiny_transfer_cancel';
 
+function formatGold(value) {
+  return Number(value || 0).toLocaleString('pt-BR');
+}
+
 function buildTshinyResultMessage({ sourcePokemonId, targetPokemonId, result }) {
+  const costGold = Number(result?.costGold ?? result?.cost_gold ?? SHINY_TRANSFER_BASE_GOLD_COST);
   if (!result?.ok) {
     const map = {
       same_pokemon: 'Origem e destino precisam ser Pokémons diferentes.',
       pokemon_not_owned: 'Origem e destino precisam ser seus Pokémons.',
       source_not_shiny: 'O Pokémon de origem precisa ser shiny.',
       target_already_shiny: 'O Pokémon de destino já é shiny.',
-      insufficient_gold: `Gold insuficiente para transferir shiny. Custo: *${SHINY_TRANSFER_GOLD_COST.toLocaleString('pt-BR')}* gold.`,
+      target_invalid_rarity: 'Target inválido: apenas Pokémon de raridade épico para baixo podem receber transferência de shiny.',
+      insufficient_gold: `Gold insuficiente para transferir shiny. Custo: *${formatGold(costGold)}* gold.`,
     };
     return map[result.reason] || 'Não consegui transferir o shiny agora 😵';
   }
@@ -21,7 +27,7 @@ function buildTshinyResultMessage({ sourcePokemonId, targetPokemonId, result }) 
     `✨ Transferência concluída!\n` +
     `• Origem #${sourcePokemonId}: não shiny\n` +
     `• Destino #${targetPokemonId}: shiny normal\n` +
-    `💸 Custo: *${SHINY_TRANSFER_GOLD_COST.toLocaleString('pt-BR')}* gold`
+    `💸 Custo: *${formatGold(costGold)}* gold`
   );
 }
 
@@ -63,7 +69,7 @@ module.exports = {
               `⚠️ *Confirmar transferência de shiny*\n` +
               `• Origem: *${preview.sourceName}* (#${sourcePokemonId})\n` +
               `• Destino: *${preview.targetName}* (#${targetPokemonId})\n` +
-              `• Custo: *${SHINY_TRANSFER_GOLD_COST.toLocaleString('pt-BR')}* gold\n` +
+              `• Custo: *${formatGold(preview.costGold)}* gold\n` +
               `• Seu saldo: *${Number(preview.currentGold || 0).toLocaleString('pt-BR')}* gold\n\n` +
               `❗ Esta ação é *irreversível*.\n` +
               `✨ Shiny *prime* da origem será convertido em shiny *normal* no destino.`,
