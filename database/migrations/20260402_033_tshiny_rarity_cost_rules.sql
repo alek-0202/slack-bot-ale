@@ -1,3 +1,5 @@
+drop function if exists public.transfer_pokemon_shiny(text, bigint, bigint);
+
 create or replace function public.transfer_pokemon_shiny(
   p_slack_user_id text,
   p_source_pokemon_id bigint,
