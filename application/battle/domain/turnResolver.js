@@ -33,6 +33,13 @@ const { GHOST_SKILLS, GHOST_EFFECT_ETHEREAL, GHOST_EFFECT_CURSE, GHOST_EFFECT_SH
 const { consumeSkillEnergy, restoreSkillEnergy, ensureSkillEnergyState } = require("./skillEnergy");
 const { validateSkillActionRequest } = require("./skillActionValidator");
 const { tickOwnerTurnTimers, processOwnerTurnEffects, EFFECT_TIMING } = require("./elementalRules");
+const {
+  onTurnStart: applyLegendaryTurnStart,
+  onOutgoingDamage: applyLegendaryOutgoingDamage,
+  onDamageTaken: applyLegendaryDamageTaken,
+  consumeRetaliationOnAttack,
+  rememberLastMagic,
+} = require('./legendaryPassiveEngine');
 
 
 function consumeBattleEnergy({ battle, userId, amount }) {
@@ -232,7 +239,7 @@ function logBattleDebug(event, payload) {
   console.debug(`[battle-debug] ${event}`, payload);
 }
 
-function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDamage }) {
+function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDamage, isMagic = false, isSuperEffective = false, attackElement = null }) {
   const before = applyBeforeDamageHooks({ battle, attackerId, defenderId, damage: initialDamage });
   const onHit = applyOnHitHooks({ battle, attackerId, defenderId, damage: before.finalDamage });
   let finalDamage = Math.max(0, Number(onHit.finalDamage || 0));
@@ -278,7 +285,28 @@ function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDama
       effect.psychicEnergyStacks = 0;
     }
   }
+  const legendaryOutgoing = applyLegendaryOutgoingDamage({
+    battle,
+    attackerId,
+    defenderId,
+    damage: finalDamage,
+    isMagic,
+    logs: [],
+    isSuperEffective,
+  });
+  finalDamage = Math.max(0, Number(legendaryOutgoing.damage || finalDamage));
+  onHit.logs.push(...(legendaryOutgoing.logs || []));
+
   defender.battleHp.current = Math.max(0, defender.battleHp.current - finalDamage);
+  const legendaryTakenLogs = applyLegendaryDamageTaken({
+    battle,
+    attackerId,
+    defenderId,
+    damage: finalDamage,
+    logs: [],
+    attackElement,
+  });
+  onHit.logs.push(...(legendaryTakenLogs || []));
   const shadowMark = (ensureElementalState(defender).effects || []).find((effect) => effect.id === GHOST_EFFECT_SHADOW_MARK && effect.sourceUserId === attackerId);
   if (shadowMark && finalDamage > 0) {
     const attacker = battle.players?.[attackerId];
@@ -387,6 +415,8 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     timing: EFFECT_TIMING.ON_OWNER_TURN_START,
   });
   if (ownerStartLogs.length) mergeRoundLogs(battle, ownerStartLogs);
+  const legendaryTurnStartLogs = applyLegendaryTurnStart({ battle, actorId: actorUserId, logs: [] });
+  if (legendaryTurnStartLogs.length) mergeRoundLogs(battle, legendaryTurnStartLogs);
 
   const actionStart = evaluateActionStartModifiers({ battle, actorId: actorUserId, actionType });
   const actorRhythm = ensureElementalState(battle.players?.[actorUserId]).effects?.find((effect) => effect.id === FIGHTING_EFFECT_RHYTHM);
@@ -613,6 +643,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         lastMagicName: regularMagic?.name || null,
       };
 
+      rememberLastMagic({ battle, actorId: actorUserId, baseDamage: result.normalDamage });
       mergeRoundLogs(battle, damageWithHooks.logs, `✨ <@${actorUserId}> usou ${regularMagic?.name || "magia"} em <@${defenderId}>.`);
       const resolvedAction = buildResolvedActionPayload({
         battle,
@@ -735,6 +766,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       mergeRoundLogs(battle, multi.logs);
       multiTargetApplied = multi.applied;
     }
+    rememberLastMagic({ battle, actorId: actorUserId, baseDamage: castResult.baseDamage || castResult.normalDamage || castResult.damageDealt || 0 });
     if (castResult.damageDealt != null) {
       if (castResult.consumeStanceRelease) {
         castResult.damageDealt += consumeStanceReleaseBonus(attacker);
@@ -750,6 +782,9 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
           attackerId: actorUserId,
           defenderId,
           initialDamage: castResult.damageDealt,
+          isMagic: true,
+          isSuperEffective: Number(resolveElementalDamageRule({ attackElement: magicAction.element, defenderElements: defender.selectedPokemon?.elementTypes || [] }).multiplier || 1) > 1,
+          attackElement: magicAction?.element || null,
         });
         castResult.damageDealt = hooksDamage.finalDamage;
         castResult.shieldAbsorbedDamage = Number(hooksDamage.shieldAbsorbedDamage || 0);
@@ -896,6 +931,9 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       attackerId: actorUserId,
       defenderId,
       initialDamage: result.finalDamage,
+      isMagic: false,
+      isSuperEffective: false,
+      attackElement: null,
     });
     const defenderArmor = ensureElementalState(defender).effects?.find((effect) => effect.id === ICE_EFFECT_ARMOR);
     if (defenderArmor?.retaliationApplyGelid) {
@@ -905,7 +943,8 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     const defenderFighting = applyFightingDefensiveState({ player: defender, damageTaken: damageWithHooks.finalDamage });
     if (defenderFighting.logs.length) mergeRoundLogs(battle, defenderFighting.logs);
 
-    mergeRoundLogs(battle, damageWithHooks.logs, `⚔️ <@${actorUserId}> atacou <@${defenderId}>.`);
+    const retaliationLogs = consumeRetaliationOnAttack({ battle, attackerId: actorUserId, logs: [] });
+    mergeRoundLogs(battle, damageWithHooks.logs, retaliationLogs, `⚔️ <@${actorUserId}> atacou <@${defenderId}>.`);
     const defenderEffects = ensureElementalState(defender).effects || [];
     const forestThorn = defenderEffects.find((effect) => effect.id === GRASS_EFFECT_FOREST_THORN);
     if (ENABLE_ELEMENTAL_SKILLS_BATTLE && forestThorn?.reflectOnCommonAttack) {

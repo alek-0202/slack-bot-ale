@@ -45,7 +45,7 @@ async function insertUserPokemon({
       is_battle_available: false,
       is_favorite: false,
     })
-    .select("id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite")
+    .select("id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, legendary_passive_id, legendary_passive_code, legendary_passive_values, legendary_passive_efficiency")
     .single();
 
   if (error) throw error;
@@ -83,7 +83,7 @@ async function getUserPokemonPage(slackUserId, index) {
   const { data, count, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, pokemon_species(id, name, sprite_url, rarity, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
+      "id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, legendary_passive_id, legendary_passive_code, legendary_passive_values, legendary_passive_efficiency, pokemon_species(id, name, sprite_url, rarity, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
       
       { count: "exact" },
     )
@@ -107,7 +107,7 @@ async function getUserPokemonById(slackUserId, pokemonId) {
   const { data, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, slack_user_id, species_id, level, shiny, shiny_type, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
+      "id, slack_user_id, species_id, level, shiny, shiny_type, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, legendary_passive_id, legendary_passive_code, legendary_passive_values, legendary_passive_efficiency, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
     )
     .eq("id", pokemonId)
     .eq("slack_user_id", slackUserId)
@@ -125,7 +125,7 @@ async function getUserPokemonsByIds(slackUserId, pokemonIds) {
   const { data, error } = await supabase
     .from("user_pokemons")
     .select(
-      "id, slack_user_id, species_id, level, shiny, shiny_type, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
+      "id, slack_user_id, species_id, level, shiny, shiny_type, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, legendary_passive_id, legendary_passive_code, legendary_passive_values, legendary_passive_efficiency, pokemon_species(id, name, rarity, base_value, sprite_url, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
     )
     .eq("slack_user_id", slackUserId)
     .in("id", safeIds);
@@ -142,7 +142,7 @@ async function getUserPokemons(slackUserId, options = {}) {
   let query = supabase
     .from("user_pokemons")
     .select(
-      "id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, pokemon_species(id, name, sprite_url, rarity, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
+      "id, species_id, level, shiny, shiny_type, attack_iv, magic_iv, defense_iv, hp_iv, speed_iv, crit_level, dodge_level, elemental_level, attack, magic, defense, hp, current_hp, speed, source, captured_at, upgrade_spent_gold, book_bonus_attack, book_bonus_magic, book_bonus_defense, book_bonus_hp, book_bonus_speed, is_battle_available, is_favorite, legendary_passive_id, legendary_passive_code, legendary_passive_values, legendary_passive_efficiency, pokemon_species(id, name, sprite_url, rarity, element_types, evolves_to, evolution_stage, base_attack, base_magic, base_defense, base_hp, base_speed)",
     )
     .eq("slack_user_id", slackUserId);
 
@@ -255,7 +255,7 @@ async function setPokemonFavorite(slackUserId, pokemonId, isFavorite) {
     .update({ is_favorite: Boolean(isFavorite) })
     .eq("id", pokemonId)
     .eq("slack_user_id", slackUserId)
-    .select("id, is_favorite")
+    .select("id, is_favorite, legendary_passive_id, legendary_passive_code, legendary_passive_values, legendary_passive_efficiency")
     .maybeSingle();
 
   if (error) throw error;

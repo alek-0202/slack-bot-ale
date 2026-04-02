@@ -8,6 +8,7 @@ const {
 } = require("../adapters/slack/renderers/pokemonVisualBlocks");
 const { createLogger } = require("../utils/logger");
 const { IV_STAT_RANGES } = require("./pokemonStatsService");
+const { PASSIVE_DEFINITIONS } = require("./legendaryPassiveRegistry");
 
 const POKEDEX_NAV_PREV_ACTION_ID = "pokedex_navigate_prev";
 const POKEDEX_NAV_NEXT_ACTION_ID = "pokedex_navigate_next";
@@ -108,6 +109,10 @@ async function buildPokedexMessage({
   const quantitySuffix = entry.quantity > 1 ? ` (x${entry.quantity})` : "";
   const idsText = entry.quantity > 1 ? entry.pokemonIds.join(", ") : `${entry.id}`;
 
+  const legendaryPassiveName = entry.legendary_passive_id
+    ? (PASSIVE_DEFINITIONS[entry.legendary_passive_id]?.name || entry.legendary_passive_id)
+    : null;
+
   const attributesText = isAttributesMode
     ? (() => {
       const atkIv = Number(entry.attack_iv || 0);
@@ -135,6 +140,7 @@ async function buildPokedexMessage({
     `🏅 Raridade: *${species.rarity || "desconhecida"}*\n` +
     `${buildPokemonTypesLabel(species.element_types) ? `🧪 ${buildPokemonTypesLabel(species.element_types)}\n` : ""}` +
     `🏷️ Origem: *${entry.source || "capture"}*\n` +
+    `${legendaryPassiveName ? `🜂 Passiva Lendária: *${legendaryPassiveName}*\n` : ""}` +
     `${entry.grouped ? "📦 Grupo: *instâncias equivalentes (Lv 1)*\n" : ""}` +
     `🎯 Captura #${entry.id}${shinyTag}${favoriteTag}${attributesText}`;
 
