@@ -6,6 +6,13 @@ const FUSION_ITEMS = Object.freeze({
     useCommand: '!reroll <id>',
     costs: [{ itemKey: 'common_fragment', quantity: 5 }],
   },
+  legendary_tome: {
+    itemKey: 'legendary_tome',
+    itemName: 'Tomo Lendário',
+    description: 'Gera uma passiva lendária aleatória com roll de eficiência única (use !usetomo).',
+    useCommand: '!usetomo',
+    costs: [{ itemKey: 'legendary_fragment', quantity: 3 }],
+  },
   prism_shiny: {
     itemKey: 'prism_shiny',
     itemName: 'Prisma',

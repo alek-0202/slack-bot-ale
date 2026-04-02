@@ -3,6 +3,7 @@ const { createLogger } = require("../../utils/logger");
 const { getOwnedPokemonById } = require("../../services/pokemonLookupService");
 const { buildPokemonTypesLabel } = require("../../services/pokemonTypeService");
 const { buildPokemonStatAudit, IV_STAT_RANGES } = require("../../services/pokemonStatsService");
+const { PASSIVE_DEFINITIONS } = require("../../services/legendaryPassiveRegistry");
 const {
   buildPokemonVisualBlocks,
   buildPokemonVisualSummary,
@@ -125,6 +126,8 @@ module.exports = {
           ? `\n📘 *Livro do Ancião:* ⚔️ +${pokemon.book_bonus_attack || 0} | ✨ +${pokemon.book_bonus_magic || 0} | 🛡️ +${pokemon.book_bonus_defense || 0} | ❤️ +${pokemon.book_bonus_hp || 0} | 💨 +${pokemon.book_bonus_speed || 0}`
           : "";
       const sign = (value) => `${Number(value || 0) >= 0 ? "+" : ""}${Number(value || 0)}`;
+      const legendaryPassiveName = pokemon.legendary_passive_id ? (PASSIVE_DEFINITIONS[pokemon.legendary_passive_id]?.name || pokemon.legendary_passive_id) : null;
+      const legendaryPassiveLine = legendaryPassiveName ? `\n🜂 *Passiva Lendária:* ${legendaryPassiveName}` : "";
 
       await say({
         text: `Consulta do Pokémon ID ${pokemonId}`,
@@ -149,7 +152,8 @@ module.exports = {
                 finalEvolutionLabel +
                 rarityLabel +
                 typesLabel +
-                shinyLabel,
+                shinyLabel +
+                legendaryPassiveLine,
             },
             ...(visualBlocks.accessory ? { accessory: visualBlocks.accessory } : {}),
           },

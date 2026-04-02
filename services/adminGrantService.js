@@ -57,10 +57,15 @@ async function grantDungeonBag(slackUserId, amount) {
   return addItem(slackUserId, 'dungeon_60_supply_bag', amount);
 }
 
+async function grantFragment(slackUserId, itemKey, amount) {
+  return addItem(slackUserId, itemKey, amount);
+}
+
 module.exports = {
   grantGold,
   grantEnergy,
   grantPokeballC,
   grantAncientBook,
   grantDungeonBag,
+  grantFragment,
 };

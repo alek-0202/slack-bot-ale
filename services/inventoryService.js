@@ -65,6 +65,12 @@ const ITEM_CATALOG = {
     description: 'Consumível para transformar em SHINE normal com `!transform <id>`.',
     extraData: { kind: 'consumable', category: 'fusion', command: '!transform' },
   },
+  legendary_tome: {
+    itemKey: 'legendary_tome',
+    itemName: 'Tomo Lendário',
+    description: 'Consumível. Use `!usetomo` para gerar uma passiva lendária aleatória no seu códex.',
+    extraData: { kind: 'consumable', category: 'fusion', command: '!usetomo' },
+  },
   prism_prime: {
     itemKey: 'prism_prime',
     itemName: 'Prisma PRIME',
