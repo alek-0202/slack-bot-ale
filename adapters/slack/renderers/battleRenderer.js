@@ -4,6 +4,8 @@ const { getAvailableElementalSkills } = require("../../../application/battle/dom
 const { canUseSkillAction } = require("../../../application/battle/domain/skillActionValidator");
 const { sanitizeResolvedAction } = require("../../../application/battle/domain/resolvedAction");
 const { describeEffectGameplayImpact, normalizeEffectKey } = require("../../../application/battle/domain/effectDetailsRegistry");
+const { PASSIVE_DEFINITIONS } = require("../../../services/legendaryPassiveRegistry");
+const { getPassiveDetailsText } = require("../../../application/battle/domain/legendaryPassiveEngine");
 const { getLevelBorderStyle } = require("./pokemonVisualTier");
 
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
@@ -347,6 +349,18 @@ function collectBattleActiveEffectDetails(battle = {}, laneIds = {}) {
 
   for (const userId of playerIds) {
     const player = battle?.players?.[userId] || {};
+    const passive = player?.selectedPokemon?.legendaryPassive;
+    if (passive?.passiveId) {
+      const passiveKey = `legendary_passive_${passive.passiveId}`;
+      if (!unique.has(passiveKey)) {
+        unique.set(passiveKey, {
+          id: passiveKey,
+          key: passiveKey,
+          name: `Passiva Lendária — ${PASSIVE_DEFINITIONS[passive.passiveId]?.name || passive.passiveId}`,
+          description: getPassiveDetailsText(player) || "passiva lendária ativa.",
+        });
+      }
+    }
     const effectEntries = (player?.elementalState?.effects || [])
       .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0)
       .map((effect) => ({
@@ -440,7 +454,12 @@ function classifySummaryLane(entry, laneIds) {
 }
 
 function compactCombatLogLine(line) {
-  const cleaned = String(line).replace(/\s+/g, " ").trim();
+  const rawLine = typeof line === "object"
+    ? (line?.message || line?.text || line?.detail || JSON.stringify(line))
+    : line;
+  const cleaned = String(rawLine).replace(/\s+/g, " ").trim();
+  if (!cleaned) return "Extra: —";
+  if (/^Passiva Lendária:/i.test(cleaned)) return cleaned;
   const skillMatch = cleaned.match(/(🔥|❄️|🌨️|⚡|🌩️|🧲|💧|🌊|🌀|🌿|🌱|🧠|💫|🛡️|👻|🕯️|🌑|🥊|💥)\s*([^:.\n]+)(?::|\.)?/);
   if (skillMatch) {
     const icon = skillMatch[1];

@@ -52,8 +52,8 @@ test('blindagem reativa registra ativação, escudo e cooldown com marcador de p
   const logs = onDamageTaken({ battle, attackerId: 'U2', defenderId: 'U1', damage: 60, logs: [] });
 
   const rendered = formatBattleLogForSlack({ battle, lines: logs, title: 'LOG' });
-  assert.match(rendered, /\*Blindagem Reativa\* \[Passiva Lendária\]: gerou escudo de 30\./);
-  assert.match(rendered, /\*Blindagem Reativa\* \[Passiva Lendária\]: cooldown iniciado: 5 turno\(s\)\./);
+  assert.match(rendered, /Passiva Lendária: Gerou escudo de 30 por 1 turno\(s\)\./);
+  assert.match(rendered, /Passiva Lendária: Blindagem Reativa em cooldown por 5 turno\(s\)\./);
 });
 
 test('colapso elemental e sangue adaptativo exibem stacks com marcador de passiva lendária', () => {
@@ -67,8 +67,8 @@ test('colapso elemental e sangue adaptativo exibem stacks com marcador de passiv
     isSuperEffective: true,
     logs: [],
   });
-  assert.match(JSON.stringify(out.logs), /Execute \+1/);
-  assert.match(JSON.stringify(out.logs), /\[Passiva Lendária\]/);
+  assert.match(JSON.stringify(out.logs), /EXECUTE \+1/);
+  assert.match(JSON.stringify(out.logs), /Passiva Lendária:/);
 
   const battleDef = createBattleWithPassive('sangue_adaptativo', { maxStacks: 3, resistPerStackPct: 8 });
   const takenLogs = onDamageTaken({
@@ -79,8 +79,8 @@ test('colapso elemental e sangue adaptativo exibem stacks com marcador de passiv
     attackElement: 'fire',
     logs: [],
   });
-  assert.match(JSON.stringify(takenLogs), /Resistência Adaptativa \+1/);
-  assert.match(JSON.stringify(takenLogs), /stack\(s\)/);
+  assert.match(JSON.stringify(takenLogs), /Resistência ao elemento fire aumentada/);
+  assert.match(JSON.stringify(takenLogs), /\[stack 1\]/);
 });
 
 test('último suspiro mostra cooldown restante no início do turno', () => {
@@ -90,6 +90,6 @@ test('último suspiro mostra cooldown restante no início do turno', () => {
   battle.players.U1.battleHp.current = 1;
 
   const logs = onTurnStart({ battle, actorId: 'U1', logs: [] });
-  assert.match(JSON.stringify(logs), /cooldown restante: 2 rodada\(s\)/);
-  assert.match(JSON.stringify(logs), /Ovo do Titã/);
+  assert.match(JSON.stringify(logs), /cooldown: 2 rodada\(s\)/);
+  assert.match(JSON.stringify(logs), /Ovo regenerou/);
 });
