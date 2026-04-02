@@ -1,6 +1,7 @@
 const { ensureElementalState, addOrRefreshEffect } = require('./elementalRules');
 
 const EXECUTE_STATUS_ID = 'legendary_execute';
+const LEGENDARY_PASSIVE_TAG = '[Passiva Lendária]';
 
 function getPassiveRuntime(player) {
   if (!player) return null;
@@ -23,6 +24,25 @@ function pct(value) {
 function addLog(ctx, text) {
   if (!text) return;
   ctx.logs.push(text);
+}
+
+function formatLegendaryPassiveLine(label, detail = null) {
+  return detail
+    ? `✨ *${label}* ${LEGENDARY_PASSIVE_TAG}: ${detail}`
+    : `✨ *${label}* ${LEGENDARY_PASSIVE_TAG}`;
+}
+
+function pushPassiveLog(logs, { passiveId: eventPassiveId = null, label, detail = null, effectType = null }) {
+  if (!Array.isArray(logs) || !label) return;
+  const message = formatLegendaryPassiveLine(label, detail);
+  logs.push({
+    kind: 'legendary_passive',
+    passiveId: eventPassiveId,
+    effectType,
+    label,
+    detail,
+    message,
+  });
 }
 
 function ensureExecuteStatus(defender) {
@@ -73,11 +93,37 @@ function onTurnStart({ battle, actorId, logs = [] }) {
   const runtime = getPassiveRuntime(player);
   runtime.turnCounter = Number(runtime.turnCounter || 0) + 1;
 
-  if (runtime.blindagemCd > 0) runtime.blindagemCd -= 1;
+  if (runtime.blindagemCd > 0) {
+    runtime.blindagemCd -= 1;
+    if (passive.passiveId === 'blindagem_reativa') {
+      pushPassiveLog(logs, {
+        passiveId: passive.passiveId,
+        effectType: 'cooldown_tick',
+        label: 'Blindagem Reativa',
+        detail: `cooldown restante: ${runtime.blindagemCd} turno(s).`,
+      });
+    }
+  }
+  if (runtime.ultimoSuspiroCd > 0) {
+    runtime.ultimoSuspiroCd -= 1;
+    if (passive.passiveId === 'ultimo_suspiro') {
+      pushPassiveLog(logs, {
+        passiveId: passive.passiveId,
+        effectType: 'cooldown_tick',
+        label: 'Último Suspiro do Titã',
+        detail: `cooldown restante: ${runtime.ultimoSuspiroCd} rodada(s).`,
+      });
+    }
+  }
   if (runtime.mimicTurns > 0 && opponent?.battleHp?.current > 0) {
     const mimicDamage = Math.max(1, Math.round(Number(player?.stats?.attack || 1) * 0.35));
     opponent.battleHp.current = Math.max(0, Number(opponent.battleHp.current || 0) - mimicDamage);
-    logs.push(`🪞 Mímico dimensional atacou e causou ${mimicDamage}.`);
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'summon_attack',
+      label: 'Mímico Dimensional',
+      detail: `causou ${mimicDamage} de dano automático.`,
+    });
     runtime.mimicTurns -= 1;
   }
 
@@ -89,7 +135,12 @@ function onTurnStart({ battle, actorId, logs = [] }) {
       const bonusDamage = Math.max(1, Math.round(Number(runtime.lastMagic.baseDamage || 0) * pct(passive.values.efficacyPct)));
       if (opponent) {
         opponent.battleHp.current = Math.max(0, Number(opponent.battleHp.current || 0) - bonusDamage);
-        logs.push(`⏳ Paradoxo Temporal repetiu habilidade e causou ${bonusDamage}.`);
+        pushPassiveLog(logs, {
+          passiveId: passive.passiveId,
+          effectType: 'skill_repeat',
+          label: 'Paradoxo Temporal',
+          detail: `repetiu habilidade e causou ${bonusDamage}.`,
+        });
       }
     }
   }
@@ -97,7 +148,12 @@ function onTurnStart({ battle, actorId, logs = [] }) {
   if (passive.passiveId === 'ultimo_suspiro' && runtime.eggActive) {
     const heal = Math.max(1, Math.round(Number(player?.battleHp?.max || 0) * 0.08));
     player.battleHp.current = Math.min(Number(player?.battleHp?.max || 0), Number(player?.battleHp?.current || 0) + heal);
-    logs.push(`🥚 Ovo do Titã regenerou ${heal} HP.`);
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'heal',
+      label: 'Ovo do Titã',
+      detail: `regenerou ${heal} HP.`,
+    });
   }
 
   return logs;
@@ -122,18 +178,33 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
     const splashTargetId = Object.keys(battle.players || {}).find((id) => id !== attackerId && id !== defenderId);
     if (splashTargetId && battle.players[splashTargetId]) {
       battle.players[splashTargetId].battleHp.current = Math.max(0, Number(battle.players[splashTargetId].battleHp.current || 0) - transfer);
-      logs.push(`☠️ Vínculo de Ruína transferiu ${transfer} para alvo secundário.`);
+      pushPassiveLog(logs, {
+        passiveId: passive.passiveId,
+        effectType: 'resource_transfer',
+        label: 'Vínculo de Ruína',
+        detail: `transferiu ${transfer} para alvo secundário.`,
+      });
     } else {
       const trueDamage = Math.max(1, Math.round(Number(defender?.battleHp?.max || 0) * pct(passive.values.trueDamagePctTargetMaxHp)));
       defender.battleHp.current = Math.max(0, Number(defender.battleHp.current || 0) - trueDamage);
-      logs.push(`☠️ Vínculo de Ruína causou ${trueDamage} de dano verdadeiro adicional.`);
+      pushPassiveLog(logs, {
+        passiveId: passive.passiveId,
+        effectType: 'bonus_damage',
+        label: 'Vínculo de Ruína',
+        detail: `causou ${trueDamage} de dano verdadeiro adicional.`,
+      });
     }
   }
 
   if (passive.passiveId === 'sobreposicao_elemental' && Math.random() < pct(passive.values.chancePct)) {
     const extra = Math.max(1, Math.round(Number(attacker?.stats?.magic || 1) * pct(passive.values.magicDamagePct)));
     defender.battleHp.current = Math.max(0, Number(defender?.battleHp?.current || 0) - extra);
-    logs.push(`🧪 Sobreposição Elemental causou ${extra} de dano on-hit adicional.`);
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'bonus_damage',
+      label: 'Sobreposição Elemental',
+      detail: `causou ${extra} de dano on-hit adicional.`,
+    });
   }
 
   if (passive.passiveId === 'marca_juizo') {
@@ -144,27 +215,47 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
       status.marcaJuizoStacks = 0;
       const explode = Math.max(1, Math.round(Number(defender?.battleHp?.max || 0) * pct(passive.values.explosionPctTargetMaxHp)));
       defender.battleHp.current = Math.max(0, Number(defender.battleHp.current || 0) - explode);
-      logs.push(`💥 Marca do Juízo Final explodiu por ${explode}.`);
+      pushPassiveLog(logs, {
+        passiveId: passive.passiveId,
+        effectType: 'execute_trigger',
+        label: 'Marca do Juízo Final',
+        detail: `explodiu por ${explode}.`,
+      });
     }
   }
 
   if (passive.passiveId === 'dominio_elemental' && isSuperEffective) {
     const heal = Math.max(1, Math.round(finalDamage * pct(passive.values.healPct)));
     attacker.battleHp.current = Math.min(Number(attacker?.battleHp?.max || 0), Number(attacker?.battleHp?.current || 0) + heal);
-    logs.push(`🌟 Domínio Elemental curou ${heal} HP.`);
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'heal',
+      label: 'Domínio Elemental',
+      detail: `curou ${heal} HP.`,
+    });
   }
 
   if (passive.passiveId === 'colapso_elemental' && isSuperEffective) {
     const execute = ensureExecuteStatus(defender);
     execute.maxStacks = Math.max(1, Number(passive.values.maxExecuteStacks || 7));
     execute.stacks = Math.min(execute.maxStacks, Number(execute.stacks || 0) + 1);
-    logs.push(`⚖️ Execute aplicado: ${execute.stacks}/${execute.maxStacks} stacks.`);
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'stacks_gain',
+      label: 'Execute +1',
+      detail: `${execute.stacks}/${execute.maxStacks} stacks.`,
+    });
   }
 
   if (passive.passiveId === 'eco_arcano' && isMagic && Math.random() < pct(passive.values.chancePct)) {
     const echo = Math.max(1, Math.round(finalDamage * pct(passive.values.echoDamagePct)));
     defender.battleHp.current = Math.max(0, Number(defender?.battleHp?.current || 0) - echo);
-    logs.push(`🔁 Eco Arcano repetiu a habilidade e causou ${echo}.`);
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'skill_repeat',
+      label: 'Eco Arcano ativado',
+      detail: `repetiu a habilidade e causou ${echo}.`,
+    });
   }
 
   if (passive.passiveId === 'ascensao_crescente' && isMagic) {
@@ -173,13 +264,24 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
     attacker.stats.attack = Math.max(1, Math.round(Number(attacker.stats.attack || 1) * mul));
     attacker.stats.magic = Math.max(1, Math.round(Number(attacker.stats.magic || 1) * mul));
     attacker.stats.defense = Math.max(0, Math.round(Number(attacker.stats.defense || 0) * mul));
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'buff_apply',
+      label: 'Ascensão Crescente',
+      detail: `bônus acumulado em ${Math.round(Number(runtime.ascensaoBonusPct || 0))}%.`,
+    });
   }
 
   if (passive.passiveId === 'essencia_vampirica' && isMagic) {
     const lifeSteal = Math.max(1, Math.round(finalDamage * pct(passive.values.lifeStealPct)));
     attacker.battleHp.current = Math.min(Number(attacker.battleHp.max || 0), Number(attacker.battleHp.current || 0) + lifeSteal);
     attacker.skillEnergy = Math.min(Number(attacker.skillEnergyMax || 300), Number(attacker.skillEnergy || 0) + Math.round(finalDamage * pct(passive.values.resourceStealPct)));
-    logs.push(`🩸 Essência Vampírica drenou ${lifeSteal} de vida.`);
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'heal_resource_steal',
+      label: 'Essência Vampírica',
+      detail: `drenou ${lifeSteal} de vida e converteu energia.`,
+    });
   }
 
   return { damage: finalDamage, logs };
@@ -200,7 +302,12 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
       runtime.retaliationCounter = 0;
       const add = Math.round(Number(damage || 0) * pct(passive.values.conversionPct));
       runtime.retaliationStored = Math.min(cap, Number(runtime.retaliationStored || 0) + add);
-      logs.push(`🧱 Núcleo Primordial armazenou ${add} dano.`);
+      pushPassiveLog(logs, {
+        passiveId: passive.passiveId,
+        effectType: 'stacks_gain',
+        label: 'Núcleo Primordial',
+        detail: `armazenou ${add} de dano.`,
+      });
     }
   }
 
@@ -213,7 +320,18 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
       remainingRounds: Number(passive.values.durationTurns || 1),
       shieldCurrentHp: shield,
     });
-    logs.push(`🛡️ Blindagem Reativa criou escudo de ${shield}.`);
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'shield_apply',
+      label: 'Blindagem Reativa',
+      detail: `gerou escudo de ${shield}.`,
+    });
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'cooldown_start',
+      label: 'Blindagem Reativa',
+      detail: `cooldown iniciado: ${runtime.blindagemCd} turno(s).`,
+    });
   }
 
   if (passive.passiveId === 'sangue_adaptativo' && attackElement) {
@@ -232,6 +350,12 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
       remainingRounds: 2,
       incomingDamageTakenMultiplier: Math.max(0.4, reduction),
     });
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'debuff_apply',
+      label: `Resistência Adaptativa +1`,
+      detail: `${runtime.sangueStacks} stack(s) contra ${attackElement}.`,
+    });
   }
 
   if (passive.passiveId === 'espirito_sobrevivencia') {
@@ -243,7 +367,12 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
       defender.battleHp.current = Math.min(defender.battleHp.max, Number(defender.battleHp.current || 0) + Math.round(Number(defender.battleHp.max || 0) * 0.2));
       defender.stats.attack = Math.max(1, Math.round(Number(defender.stats.attack || 1) * 0.85));
       defender.stats.magic = Math.max(1, Math.round(Number(defender.stats.magic || 1) * 0.85));
-      logs.push(`💚 Espírito de Sobrevivência ativou (+${bonus} HP máximo).`);
+      pushPassiveLog(logs, {
+        passiveId: passive.passiveId,
+        effectType: 'buff_apply',
+        label: 'Espírito de Sobrevivência',
+        detail: `ativou e concedeu +${bonus} HP máximo.`,
+      });
     }
   }
 
@@ -251,11 +380,27 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
     runtime.eggActive = true;
     runtime.ultimoSuspiroCd = Number(passive.values.cooldownRounds || 20);
     defender.battleHp.current = Math.max(1, Math.round(Number(defender.battleHp.max || 0) * pct(passive.values.eggHpPct)));
-    logs.push('🥚 Último Suspiro do Titã ativou: o lendário virou ovo e evitou a morte.');
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'revive',
+      label: 'Último Suspiro do Titã',
+      detail: 'ativou, virou ovo e evitou a morte.',
+    });
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'cooldown_start',
+      label: 'Último Suspiro do Titã',
+      detail: `cooldown iniciado: ${runtime.ultimoSuspiroCd} rodada(s).`,
+    });
   }
 
   if (checkExecuteThreshold(defender)) {
-    logs.push('⚖️ Execute finalizou o alvo automaticamente.');
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'execute_trigger',
+      label: 'Execute',
+      detail: 'finalizou o alvo automaticamente.',
+    });
   }
 
   if (passive.passiveId === 'regencia_absoluta' && attacker && Math.random() < 0.2) {
@@ -268,7 +413,12 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
     defender.stats.magic = Math.max(1, Math.round(Number(defender.stats.magic || 1) * bonus));
     defender.stats.defense = Math.max(0, Math.round(Number(defender.stats.defense || 0) * bonus));
     if (pick === 'imortal') addOrRefreshEffect(defender, { id: 'legendary_immortal_round', name: 'Imortal', remainingRounds: 1, antiExecute: true, preventFatal: true });
-    logs.push(`👑 Regência Absoluta ativou buff: ${pick}.`);
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'buff_apply',
+      label: 'Regência Absoluta',
+      detail: `ativou buff: ${pick} (${runtime.regenciaBuffs.length} stack(s)).`,
+    });
   }
 
   return logs;
@@ -286,7 +436,12 @@ function consumeRetaliationOnAttack({ battle, attackerId, logs = [] }) {
   if (!opponent) return logs;
   opponent.battleHp.current = Math.max(0, Number(opponent.battleHp.current || 0) - stored);
   runtime.retaliationStored = 0;
-  logs.push(`💥 Núcleo de Retaliação liberou ${stored} de dano acumulado.`);
+  pushPassiveLog(logs, {
+    passiveId: passive.passiveId,
+    effectType: 'bonus_damage',
+    label: 'Núcleo de Retaliação',
+    detail: `liberou ${stored} de dano acumulado.`,
+  });
   return logs;
 }
 

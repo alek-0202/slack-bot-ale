@@ -112,7 +112,7 @@ function buildCodexSlackMessage(entries = []) {
   if (!entries.length) return '📖 Seu códex lendário está vazio. Abra um *Tomo Lendário* para obter passivas.';
   const lines = ['📖 *Códex Lendário*'];
   for (const entry of entries) {
-    lines.push(`\n*${entry.passiveName}* [${entry.passiveCode}]`);
+    lines.push(`\n🔹 *${entry.passiveName}* [${entry.passiveCode}]`);
     lines.push(`Eficiência: ${Math.round(Number(entry.efficiency || 0) * 100)}%`);
     lines.push(entry.description);
   }
