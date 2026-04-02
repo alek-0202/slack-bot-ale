@@ -70,7 +70,11 @@ const giveEnergyCommand = require("./commands/giveenergy");
 const giveCCommand = require("./commands/givec");
 const giveBookCommand = require("./commands/givebook");
 const giveBagCommand = require("./commands/givebag");
+const giveFragmentCommand = require("./commands/givefragment");
 const openBagCommand = require("./commands/openbag");
+const codexCommand = require("./commands/codex");
+const useTomoCommand = require("./commands/usetomo");
+const applycodexCommand = require("./commands/pokemon/applycodex");
 const { registerPokedexActions } = require("./handlers/pokedexActions");
 const { registerCoffeActions } = require("./handlers/coffeActions");
 const { registerBattleActions } = require("./handlers/battleActions");
@@ -175,7 +179,11 @@ for (const commandModule of [
   giveCCommand,
   giveBookCommand,
   giveBagCommand,
+  giveFragmentCommand,
   openBagCommand,
+  codexCommand,
+  useTomoCommand,
+  applycodexCommand,
 ]) {
   commandRegistry.set(commandModule.name, commandModule);
 

@@ -2,6 +2,7 @@ const { calculateBattleHp, decideStartingPlayer, createInitialInitiativeState, r
 const { SKILL_ENERGY_MAX, ensureSkillEnergyState, regenerateSkillEnergy } = require("./skillEnergy");
 const { getPokemonStars, formatPokemonStars } = require("../../../services/pokemonProgressionService");
 const { normalizeElementList } = require("../../../services/elementType");
+const { onBattleStart } = require("./legendaryPassiveEngine");
 
 const BATTLE_STATUS = {
   PENDING: "pending",
@@ -46,6 +47,7 @@ function createPlayerState(userId) {
     activeTeamIndex: 0,
     skillEnergy: SKILL_ENERGY_MAX,
     skillEnergyMax: SKILL_ENERGY_MAX,
+    legendaryRuntime: {},
   };
 }
 
@@ -157,6 +159,12 @@ function buildTeamMemberFromPokemon(pokemon) {
       max: hpMax,
       current: Math.max(0, Math.min(hpMax, Math.round((persistentCurrentHp / persistentMaxHp) * hpMax))),
     },
+    legendaryPassive: pokemon.legendary_passive_id ? {
+      passiveId: pokemon.legendary_passive_id,
+      passiveCode: pokemon.legendary_passive_code,
+      efficiency: Number(pokemon.legendary_passive_efficiency || 0),
+      values: pokemon.legendary_passive_values || {},
+    } : null,
   };
 }
 
@@ -254,6 +262,7 @@ function startBattle(battle) {
 
   ensureSkillEnergyState(battle.players[battle.challengerId]);
   ensureSkillEnergyState(battle.players[battle.challengedId]);
+  onBattleStart({ battle });
 
   return {
     battle,
