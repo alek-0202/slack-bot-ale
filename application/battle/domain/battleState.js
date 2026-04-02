@@ -180,6 +180,7 @@ function syncPlayerActiveState(playerState) {
     spriteUrl: active.spriteUrl,
     elementTypes: active.elementTypes,
     baseHp: active.stats.hp,
+    legendaryPassive: active.legendaryPassive || null,
   } : null;
   playerState.stats = active?.stats || null;
   playerState.battleHp = active?.battleHp || null;
