@@ -27,6 +27,8 @@ const EFFECT_GAMEPLAY_DESCRIPTIONS = {
   fighting_finisher_buff: "garante explosão de dano no próximo golpe",
   fighting_unyielding_stance: "armazena carga defensiva e pode evitar nocaute",
   fighting_stance_release: "converte carga acumulada em burst ofensivo",
+  legendary_execute: "acumula stacks de execução e elimina o alvo quando o limiar de vida é alcançado",
+  legendary_reactive_shield: "absorve dano antes do HP",
 };
 
 function normalizeEffectKey(entry = {}) {

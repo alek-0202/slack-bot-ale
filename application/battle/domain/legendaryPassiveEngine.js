@@ -1,7 +1,29 @@
 const { ensureElementalState, addOrRefreshEffect } = require('./elementalRules');
 
 const EXECUTE_STATUS_ID = 'legendary_execute';
-const LEGENDARY_PASSIVE_TAG = '[Passiva Lendária]';
+const LEGENDARY_PREFIX = 'Passiva Lendária:';
+const EGG_MAX_TURNS = 6;
+const PASSIVE_DETAILS_BY_ID = Object.freeze({
+  retalia_primordial: 'Armazena dano recebido e libera no próximo ataque.',
+  eco_arcano: 'Habilidade pode repetir automaticamente.',
+  dominio_elemental: 'Dano super efetivo cura e reduz cooldown.',
+  paradoxo_temporal: 'Repete automaticamente a última habilidade.',
+  sangue_adaptativo: 'Ganha resistência progressiva ao elemento recebido.',
+  fissura_caos: 'Pode aplicar status aleatório.',
+  espirito_sobrevivencia: 'Ao atingir baixo HP, ganha vida máxima e perde dano.',
+  vinculo_ruina: 'Parte do dano atinge outro alvo ou vira dano verdadeiro.',
+  blindagem_reativa: 'Receber dano gera escudo.',
+  colapso_elemental: 'Aplica stacks de execução.',
+  ascensao_crescente: 'Aumenta atributos a cada habilidade.',
+  ruptura_realidade: 'Ignora parte da defesa.',
+  essencia_vampirica: 'Converte dano em vida e energia.',
+  reflexo_dimensional: 'Pode invocar mímico.',
+  catalisador_instavel: 'Debuffs podem causar burn verdadeiro.',
+  sobreposicao_elemental: 'Aplica dano elemental adicional.',
+  regencia_absoluta: 'Pode conceder buffs aleatórios.',
+  marca_juizo: 'Marca o alvo e explode ao atingir limite.',
+  ultimo_suspiro: 'Ao morrer, se transforma em ovo e pode renascer.',
+});
 
 function getPassiveRuntime(player) {
   if (!player) return null;
@@ -26,20 +48,25 @@ function addLog(ctx, text) {
   ctx.logs.push(text);
 }
 
-function formatLegendaryPassiveLine(label, detail = null) {
-  return detail
-    ? `✨ *${label}* ${LEGENDARY_PASSIVE_TAG}: ${detail}`
-    : `✨ *${label}* ${LEGENDARY_PASSIVE_TAG}`;
+function getPassiveDetailsText(player) {
+  const passive = getLegendaryPassive(player);
+  if (!passive?.passiveId) return null;
+  return PASSIVE_DETAILS_BY_ID[passive.passiveId] || null;
+}
+
+function formatLegendaryPassiveLine(detail) {
+  if (!detail) return LEGENDARY_PREFIX;
+  return `${LEGENDARY_PREFIX} ${detail}`;
 }
 
 function pushPassiveLog(logs, { passiveId: eventPassiveId = null, label, detail = null, effectType = null }) {
-  if (!Array.isArray(logs) || !label) return;
-  const message = formatLegendaryPassiveLine(label, detail);
+  if (!Array.isArray(logs) || !detail) return;
+  const message = formatLegendaryPassiveLine(detail);
   logs.push({
     kind: 'legendary_passive',
     passiveId: eventPassiveId,
     effectType,
-    label,
+    label: label || null,
     detail,
     message,
   });
@@ -50,7 +77,13 @@ function ensureExecuteStatus(defender) {
   state.statuses = Array.isArray(state.statuses) ? state.statuses : [];
   let status = state.statuses.find((entry) => entry.id === EXECUTE_STATUS_ID);
   if (!status) {
-    status = { id: EXECUTE_STATUS_ID, stacks: 0, maxStacks: 0 };
+    status = {
+      id: EXECUTE_STATUS_ID,
+      name: 'EXECUTE',
+      stacks: 0,
+      maxStacks: 0,
+      gameplayDescription: 'acumula stacks de execução e elimina ao atingir o limiar de vida',
+    };
     state.statuses.push(status);
   }
   return status;
@@ -81,6 +114,7 @@ function onBattleStart({ battle }) {
     runtime.sangueElement = null;
     runtime.ascensaoBonusPct = 0;
     runtime.ultimoSuspiroCd = 0;
+    runtime.eggTurns = 0;
   }
 }
 
@@ -92,6 +126,14 @@ function onTurnStart({ battle, actorId, logs = [] }) {
   if (!passive) return logs;
   const runtime = getPassiveRuntime(player);
   runtime.turnCounter = Number(runtime.turnCounter || 0) + 1;
+  const passiveDetails = getPassiveDetailsText(player);
+  if (passiveDetails) {
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'details',
+      detail: passiveDetails,
+    });
+  }
 
   if (runtime.blindagemCd > 0) {
     runtime.blindagemCd -= 1;
@@ -99,8 +141,7 @@ function onTurnStart({ battle, actorId, logs = [] }) {
       pushPassiveLog(logs, {
         passiveId: passive.passiveId,
         effectType: 'cooldown_tick',
-        label: 'Blindagem Reativa',
-        detail: `cooldown restante: ${runtime.blindagemCd} turno(s).`,
+        detail: `Blindagem Reativa em cooldown: ${runtime.blindagemCd} turno(s).`,
       });
     }
   }
@@ -110,8 +151,7 @@ function onTurnStart({ battle, actorId, logs = [] }) {
       pushPassiveLog(logs, {
         passiveId: passive.passiveId,
         effectType: 'cooldown_tick',
-        label: 'Último Suspiro do Titã',
-        detail: `cooldown restante: ${runtime.ultimoSuspiroCd} rodada(s).`,
+        detail: `Último Suspiro do Titã em cooldown: ${runtime.ultimoSuspiroCd} rodada(s).`,
       });
     }
   }
@@ -121,8 +161,7 @@ function onTurnStart({ battle, actorId, logs = [] }) {
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'summon_attack',
-      label: 'Mímico Dimensional',
-      detail: `causou ${mimicDamage} de dano automático.`,
+      detail: `Mímico causou ${mimicDamage} de dano.`,
     });
     runtime.mimicTurns -= 1;
   }
@@ -138,22 +177,37 @@ function onTurnStart({ battle, actorId, logs = [] }) {
         pushPassiveLog(logs, {
           passiveId: passive.passiveId,
           effectType: 'skill_repeat',
-          label: 'Paradoxo Temporal',
-          detail: `repetiu habilidade e causou ${bonusDamage}.`,
+          detail: `Paradoxo Temporal ativado — repetiu habilidade com ${Math.round(Number(passive.values.efficacyPct || 0))}% de eficácia e causou ${bonusDamage} de dano.`,
         });
       }
     }
   }
 
   if (passive.passiveId === 'ultimo_suspiro' && runtime.eggActive) {
+    runtime.eggTurns = Number(runtime.eggTurns || 0) + 1;
     const heal = Math.max(1, Math.round(Number(player?.battleHp?.max || 0) * 0.08));
     player.battleHp.current = Math.min(Number(player?.battleHp?.max || 0), Number(player?.battleHp?.current || 0) + heal);
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'heal',
-      label: 'Ovo do Titã',
-      detail: `regenerou ${heal} HP.`,
+      detail: `Ovo regenerou ${heal} de vida.`,
     });
+    if (runtime.eggTurns >= EGG_MAX_TURNS) {
+      const reviveHp = Math.max(1, Math.round(Number(player?.battleHp?.max || 0) * 0.35));
+      runtime.eggActive = false;
+      runtime.eggTurns = 0;
+      player.battleHp.current = Math.max(Number(player?.battleHp?.current || 0), reviveHp);
+      pushPassiveLog(logs, {
+        passiveId: passive.passiveId,
+        effectType: 'revive',
+        detail: 'Ovo atingiu limite de turnos e renasceu.',
+      });
+      pushPassiveLog(logs, {
+        passiveId: passive.passiveId,
+        effectType: 'revive',
+        detail: `Renasceu com ${player.battleHp.current} de vida.`,
+      });
+    }
   }
 
   return logs;
@@ -181,8 +235,7 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
       pushPassiveLog(logs, {
         passiveId: passive.passiveId,
         effectType: 'resource_transfer',
-        label: 'Vínculo de Ruína',
-        detail: `transferiu ${transfer} para alvo secundário.`,
+        detail: `Transferiu ${transfer} de dano para alvo secundário.`,
       });
     } else {
       const trueDamage = Math.max(1, Math.round(Number(defender?.battleHp?.max || 0) * pct(passive.values.trueDamagePctTargetMaxHp)));
@@ -190,8 +243,7 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
       pushPassiveLog(logs, {
         passiveId: passive.passiveId,
         effectType: 'bonus_damage',
-        label: 'Vínculo de Ruína',
-        detail: `causou ${trueDamage} de dano verdadeiro adicional.`,
+        detail: `Causou ${trueDamage} de dano verdadeiro baseado na vida máxima.`,
       });
     }
   }
@@ -202,8 +254,7 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'bonus_damage',
-      label: 'Sobreposição Elemental',
-      detail: `causou ${extra} de dano on-hit adicional.`,
+      detail: `Causou ${extra} de dano ${String(attacker?.selectedPokemon?.elementTypes?.[0] || 'elemental')} adicional.`,
     });
   }
 
@@ -218,10 +269,14 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
       pushPassiveLog(logs, {
         passiveId: passive.passiveId,
         effectType: 'execute_trigger',
-        label: 'Marca do Juízo Final',
-        detail: `explodiu por ${explode}.`,
+        detail: `Explosão causada — ${Math.round(Number(passive.values.explosionPctTargetMaxHp || 0))}% da vida máxima (${explode} de dano).`,
       });
     }
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'stacks_gain',
+      detail: `Marca aplicada [${status.marcaJuizoStacks}/${required}]`,
+    });
   }
 
   if (passive.passiveId === 'dominio_elemental' && isSuperEffective) {
@@ -230,8 +285,7 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'heal',
-      label: 'Domínio Elemental',
-      detail: `curou ${heal} HP.`,
+      detail: `Converteu ${finalDamage} de dano em ${heal} de cura.`,
     });
   }
 
@@ -242,8 +296,7 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'stacks_gain',
-      label: 'Execute +1',
-      detail: `${execute.stacks}/${execute.maxStacks} stacks.`,
+      detail: `Aplicou EXECUTE +1 [stack ${execute.stacks}]`,
     });
   }
 
@@ -253,8 +306,7 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'skill_repeat',
-      label: 'Eco Arcano ativado',
-      detail: `repetiu a habilidade e causou ${echo}.`,
+      detail: `Eco Arcano ativado — habilidade repetida com ${Math.round(Number(passive.values.echoDamagePct || 0))}% de poder (${echo} de dano).`,
     });
   }
 
@@ -267,8 +319,7 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'buff_apply',
-      label: 'Ascensão Crescente',
-      detail: `bônus acumulado em ${Math.round(Number(runtime.ascensaoBonusPct || 0))}%.`,
+      detail: `Atributos aumentados em ${Math.round(Number(passive.values.bonusPctPerSkill || 0))}% [stack ${Math.round(Number(runtime.ascensaoBonusPct || 0) / Math.max(1, Number(passive.values.bonusPctPerSkill || 1)))}]`,
     });
   }
 
@@ -279,8 +330,7 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'heal_resource_steal',
-      label: 'Essência Vampírica',
-      detail: `drenou ${lifeSteal} de vida e converteu energia.`,
+      detail: `Recuperou ${lifeSteal} de vida e ${Math.round(finalDamage * pct(passive.values.resourceStealPct))} de energia.`,
     });
   }
 
@@ -305,8 +355,7 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
       pushPassiveLog(logs, {
         passiveId: passive.passiveId,
         effectType: 'stacks_gain',
-        label: 'Núcleo Primordial',
-        detail: `armazenou ${add} de dano.`,
+        detail: `Armazenou ${add} de dano (total: ${runtime.retaliationStored})`,
       });
     }
   }
@@ -323,14 +372,12 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'shield_apply',
-      label: 'Blindagem Reativa',
-      detail: `gerou escudo de ${shield}.`,
+      detail: `Gerou escudo de ${shield} por ${Math.max(1, Number(passive.values.durationTurns || 1))} turno(s).`,
     });
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'cooldown_start',
-      label: 'Blindagem Reativa',
-      detail: `cooldown iniciado: ${runtime.blindagemCd} turno(s).`,
+      detail: `Blindagem Reativa em cooldown por ${runtime.blindagemCd} turno(s).`,
     });
   }
 
@@ -353,8 +400,7 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'debuff_apply',
-      label: `Resistência Adaptativa +1`,
-      detail: `${runtime.sangueStacks} stack(s) contra ${attackElement}.`,
+      detail: `Resistência ao elemento ${attackElement} aumentada (+${Math.round(Number(passive.values.resistPerStackPct || 0))}%) [stack ${runtime.sangueStacks}]`,
     });
   }
 
@@ -370,27 +416,44 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
       pushPassiveLog(logs, {
         passiveId: passive.passiveId,
         effectType: 'buff_apply',
-        label: 'Espírito de Sobrevivência',
-        detail: `ativou e concedeu +${bonus} HP máximo.`,
+        detail: 'Ativou sobrevivência — HP máximo aumentado e atributos reduzidos',
       });
     }
   }
 
-  if (passive.passiveId === 'ultimo_suspiro' && Number(defender.battleHp.current || 0) <= 0 && Number(runtime.ultimoSuspiroCd || 0) <= 0) {
+  if (passive.passiveId === 'ultimo_suspiro' && runtime.eggActive) {
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'damage_taken',
+      detail: `Ovo recebeu ${Math.max(0, Number(damage || 0))} de dano (HP atual: ${Math.max(0, Number(defender.battleHp.current || 0))})`,
+    });
+    if (Number(defender.battleHp.current || 0) <= 0) {
+      runtime.eggActive = false;
+      runtime.eggTurns = 0;
+      const reviveHp = Math.max(1, Math.round(Number(defender?.battleHp?.max || 0) * 0.35));
+      defender.battleHp.current = reviveHp;
+      pushPassiveLog(logs, {
+        passiveId: passive.passiveId,
+        effectType: 'revive',
+        detail: `Renasceu com ${reviveHp} de vida.`,
+      });
+    }
+  }
+
+  if (passive.passiveId === 'ultimo_suspiro' && Number(defender.battleHp.current || 0) <= 0 && !runtime.eggActive && Number(runtime.ultimoSuspiroCd || 0) <= 0) {
     runtime.eggActive = true;
+    runtime.eggTurns = 0;
     runtime.ultimoSuspiroCd = Number(passive.values.cooldownRounds || 20);
     defender.battleHp.current = Math.max(1, Math.round(Number(defender.battleHp.max || 0) * pct(passive.values.eggHpPct)));
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'revive',
-      label: 'Último Suspiro do Titã',
-      detail: 'ativou, virou ovo e evitou a morte.',
+      detail: `Transformado em Ovo (HP: ${defender.battleHp.current})`,
     });
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'cooldown_start',
-      label: 'Último Suspiro do Titã',
-      detail: `cooldown iniciado: ${runtime.ultimoSuspiroCd} rodada(s).`,
+      detail: `Último Suspiro do Titã em cooldown por ${runtime.ultimoSuspiroCd} rodada(s).`,
     });
   }
 
@@ -398,8 +461,7 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'execute_trigger',
-      label: 'Execute',
-      detail: 'finalizou o alvo automaticamente.',
+      detail: 'EXECUTE ativado — alvo eliminado',
     });
   }
 
@@ -416,8 +478,12 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'buff_apply',
-      label: 'Regência Absoluta',
-      detail: `ativou buff: ${pick} (${runtime.regenciaBuffs.length} stack(s)).`,
+      detail: `Ganhou buff ${pick}`,
+    });
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'buff_apply',
+      detail: `Buff ativo — atributos aumentados (+${Math.round(Number(passive.values.bonusPerBuffPct || 0))}%) [stack ${runtime.regenciaBuffs.length}]`,
     });
   }
 
@@ -439,8 +505,7 @@ function consumeRetaliationOnAttack({ battle, attackerId, logs = [] }) {
   pushPassiveLog(logs, {
     passiveId: passive.passiveId,
     effectType: 'bonus_damage',
-    label: 'Núcleo de Retaliação',
-    detail: `liberou ${stored} de dano acumulado.`,
+    detail: `Liberou ${stored} de dano acumulado`,
   });
   return logs;
 }
@@ -459,4 +524,5 @@ module.exports = {
   onDamageTaken,
   consumeRetaliationOnAttack,
   rememberLastMagic,
+  getPassiveDetailsText,
 };
