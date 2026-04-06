@@ -9,6 +9,7 @@ const {
   setSkillCooldown,
 } = require("./elementalRules");
 const { resolveElementalDamageRule } = require("./elementalRules");
+const { GLOBAL_EFFECT_IDS, applyGlobalEffect } = require("./globalEffectRegistry");
 
 const DRAGON_SKILLS = {
   DRACONIC_IMPETUS: "dragon_draconic_impetus",
@@ -18,7 +19,7 @@ const DRAGON_SKILLS = {
 
 const DRAGON_IMPETUS_STATUS_ID = "dragon_impetus_stack";
 const DRAGON_IMPETUS_EFFECT_ID = "dragon_impetus_state";
-const DRAGON_EXHAUSTION_EFFECT_ID = "exhaustion";
+const DRAGON_EXHAUSTION_EFFECT_ID = GLOBAL_EFFECT_IDS.EXHAUSTION;
 const DRAGON_RUPTURE_EFFECT_ID = "dragonic_rupture";
 const DRAGON_ANCESTRAL_PRESENCE_EFFECT_ID = "ancestral_presence";
 const DRAGON_ANCESTRAL_PRESENCE_ENEMY_EFFECT_ID = "ancestral_presence_enemy_aura";
@@ -191,13 +192,10 @@ const dragonRules = {
         const logs = [`🐉 Característica: Sopro Ancestral causou ${damageDealt} de dano em <@${defenderId}>.`];
 
         if (impetusStacks >= IMPETUS_MAX_STACKS) {
-          addOrRefreshEffect(defender, {
-            id: DRAGON_EXHAUSTION_EFFECT_ID,
-            name: "Exaustão",
+          applyGlobalEffect(defender, DRAGON_EXHAUSTION_EFFECT_ID, {
             element: "dragon",
             sourceUserId: actorId,
             remainingRounds: 2,
-            energyRegenMultiplier: 0.65,
           });
           addOrRefreshEffect(defender, {
             id: DRAGON_RUPTURE_EFFECT_ID,

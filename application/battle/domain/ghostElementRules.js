@@ -7,6 +7,7 @@ const {
 } = require("./elementalRules");
 const { getOpponentId } = require("./battleState");
 const { resolveSkillTargets, applyDamageToTargetRef } = require("./targetingEngine");
+const { applyExecuteStacks } = require("./globalEffectRegistry");
 
 const GHOST_SKILLS = {
   ETHEREAL_FORM: "ghost_ethereal_form",
@@ -214,7 +215,13 @@ const ghostRules = {
             remainingRounds: 4,
             stacks: nextStacks,
             incomingDamageTakenMultiplier: 1 + 0.1 + (0.02 * nextStacks),
-            executeThresholdPct: Math.min(0.1, 0.01 + (0.01 * nextStacks)),
+            executePerStackPct: 0.01,
+          });
+          applyExecuteStacks(targetPlayer, {
+            stacks: addStacks,
+            maxStacks: 20,
+            baseThresholdPct: 0.15,
+            stackThresholdPct: 0.01,
           });
           logs.push(`🌑 Sombra atacou <@${targetRef.userId}> por ${result.damageApplied} e aplicou Marca Sombria (+${addStacks} stack).`);
         }
