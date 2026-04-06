@@ -1,4 +1,6 @@
+const { GLOBAL_EFFECT_DEFINITIONS } = require("./globalEffectRegistry");
 const EFFECT_GAMEPLAY_DESCRIPTIONS = {
+  ...Object.fromEntries(Object.values(GLOBAL_EFFECT_DEFINITIONS).map((entry) => [entry.id, entry.gameplayDescription]).filter((entry) => entry[0] && entry[1])),
   burn: "causa dano ao longo do tempo no turno do afetado",
   choque: "acumula cargas que reduzem velocidade/iniciativa e atrapalham agir primeiro",
   electric_overcharge_debuff: "acumula cargas que reduzem velocidade/iniciativa e atrapalham agir primeiro",

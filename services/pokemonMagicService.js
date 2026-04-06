@@ -4,6 +4,7 @@ const { createLogger } = require("../utils/logger");
 const { getOwnedPokemonById } = require("./pokemonLookupService");
 const { normalizePokemonTypes, normalizePokemonType } = require("./pokemonTypeService");
 const { getRandomMagicName, getElementIcon, getElementLabel } = require("./magicLibraryService");
+const { getSkillShortDescription } = require("../application/battle/domain/skillPresentationRegistry");
 const {
   ENABLE_ELEMENTAL_SKILLS,
   ENABLE_ELEMENTAL_SKILLS_REGISTRY,
@@ -55,7 +56,7 @@ function buildCharacteristicSkillEntriesFromElements(elements = [], pokemonLevel
         kind: 'characteristic',
         id: skill.id,
         name: skill.name,
-        description: skill.description || null,
+        description: getSkillShortDescription(skill),
         element,
         icon: skill.icon || getElementIcon(element),
         cooldownRounds: skill.cooldownRounds || null,

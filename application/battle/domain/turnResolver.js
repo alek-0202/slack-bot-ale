@@ -34,6 +34,8 @@ const { gainImpetusStack, clearImpetusByControl } = require("./dragonElementRule
 const { consumeSkillEnergy, restoreSkillEnergy, ensureSkillEnergyState } = require("./skillEnergy");
 const { validateSkillActionRequest } = require("./skillActionValidator");
 const { tickOwnerTurnTimers, processOwnerTurnEffects, EFFECT_TIMING } = require("./elementalRules");
+const { describeEffectGameplayImpact } = require("./effectDetailsRegistry");
+const { tryExecuteTarget } = require("./globalEffectRegistry");
 const {
   onTurnStart: applyLegendaryTurnStart,
   onOutgoingDamage: applyLegendaryOutgoingDamage,
@@ -140,11 +142,9 @@ function formatEffectImpact(effect = {}) {
 }
 
 function describeEffect(effect = {}) {
-  if (effect?.description) return String(effect.description);
   const impacts = formatEffectImpact(effect);
   if (impacts.length) return impacts.join(", ");
-  if (effect.immuneToDamageAndControl) return "absorve ou bloqueia dano recebido";
-  return "efeito ativo";
+  return describeEffectGameplayImpact(effect);
 }
 
 function splitActiveEffectsByPolarity(playerState) {
@@ -263,7 +263,7 @@ function logBattleDebug(event, payload) {
 }
 
 function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDamage, isMagic = false, isSuperEffective = false, attackElement = null }) {
-  const before = applyBeforeDamageHooks({ battle, attackerId, defenderId, damage: initialDamage, isMagic });
+  const before = applyBeforeDamageHooks({ battle, attackerId, defenderId, damage: initialDamage, isMagic, attackElement });
   const onHit = applyOnHitHooks({ battle, attackerId, defenderId, damage: before.finalDamage });
   let finalDamage = Math.max(0, Number(onHit.finalDamage || 0));
   const initialDamageAfterHooks = finalDamage;
@@ -336,11 +336,7 @@ function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDama
     if (attacker?.battleHp) {
       attacker.battleHp.current = Math.min(Number(attacker?.battleHp?.max || 0), Number(attacker?.battleHp?.current || 0) + Math.max(1, Math.round(finalDamage * 0.02)));
     }
-    const threshold = Math.max(0, Math.round(Number(defender?.battleHp?.max || 0) * Number(shadowMark.executeThresholdPct || 0)));
-    const antiExecute = (ensureElementalState(defender).effects || []).some((effect) => effect.antiExecute === true);
-    if (!antiExecute && Number(defender?.battleHp?.current || 0) > 0 && Number(defender?.battleHp?.current || 0) <= threshold) {
-      defender.battleHp.current = 0;
-    }
+    tryExecuteTarget(defender);
   }
   return {
     finalDamage,

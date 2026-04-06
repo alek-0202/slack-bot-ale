@@ -21,6 +21,7 @@ const {
 const { GRASS_EFFECT_SUFFOCATING_ROOTS } = require("./grassElementRules");
 const { ELECTRIC_EFFECT_SHOCK, ELECTRIC_EFFECT_OVERLOAD, ELECTRIC_EFFECT_FIELD_DEBUFF, ELECTRIC_EFFECT_FIELD } = require("./electricElementRules");
 const { normalizeElementList, matchesElement } = require("../../../services/elementType");
+const { GLOBAL_EFFECT_IDS } = require("./globalEffectRegistry");
 
 function parseMagicActionSlot(rawMagicSlot) {
   const value = String(rawMagicSlot || "");
@@ -43,7 +44,7 @@ function resolveMagicActionEntry(playerState, rawMagicSlot) {
   return actions.find((entry) => entry.kind === "elemental" && entry.id === parsed.skillId) || null;
 }
 
-function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage, isMagic = false }) {
+function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage, isMagic = false, attackElement = null }) {
   if (!ENABLE_ELEMENTAL_SKILLS_BATTLE) {
     return {
       finalDamage: Math.max(0, Number(damage || 0)),
@@ -52,7 +53,6 @@ function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage, isMagi
   }
   let modifiedDamage = Math.max(0, Number(damage || 0));
   const logs = [];
-
 
   const attackerEffects = ensureElementalState(battle.players[attackerId]).effects || [];
   for (const effect of attackerEffects) {
@@ -74,6 +74,14 @@ function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage, isMagi
     }
     if (isMagic && effect?.incomingSkillDamageTakenMultiplier != null) {
       modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.incomingSkillDamageTakenMultiplier || 1)));
+    }
+  }
+
+  if (matchesElement(attackElement, 'ice')) {
+    const frozen = defenderEffects.find((effect) => effect.id === GLOBAL_EFFECT_IDS.FREEZE && Number(effect?.durationTurnsRemaining ?? effect?.remainingRounds ?? 0) > 0);
+    if (frozen) {
+      modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(frozen.incomingIceDamageMultiplier || 1.15)));
+      logs.push('🧊 Congelamento ampliou o dano de gelo em 15%.');
     }
   }
 
@@ -233,6 +241,10 @@ function evaluateActionStartModifiers({ battle, actorId, actionType }) {
     if (effect.forcedSkipAction) {
       cancelTurn = true;
       logs.push(`❄️ ${effect.name || "Congelado"} impediu a ação.`);
+      if (effect.decrementOnPlayableTurn) {
+        effect.durationTurnsRemaining = Math.max(0, Number(effect.durationTurnsRemaining || 0) - 1);
+        if (Number(effect.durationTurnsRemaining || 0) <= 0) effect.remainingRounds = 0;
+      }
       if (effect.consumeOnActionStart) effect.remainingRounds = 0;
     }
     if (effect.id === ELECTRIC_EFFECT_OVERLOAD && Math.random() < Number(effect.loseTurnChance || 0)) {

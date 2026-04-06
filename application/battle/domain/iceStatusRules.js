@@ -1,9 +1,10 @@
 const { addOrRefreshEffect, getStatus, upsertStatus, ensureElementalState } = require("./elementalRules");
+const { GLOBAL_EFFECT_IDS, applyGlobalEffect } = require("./globalEffectRegistry");
 
 const ICE_STATUS_GELID = "ice_gelid";
-const ICE_EFFECT_FROZEN = "ice_frozen";
+const ICE_EFFECT_FROZEN = GLOBAL_EFFECT_IDS.FREEZE;
 const ICE_EFFECT_BREAK = "ice_break";
-const ICE_EFFECT_GELID_SLOW = "ice_gelid_slow";
+const ICE_EFFECT_GELID_SLOW = GLOBAL_EFFECT_IDS.CHILL;
 
 function applyGelidStacks(target, stacks = 1, sourceUserId = null) {
   const amount = Math.max(1, Number(stacks || 1));
@@ -20,18 +21,15 @@ function applyGelidStacks(target, stacks = 1, sourceUserId = null) {
       sourceUserId,
       remainingRounds: 0,
     });
-    addOrRefreshEffect(target, {
-      id: ICE_EFFECT_FROZEN,
-      name: "Congelado",
+    applyGlobalEffect(target, ICE_EFFECT_FROZEN, {
       element: "ice",
-      remainingRounds: 1,
-      forcedSkipAction: true,
-      consumeOnActionStart: true,
+      sourceUserId,
+      durationTurnsRemaining: 1,
     });
-    addOrRefreshEffect(target, {
-      id: ICE_EFFECT_GELID_SLOW,
-      name: "Gélido (Lentidão)",
+    applyGlobalEffect(target, ICE_EFFECT_GELID_SLOW, {
+      name: "Resfriamento",
       element: "ice",
+      sourceUserId,
       remainingRounds: 0,
       speedMultiplier: 1,
     });
@@ -47,10 +45,10 @@ function applyGelidStacks(target, stacks = 1, sourceUserId = null) {
     sourceUserId,
     remainingRounds: 3,
   });
-  addOrRefreshEffect(target, {
-    id: ICE_EFFECT_GELID_SLOW,
-    name: "Gélido (Lentidão)",
+  applyGlobalEffect(target, ICE_EFFECT_GELID_SLOW, {
+    name: "Resfriamento",
     element: "ice",
+    sourceUserId,
     remainingRounds: 3,
     speedMultiplier: Math.max(0.4, 1 - (nextStacks * 0.2)),
   });
@@ -67,7 +65,7 @@ function getGelidStacks(target) {
 }
 
 function hasFrozen(target) {
-  return (ensureElementalState(target).effects || []).some((entry) => entry.id === ICE_EFFECT_FROZEN && Number(entry.remainingRounds ?? 1) > 0);
+  return (ensureElementalState(target).effects || []).some((entry) => entry.id === ICE_EFFECT_FROZEN && Number(entry.durationTurnsRemaining ?? entry.remainingRounds ?? 0) > 0);
 }
 
 function consumeFrozen(target) {
@@ -75,6 +73,7 @@ function consumeFrozen(target) {
   const frozen = effects.find((entry) => entry.id === ICE_EFFECT_FROZEN);
   if (!frozen) return false;
   frozen.remainingRounds = 0;
+  frozen.durationTurnsRemaining = 0;
   return true;
 }
 

@@ -1,6 +1,7 @@
 const { ensureElementalState, addOrRefreshEffect } = require('./elementalRules');
+const { GLOBAL_EFFECT_IDS, applyExecuteStacks, getExecuteStatus, tryExecuteTarget } = require('./globalEffectRegistry');
 
-const EXECUTE_STATUS_ID = 'legendary_execute';
+const EXECUTE_STATUS_ID = GLOBAL_EFFECT_IDS.EXECUTE;
 const LEGENDARY_PREFIX = 'Passiva Lendária:';
 const EGG_MAX_TURNS = 6;
 const PASSIVE_DETAILS_BY_ID = Object.freeze({
@@ -73,31 +74,11 @@ function pushPassiveLog(logs, { passiveId: eventPassiveId = null, label, detail 
 }
 
 function ensureExecuteStatus(defender) {
-  const state = ensureElementalState(defender);
-  state.statuses = Array.isArray(state.statuses) ? state.statuses : [];
-  let status = state.statuses.find((entry) => entry.id === EXECUTE_STATUS_ID);
-  if (!status) {
-    status = {
-      id: EXECUTE_STATUS_ID,
-      name: 'EXECUTE',
-      stacks: 0,
-      maxStacks: 0,
-      gameplayDescription: 'acumula stacks de execução e elimina ao atingir o limiar de vida',
-    };
-    state.statuses.push(status);
-  }
-  return status;
+  return getExecuteStatus(defender);
 }
 
 function checkExecuteThreshold(defender) {
-  const status = ensureExecuteStatus(defender);
-  if (!status?.stacks) return false;
-  const threshold = Math.round(Number(defender?.battleHp?.max || 0) * (Number(status.stacks || 0) / 100));
-  if (Number(defender?.battleHp?.current || 0) > 0 && Number(defender?.battleHp?.current || 0) <= threshold) {
-    defender.battleHp.current = 0;
-    return true;
-  }
-  return false;
+  return tryExecuteTarget(defender);
 }
 
 function onBattleStart({ battle }) {
@@ -290,9 +271,12 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
   }
 
   if (passive.passiveId === 'colapso_elemental' && isSuperEffective) {
-    const execute = ensureExecuteStatus(defender);
-    execute.maxStacks = Math.max(1, Number(passive.values.maxExecuteStacks || 7));
-    execute.stacks = Math.min(execute.maxStacks, Number(execute.stacks || 0) + 1);
+    const execute = applyExecuteStacks(defender, {
+      stacks: 1,
+      maxStacks: Math.max(1, Number(passive.values.maxExecuteStacks || 7)),
+      baseThresholdPct: 0.15,
+      stackThresholdPct: Math.max(0.005, 0.01),
+    });
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'stacks_gain',
