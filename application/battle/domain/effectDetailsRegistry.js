@@ -29,6 +29,11 @@ const EFFECT_GAMEPLAY_DESCRIPTIONS = {
   fighting_stance_release: "converte carga acumulada em burst ofensivo",
   legendary_execute: "acumula stacks de execução e elimina o alvo quando o limiar de vida é alcançado",
   legendary_reactive_shield: "absorve dano antes do HP",
+  dragon_impetus_state: "acumula stacks ofensivos e amplifica dano/eficiência/energia",
+  exhaustion: "reduz em 35% a geração de energia do alvo",
+  dragonic_rupture: "aumenta em 20% o dano de habilidades recebido",
+  ancestral_presence: "ativa aura ancestral com resistência e burn de fogo por turno",
+  ancestral_presence_enemy_aura: "reduz iniciativa e dano causado sob domínio ancestral",
 };
 
 function normalizeEffectKey(entry = {}) {

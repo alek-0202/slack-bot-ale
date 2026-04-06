@@ -22,7 +22,7 @@ const {
   getFieldAttackBonuses,
 } = require("./elementalEngine");
 const { GRASS_EFFECT_FOREST_THORN, GRASS_EFFECT_SHORT_CUT, GRASS_EFFECT_SLOWNESS } = require("./grassElementRules");
-const { ensureElementalState, addOrRefreshEffect, ENABLE_ELEMENTAL_SKILLS_BATTLE } = require("./elementalRules");
+const { ensureElementalState, addOrRefreshEffect, ENABLE_ELEMENTAL_SKILLS_BATTLE, isGroupControlEffect } = require("./elementalRules");
 const { resolveSkillTargets, applyDamageToTargetRef } = require("./targetingEngine");
 const { ELECTRIC_EFFECT_FIELD_DEBUFF } = require("./electricElementRules");
 const { ICE_EFFECT_ARMOR } = require("./iceElementRules");
@@ -30,6 +30,7 @@ const { applyGelidStacks } = require("./iceStatusRules");
 const { FIGHTING_EFFECT_RHYTHM, FIGHTING_EFFECT_FINISHER, FIGHTING_EFFECT_UNYIELDING, FIGHTING_EFFECT_STANCE_RELEASE } = require("./fightingElementRules");
 const { PSYCHIC_SKILLS, PSYCHIC_EFFECT_BARRIER, PSYCHIC_EFFECT_BARRIER_BREAK_BUFF, getReadState, clearReadState } = require("./psychicElementRules");
 const { GHOST_SKILLS, GHOST_EFFECT_ETHEREAL, GHOST_EFFECT_CURSE, GHOST_EFFECT_SHADOW_MARK } = require("./ghostElementRules");
+const { gainImpetusStack, clearImpetusByControl } = require("./dragonElementRules");
 const { consumeSkillEnergy, restoreSkillEnergy, ensureSkillEnergyState } = require("./skillEnergy");
 const { validateSkillActionRequest } = require("./skillActionValidator");
 const { tickOwnerTurnTimers, processOwnerTurnEffects, EFFECT_TIMING } = require("./elementalRules");
@@ -57,6 +58,28 @@ function reduceAllElementalCooldowns(playerState, rounds = 0) {
   for (const key of Object.keys(playerState.elementalState.skillCooldowns)) {
     playerState.elementalState.skillCooldowns[key] = Math.max(0, Number(playerState.elementalState.skillCooldowns[key] || 0) - value);
   }
+}
+
+
+function clearImpetusIfControlled({ battle, userId }) {
+  const player = battle?.players?.[userId];
+  if (!player) return [];
+  const hasControl = (ensureElementalState(player).effects || [])
+    .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0)
+    .some((effect) => isGroupControlEffect(effect));
+  if (!hasControl) return [];
+  const logs = [];
+  clearImpetusByControl({ actor: player, actorId: userId, logs });
+  return logs;
+}
+
+function gainImpetusOnHit({ actor, actorId, dodged = false }) {
+  if (!actor || dodged) return [];
+  const enabled = (ensureElementalState(actor).effects || []).some((effect) => effect.id === "dragon_impetus_unlock" && Number(effect?.remainingRounds ?? 1) > 0);
+  if (!enabled) return [];
+  const logs = [];
+  gainImpetusStack({ actor, actorId, logs });
+  return logs;
 }
 
 function mergeRoundLogs(battle, ...logs) {
@@ -240,7 +263,7 @@ function logBattleDebug(event, payload) {
 }
 
 function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDamage, isMagic = false, isSuperEffective = false, attackElement = null }) {
-  const before = applyBeforeDamageHooks({ battle, attackerId, defenderId, damage: initialDamage });
+  const before = applyBeforeDamageHooks({ battle, attackerId, defenderId, damage: initialDamage, isMagic });
   const onHit = applyOnHitHooks({ battle, attackerId, defenderId, damage: before.finalDamage });
   let finalDamage = Math.max(0, Number(onHit.finalDamage || 0));
   const initialDamageAfterHooks = finalDamage;
@@ -417,11 +440,13 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
   if (ownerStartLogs.length) mergeRoundLogs(battle, ownerStartLogs);
   const legendaryTurnStartLogs = applyLegendaryTurnStart({ battle, actorId: actorUserId, logs: [] });
   if (legendaryTurnStartLogs.length) mergeRoundLogs(battle, legendaryTurnStartLogs);
+  const actorControlLogs = clearImpetusIfControlled({ battle, userId: actorUserId });
+  if (actorControlLogs.length) mergeRoundLogs(battle, actorControlLogs);
 
   const actionStart = evaluateActionStartModifiers({ battle, actorId: actorUserId, actionType });
   const actorRhythm = ensureElementalState(battle.players?.[actorUserId]).effects?.find((effect) => effect.id === FIGHTING_EFFECT_RHYTHM);
   const hasGroupControl = (ensureElementalState(battle.players?.[actorUserId]).effects || [])
-    .some((effect) => effect.controlLight || effect.forcedSkipAction || effect.forcedAction);
+    .some((effect) => isGroupControlEffect(effect));
   if (actorRhythm && hasGroupControl) {
     actorRhythm.stacks = 0;
     actorRhythm.targetUserId = null;
@@ -799,6 +824,15 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         if (defenderFighting.logs.length) mergeRoundLogs(battle, defenderFighting.logs);
       }
     }
+    const defenderControlLogs = clearImpetusIfControlled({ battle, userId: defenderId });
+    if (defenderControlLogs.length) mergeRoundLogs(battle, defenderControlLogs);
+    const actorImpetusLogs = gainImpetusOnHit({
+      actor: attacker,
+      actorId: actorUserId,
+      dodged: Number(castResult.damageDealt || 0) <= 0 && !multiTargetApplied.some((entry) => Number(entry.appliedDamage || 0) > 0),
+    });
+    if (actorImpetusLogs.length) mergeRoundLogs(battle, actorImpetusLogs);
+
     if (castResult.consumeAllEnergy) attacker.skillEnergy = 0;
 
     if (castResult.onKillSpread?.status === "gelid" && Number(battle.players[defenderId]?.battleHp?.current || 0) <= 0) {
@@ -942,6 +976,11 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     }
     const defenderFighting = applyFightingDefensiveState({ player: defender, damageTaken: damageWithHooks.finalDamage });
     if (defenderFighting.logs.length) mergeRoundLogs(battle, defenderFighting.logs);
+
+    const defenderControlLogs = clearImpetusIfControlled({ battle, userId: defenderId });
+    if (defenderControlLogs.length) mergeRoundLogs(battle, defenderControlLogs);
+    const attackerImpetusLogs = gainImpetusOnHit({ actor: attacker, actorId: actorUserId, dodged: Boolean(result.dodged) });
+    if (attackerImpetusLogs.length) mergeRoundLogs(battle, attackerImpetusLogs);
 
     const retaliationLogs = consumeRetaliationOnAttack({ battle, attackerId: actorUserId, logs: [] });
     mergeRoundLogs(battle, damageWithHooks.logs, retaliationLogs, `⚔️ <@${actorUserId}> atacou <@${defenderId}>.`);

@@ -6,6 +6,7 @@ require("./iceElementRules");
 require("./fightingElementRules");
 require("./psychicElementRules");
 require("./ghostElementRules");
+require("./dragonElementRules");
 
 const {
   ENABLE_ELEMENTAL_SKILLS_BATTLE,
@@ -42,7 +43,7 @@ function resolveMagicActionEntry(playerState, rawMagicSlot) {
   return actions.find((entry) => entry.kind === "elemental" && entry.id === parsed.skillId) || null;
 }
 
-function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage }) {
+function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage, isMagic = false }) {
   if (!ENABLE_ELEMENTAL_SKILLS_BATTLE) {
     return {
       finalDamage: Math.max(0, Number(damage || 0)),
@@ -58,12 +59,21 @@ function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage }) {
     if (effect?.outgoingDamageMultiplier != null) {
       modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.outgoingDamageMultiplier || 1)));
     }
+    if (isMagic && effect?.outgoingMagicDamageMultiplier != null) {
+      modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.outgoingMagicDamageMultiplier || 1)));
+    }
+    if (!isMagic && effect?.outgoingAttackDamageMultiplier != null) {
+      modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.outgoingAttackDamageMultiplier || 1)));
+    }
   }
 
   const defenderEffects = ensureElementalState(battle.players[defenderId]).effects || [];
   for (const effect of defenderEffects) {
     if (effect?.incomingDamageTakenMultiplier != null) {
       modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.incomingDamageTakenMultiplier || 1)));
+    }
+    if (isMagic && effect?.incomingSkillDamageTakenMultiplier != null) {
+      modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.incomingSkillDamageTakenMultiplier || 1)));
     }
   }
 
