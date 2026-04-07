@@ -780,6 +780,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       targetId: actionPayload?.targetUserId,
     });
     if (!castResult.ok) {
+      restoreBattleEnergy({ battle, userId: actorUserId, amount: MAGIC_ENERGY_COST + extraEnergyCost });
       return {
         battle,
         actionType,
