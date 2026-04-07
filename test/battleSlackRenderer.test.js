@@ -36,6 +36,22 @@ test("renderBattleState inclui botão de troca quando há reservas vivas", () =>
   assert.equal(new Set(actionIds).size, actionIds.length);
 });
 
+test("renderBattleState mantém topo e inclui mini-ícones de status no bloco superior", () => {
+  const battle = createBattleStub();
+  battle.players.U1.elementalState = {
+    effects: [{ id: "psychic_barrier", name: "Barreira Psíquica", remainingRounds: 2, shieldCurrentHp: 25 }],
+    statuses: [{ id: "burn", name: "Burn", remainingRounds: 1, stacks: 1 }],
+  };
+  const payload = renderBattleState(battle);
+  const firstPokemonSection = payload.blocks.find((block) => block.type === "section" && block.text?.text?.includes("<@U1>"));
+
+  assert.ok(firstPokemonSection);
+  assert.match(firstPokemonSection.text.text, /⚡ Iniciativa/);
+  assert.match(firstPokemonSection.text.text, /🧩/);
+  assert.match(firstPokemonSection.text.text, /🟩🛡️\(2r\)/);
+  assert.match(firstPokemonSection.text.text, /🟥🔥\(1r\)/);
+});
+
 test("renderMagicOptions gera um action_id único por slot de magia", () => {
   const payload = renderMagicOptions({
     battle: { channelId: "C1" },
@@ -83,12 +99,11 @@ test("formatBattleLogForSlack mantém perspectiva correta por lado e round no to
   };
 
   const text = formatBattleLogForSlack({ battle, lines: battle.metadata.turnLog, title: "LOG" });
-  assert.match(text, /\*Rodada:\* 1/);
-  assert.match(text, /\*\[Pikachu\]\*[\s\S]*Ação: \*Pikachu\* usou/);
-  assert.match(text, /\*\[Charmander\]\*[\s\S]*Ação: \*Charmander\* usou/);
-  assert.match(text, /DOT\/Contínuo/);
-  assert.match(text, /Buffs: Ritmo: \+10% dano/);
-  assert.match(text, /Debuffs: Lentidão: -25% velocidade/);
+  assert.match(text, /🧾 \*Rodada 1\*/);
+  assert.match(text, /\*Pikachu\*[\s\S]*Ação: ⚔️ Ataque Básico/);
+  assert.match(text, /\*Charmander\*[\s\S]*Ação: 🔥 Garras Ardentes/);
+  assert.match(text, /• Status: /);
+  assert.match(text, /Eventos da rodada:[\s\S]*Burn/);
 });
 
 test("formatBattleLogForSlack usa critBonusDamage e resolvedAction como fonte única do bloco individual", () => {
@@ -120,10 +135,10 @@ test("formatBattleLogForSlack usa critBonusDamage e resolvedAction como fonte ú
     }],
   });
 
-  assert.match(text, /Dano: 48 \(\+crit 18\)/);
-  assert.match(text, /Dano status: Status 5/);
-  assert.match(text, /Vida: 111\/150 \| Barreira: 30/);
-  assert.match(text, /Buffs: Foco: \+15% chance crítica/);
+  assert.match(text, /Dano total: 48 \(\+crit 18\)/);
+  assert.match(text, /Dano de status: Status 5/);
+  assert.match(text, /❤️ 111\/150 \| 🛡️ 30/);
+  assert.match(text, /• Status: 🟩⬜/);
 });
 
 test("formatBattleLogForSlack exibe absorção de barreira e duração restante de efeitos", () => {
@@ -157,43 +172,10 @@ test("formatBattleLogForSlack exibe absorção de barreira e duração restante 
     }],
   });
 
-  assert.match(text, /Dano: 0 \(barreira absorveu 40\) \(vantagem elemental\)/);
-  assert.match(text, /Buffs: Controle Mental \[2\] \| Barreira Psíquica \[1\]/);
-  assert.match(text, /Debuffs: Burn \[3\]/);
-});
-
-test("formatBattleLogForSlack inclui Details global com explicação útil e sem duplicar", () => {
-  const battle = createBattleStub();
-  battle.players.U1.elementalState = {
-    effects: [{ id: "psychic_barrier", name: "Barreira Psíquica", remainingRounds: 2, shieldCurrentHp: 55 }],
-    statuses: [{ id: "burn", name: "Burn", stacks: 1, remainingRounds: 2, damagePerStack: 10 }],
-  };
-  battle.players.U2.elementalState = {
-    effects: [{ id: "psychic_barrier", name: "Barreira Psíquica", remainingRounds: 1, shieldCurrentHp: 20 }],
-    statuses: [],
-  };
-
-  const text = formatBattleLogForSlack({
-    battle,
-    title: "LOG",
-    lines: [{ kind: "text", text: "rodada" }],
-  });
-  assert.match(text, /\*Details\*/);
-  assert.match(text, /Barreira Psíquica -> absorve dano antes do HP/);
-  assert.match(text, /Burn -> causa dano ao longo do tempo no turno do afetado/);
-  assert.equal((text.match(/Barreira Psíquica ->/g) || []).length, 1);
-  assert.doesNotMatch(text, /Pikachu:|Charmander:/);
-});
-
-test("formatBattleLogForSlack não exibe Details sem buff\/debuff ativo", () => {
-  const battle = createBattleStub();
-  const text = formatBattleLogForSlack({
-    battle,
-    title: "LOG",
-    lines: [{ kind: "text", text: "rodada" }],
-  });
-
-  assert.doesNotMatch(text, /\*Details\*/);
+  assert.match(text, /Dano total: 0 \(🛡️ 40 absorvido\)/);
+  assert.match(text, /Dano elemental: 0 \(vantagem elemental\)/);
+  assert.match(text, /🟩⬜\(2r\) 🟩⬜\(1r\)/);
+  assert.match(text, /🟥🔥\(3r\)/);
 });
 
 test("formatBattleLogForSlack usa fallback textual quando não há action_summary", () => {
@@ -209,9 +191,9 @@ test("formatBattleLogForSlack usa fallback textual quando não há action_summar
 
   const text = formatBattleLogForSlack({ battle, lines: battle.metadata.turnLog, title: "LOG" });
   assert.doesNotMatch(text, /Ação: —/);
-  assert.match(text, /Dano: 35/);
-  assert.match(text, /Cura recebida: Cura 18/);
-  assert.match(text, /DOT\/Contínuo: Burn/);
+  assert.match(text, /Dano total: 35/);
+  assert.match(text, /Cura realizada: Cura 18/);
+  assert.match(text, /Eventos da rodada/);
 });
 
 function createBattleStub({ withReserves = false } = {}) {
