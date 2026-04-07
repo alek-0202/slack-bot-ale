@@ -102,8 +102,8 @@ test("formatBattleLogForSlack mantém perspectiva correta por lado e round no to
   assert.match(text, /🧾 \*Rodada 1\*/);
   assert.match(text, /\*Pikachu\*[\s\S]*Ação: ⚔️ Ataque Básico/);
   assert.match(text, /\*Charmander\*[\s\S]*Ação: 🔥 Garras Ardentes/);
-  assert.match(text, /• Status: /);
-  assert.match(text, /Eventos da rodada:[\s\S]*Burn/);
+  assert.doesNotMatch(text, /• Status:/);
+  assert.doesNotMatch(text, /Eventos da rodada/);
 });
 
 test("formatBattleLogForSlack usa critBonusDamage e resolvedAction como fonte única do bloco individual", () => {
@@ -135,10 +135,10 @@ test("formatBattleLogForSlack usa critBonusDamage e resolvedAction como fonte ú
     }],
   });
 
+  assert.match(text, /Dano extra: Status 5 contínuo/);
   assert.match(text, /Dano total: 48 \(\+crit 18\)/);
-  assert.match(text, /Dano de status: Status 5/);
-  assert.match(text, /❤️ 111\/150 \| 🛡️ 30/);
-  assert.match(text, /• Status: 🟩⬜/);
+  assert.match(text, /❤️ 111\/150 \| 🛡️ 30 \| 🟩⬜/);
+  assert.doesNotMatch(text, /• Status:/);
 });
 
 test("formatBattleLogForSlack exibe absorção de barreira e duração restante de efeitos", () => {
@@ -173,7 +173,6 @@ test("formatBattleLogForSlack exibe absorção de barreira e duração restante 
   });
 
   assert.match(text, /Dano total: 0 \(🛡️ 40 absorvido\)/);
-  assert.match(text, /Dano elemental: 0 \(vantagem elemental\)/);
   assert.match(text, /🟩⬜\(2r\) 🟩⬜\(1r\)/);
   assert.match(text, /🟥🔥\(3r\)/);
 });
@@ -192,8 +191,41 @@ test("formatBattleLogForSlack usa fallback textual quando não há action_summar
   const text = formatBattleLogForSlack({ battle, lines: battle.metadata.turnLog, title: "LOG" });
   assert.doesNotMatch(text, /Ação: —/);
   assert.match(text, /Dano total: 35/);
-  assert.match(text, /Cura realizada: Cura 18/);
-  assert.match(text, /Eventos da rodada/);
+  assert.match(text, /Cura: Cura 18/);
+  assert.doesNotMatch(text, /Eventos da rodada/);
+});
+
+test("formatBattleLogForSlack agrega múltiplas fontes em Dano extra acima do Dano total", () => {
+  const battle = createBattleStub();
+  const text = formatBattleLogForSlack({
+    battle,
+    title: "LOG",
+    lines: [{
+      kind: "action_summary",
+      actorUserId: "U1",
+      skillName: "Catalisador Instável",
+      skillIcon: "✨",
+      resolvedAction: {
+        actorId: "U1",
+        actorName: "Pikachu",
+        actionType: "magic",
+        actionName: "Catalisador Instável",
+        didHit: true,
+        isCrit: false,
+        baseDamage: 20,
+        finalDamage: 55,
+        statusDamage: 12,
+        extraNotes: ["🔥 Burn causou 12 em <@U2>.", "Passiva Lendária — Eco causou 23 de dano físico."],
+        actorCurrentHp: 120,
+        actorMaxHp: 150,
+      },
+    }],
+  });
+
+  const extraIndex = text.indexOf("• Dano extra:");
+  const totalIndex = text.indexOf("• Dano total:");
+  assert.ok(extraIndex >= 0 && totalIndex > extraIndex);
+  assert.match(text, /Dano extra: Status 12 contínuo \| Burn 12 \| Passiva Lendária 23 físico/);
 });
 
 function createBattleStub({ withReserves = false } = {}) {

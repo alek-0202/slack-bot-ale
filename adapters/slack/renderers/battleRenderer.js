@@ -221,26 +221,26 @@ function buildCombatantSummary({ battle, userId, ownerLabel }) {
     statusBadges: [],
     appliedEffects: [],
     passiveEvents: [],
+    extraDamageEntries: [],
     elementalDamageLabel: null,
     round: Number(battle?.round || 1),
   };
 }
 
 function formatCombatantSummaryLines(summary) {
-  const badgeLine = summary.statusBadges.length ? summary.statusBadges.join(" ") : "—";
+  const badgeLine = summary.statusBadges.length ? summary.statusBadges.join(" ") : null;
   const details = [];
-  details.push(`• Ação: ${summary.actionLabel || "—"}`);
-  details.push(`• Dano total: ${summary.directDamage || 0}${summary.absorbedDamage ? ` (🛡️ ${summary.absorbedDamage} absorvido)` : ""}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}${summary.dodged ? " (esquivado)" : ""}`);
-  if (summary.elementalDamageLabel) details.push(`• Dano elemental: ${summary.elementalDamageLabel}`);
-  if (summary.statusDamage.length) details.push(`• Dano de status: ${summary.statusDamage.map((entry) => `${entry.label} ${entry.value}`).join(", ")}`);
-  if (summary.appliedEffects.length) details.push(`• Buff/Debuff aplicado: ${summary.appliedEffects.join(" | ")}`);
-  if (summary.healingReceived.length) details.push(`• Cura realizada: ${summary.healingReceived.map((entry) => `${entry.label} ${entry.value}`).join(", ")}`);
+  if (summary.actionLabel) details.push(`• Ação: ${summary.actionLabel}`);
+  if (summary.extraDamageEntries.length) details.push(`• Dano extra: ${summary.extraDamageEntries.map((entry) => `${entry.source} ${entry.value}${entry.type ? ` ${entry.type}` : ""}`).join(" | ")}`);
+  const shouldShowTotalDamage = Number(summary.directDamage || 0) > 0 || Number(summary.absorbedDamage || 0) > 0;
+  if (shouldShowTotalDamage) details.push(`• Dano total: ${summary.directDamage || 0}${summary.absorbedDamage ? ` (🛡️ ${summary.absorbedDamage} absorvido)` : ""}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}${summary.dodged ? " (esquivado)" : ""}`);
+  if (summary.appliedEffects.length) details.push(`• Stat: ${summary.appliedEffects.join(" | ")}`);
+  if (summary.healingReceived.length) details.push(`• Cura: ${summary.healingReceived.map((entry) => `${entry.label} ${entry.value}`).join(", ")}`);
   if (summary.passiveEvents.length) details.push(`• Passiva: ${summary.passiveEvents.join(" | ")}`);
-  return [
-    `• <@${summary.actorId}> — *${summary.actorName}* | ❤️ ${summary.currentHp}/${summary.maxHp}${summary.currentShield > 0 ? ` | 🛡️ ${summary.currentShield}` : ""} | x${Math.max(1, Number(summary.round || 1))}`,
-    `• Status: ${badgeLine}`,
-    ...details,
-  ];
+  const headerParts = [`• <@${summary.actorId}> — *${summary.actorName}*`, `❤️ ${summary.currentHp}/${summary.maxHp}`];
+  if (summary.currentShield > 0) headerParts.push(`🛡️ ${summary.currentShield}`);
+  if (badgeLine) headerParts.push(badgeLine);
+  return [`${headerParts.join(" | ")}`, ...details];
 }
 
 function resolveBattleLogLanes(battle) {
@@ -267,7 +267,6 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
   };
   const hasStructuredSummaries = lines.some((entry) => entry && typeof entry === "object" && entry.kind === "action_summary");
 
-  const extras = [];
   for (const rawEntry of lines) {
     const normalized = normalizeLogEntry(rawEntry);
     if (!normalized) continue;
@@ -279,7 +278,6 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
         const textLane = classifyTextLane(normalized.text, laneIds);
         applyTextMetricsToSummary(summaries[textLane], normalized.text);
       }
-      extras.push(compactCombatLogLine(normalized.text));
       continue;
     }
     const lane = classifySummaryLane(normalized, laneIds);
@@ -324,22 +322,15 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     for (const effect of (Array.isArray(normalized.appliedEffects) ? normalized.appliedEffects : [])) {
       if (effect && !summary.continuousEffects.includes(effect)) summary.continuousEffects.push(effect);
     }
-    if (normalized.blockedReason) {
-      extras.push(`Falha: ${summary.actorName} bloqueado (${normalized.blockedReason})`);
-    }
+    summary.extraDamageEntries = buildExtraDamageEntries(normalized);
     for (const note of (Array.isArray(normalized.extraNotes) ? normalized.extraNotes : [])) {
       if (/passiva lendária/i.test(String(note || ""))) summary.passiveEvents.push(String(note));
-      extras.push(compactCombatLogLine(note));
     }
   }
-
-  if (!summaries.player.actionLabel && extras.length) summaries.player.actionLabel = "📜 Eventos da rodada";
-  if (!summaries.enemy.actionLabel && extras.length) summaries.enemy.actionLabel = "📜 Eventos da rodada";
 
   const nextTurnName = getNextTurnLabel(battle);
   const playerLabel = laneIds.playerName || "Jogador";
   const enemyLabel = laneIds.enemyName || "Inimigo";
-  const compactExtras = extras.slice(-4);
   return [
     `*${title}*`,
     "──────────────",
@@ -350,10 +341,38 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     "",
     `*${enemyLabel}*`,
     ...formatCombatantSummaryLines(summaries.enemy),
-    compactExtras.length ? "" : null,
-    compactExtras.length ? '*Eventos da rodada:*' : null,
-    ...compactExtras.map((line) => `• ${line}`),
   ].filter(Boolean).join("\n");
+}
+
+function buildExtraDamageEntries(entry = {}) {
+  const items = [];
+  const statusDamage = Math.max(0, Number(entry.statusDamage || 0));
+  if (statusDamage > 0) items.push({ source: "Status", value: statusDamage, type: "contínuo" });
+  if (Number(entry.extraDamage || 0) > 0) items.push({ source: "Bônus", value: Math.max(0, Number(entry.extraDamage || 0)), type: null });
+
+  const notes = Array.isArray(entry.extraNotes) ? entry.extraNotes : [];
+  for (const note of notes) {
+    const parsed = parseExtraDamageNote(note);
+    if (parsed) items.push(parsed);
+  }
+  const unique = new Set();
+  return items.filter((item) => {
+    const key = `${item.source}|${item.value}|${item.type || ""}`;
+    if (unique.has(key)) return false;
+    unique.add(key);
+    return true;
+  });
+}
+
+function parseExtraDamageNote(note) {
+  const line = String(note || "").replace(/\s+/g, " ").trim();
+  if (!line) return null;
+  const value = Number(line.match(/(\d+)/)?.[1] || 0);
+  if (value <= 0) return null;
+  const source = line.match(/^(?:[^\w<@]*)([^:—-]+?)(?:[:—-]|\s+causou|\s+atingiu|\s+absorveu)/i)?.[1]?.trim() || "Efeito";
+  const lower = line.toLowerCase();
+  const type = lower.includes("true") ? "true" : lower.includes("fogo") ? "fogo" : lower.includes("elétr") ? "elétrico" : lower.includes("fís") ? "físico" : null;
+  return { source, value, type };
 }
 
 function buildStatusBadgesFromSummary(summary = {}) {
