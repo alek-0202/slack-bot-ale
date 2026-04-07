@@ -5,6 +5,7 @@ const path = require("node:path");
 const sellServicePath = path.join(__dirname, "..", "services", "sellService.js");
 const supabasePath = path.join(__dirname, "..", "database", "supabase.js");
 const pokemonServicePath = path.join(__dirname, "..", "services", "pokemonService.js");
+const inventoryServicePath = path.join(__dirname, "..", "services", "inventoryService.js");
 
 function loadSellServiceWithMocks({ rpcResult, pokemons, rpcImpl, tradeLockedIds = [] }) {
   const rpcCalls = [];
@@ -13,6 +14,7 @@ function loadSellServiceWithMocks({ rpcResult, pokemons, rpcImpl, tradeLockedIds
   delete require.cache[sellServicePath];
   delete require.cache[supabasePath];
   delete require.cache[pokemonServicePath];
+  delete require.cache[inventoryServicePath];
 
   require.cache[supabasePath] = {
     id: supabasePath,
@@ -69,6 +71,17 @@ function loadSellServiceWithMocks({ rpcResult, pokemons, rpcImpl, tradeLockedIds
     },
   };
 
+  require.cache[inventoryServicePath] = {
+    id: inventoryServicePath,
+    filename: inventoryServicePath,
+    loaded: true,
+    exports: {
+      async addItem() {
+        return { ok: true };
+      },
+    },
+  };
+
   const sellService = require(sellServicePath);
 
   return {
@@ -79,6 +92,7 @@ function loadSellServiceWithMocks({ rpcResult, pokemons, rpcImpl, tradeLockedIds
       delete require.cache[sellServicePath];
       delete require.cache[supabasePath];
       delete require.cache[pokemonServicePath];
+      delete require.cache[inventoryServicePath];
     },
   };
 }

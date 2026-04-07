@@ -4,6 +4,7 @@ const { GLOBAL_EFFECT_IDS, applyExecuteStacks, getExecuteStatus, tryExecuteTarge
 const EXECUTE_STATUS_ID = GLOBAL_EFFECT_IDS.EXECUTE;
 const LEGENDARY_PREFIX = 'Passiva Lendária:';
 const EGG_MAX_TURNS = 6;
+const ULTIMO_SUSPIRO_REVIVE_PCT_PER_ROUND = 8;
 const PASSIVE_DETAILS_BY_ID = Object.freeze({
   retalia_primordial: 'Armazena dano recebido e libera no próximo ataque.',
   eco_arcano: 'Habilidade pode repetir automaticamente.',
@@ -166,28 +167,14 @@ function onTurnStart({ battle, actorId, logs = [] }) {
 
   if (passive.passiveId === 'ultimo_suspiro' && runtime.eggActive) {
     runtime.eggTurns = Number(runtime.eggTurns || 0) + 1;
-    const heal = Math.max(1, Math.round(Number(player?.battleHp?.max || 0) * 0.08));
-    player.battleHp.current = Math.min(Number(player?.battleHp?.max || 0), Number(player?.battleHp?.current || 0) + heal);
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
-      effectType: 'heal',
-      detail: `Ovo regenerou ${heal} de vida.`,
+      effectType: 'egg_round_survived',
+      detail: `Ovo sobreviveu ao round ${runtime.eggTurns}.`,
     });
-    if (runtime.eggTurns >= EGG_MAX_TURNS) {
-      const reviveHp = Math.max(1, Math.round(Number(player?.battleHp?.max || 0) * 0.35));
-      runtime.eggActive = false;
-      runtime.eggTurns = 0;
-      player.battleHp.current = Math.max(Number(player?.battleHp?.current || 0), reviveHp);
-      pushPassiveLog(logs, {
-        passiveId: passive.passiveId,
-        effectType: 'revive',
-        detail: 'Ovo atingiu limite de turnos e renasceu.',
-      });
-      pushPassiveLog(logs, {
-        passiveId: passive.passiveId,
-        effectType: 'revive',
-        detail: `Renasceu com ${player.battleHp.current} de vida.`,
-      });
+    const maxEggTurns = Math.max(1, Number(passive.values.maxEggRounds || EGG_MAX_TURNS));
+    if (runtime.eggTurns >= maxEggTurns) {
+      reviveFromEgg({ player, passive, runtime, logs, reason: 'round_limit' });
     }
   }
 
@@ -412,15 +399,7 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
       detail: `Ovo recebeu ${Math.max(0, Number(damage || 0))} de dano (HP atual: ${Math.max(0, Number(defender.battleHp.current || 0))})`,
     });
     if (Number(defender.battleHp.current || 0) <= 0) {
-      runtime.eggActive = false;
-      runtime.eggTurns = 0;
-      const reviveHp = Math.max(1, Math.round(Number(defender?.battleHp?.max || 0) * 0.35));
-      defender.battleHp.current = reviveHp;
-      pushPassiveLog(logs, {
-        passiveId: passive.passiveId,
-        effectType: 'revive',
-        detail: `Renasceu com ${reviveHp} de vida.`,
-      });
+      reviveFromEgg({ player: defender, passive, runtime, logs, reason: 'egg_hp_zero' });
     }
   }
 
@@ -501,6 +480,38 @@ function rememberLastMagic({ battle, actorId, baseDamage }) {
   runtime.lastMagic = { baseDamage: Number(baseDamage || 0) };
 }
 
+function isEggFormActive(player) {
+  const passive = getLegendaryPassive(player);
+  if (passive?.passiveId !== 'ultimo_suspiro') return false;
+  const runtime = getPassiveRuntime(player);
+  return Boolean(runtime?.eggActive);
+}
+
+function reviveFromEgg({ player, passive, runtime, logs = [], reason = null }) {
+  const turnsSurvived = Math.max(0, Number(runtime?.eggTurns || 0));
+  const pctPerRound = Number(passive?.values?.revivePctPerRound || ULTIMO_SUSPIRO_REVIVE_PCT_PER_ROUND);
+  const maxEggTurns = Math.max(1, Number(passive?.values?.maxEggRounds || EGG_MAX_TURNS));
+  const appliedTurns = Math.min(turnsSurvived, maxEggTurns);
+  const revivePct = Math.max(1, Math.min(100, Math.round(appliedTurns * pctPerRound)));
+  const reviveHp = Math.max(1, Math.round(Number(player?.battleHp?.max || 0) * (revivePct / 100)));
+  runtime.eggActive = false;
+  runtime.eggTurns = 0;
+  player.battleHp.current = reviveHp;
+
+  if (reason === 'round_limit') {
+    pushPassiveLog(logs, {
+      passiveId: passive?.passiveId,
+      effectType: 'revive',
+      detail: 'Ovo atingiu o limite de rounds e renasceu.',
+    });
+  }
+  pushPassiveLog(logs, {
+    passiveId: passive?.passiveId,
+    effectType: 'revive',
+    detail: `Renasceu com ${revivePct}% de HP (${reviveHp}).`,
+  });
+}
+
 module.exports = {
   onBattleStart,
   onTurnStart,
@@ -509,4 +520,5 @@ module.exports = {
   consumeRetaliationOnAttack,
   rememberLastMagic,
   getPassiveDetailsText,
+  isEggFormActive,
 };

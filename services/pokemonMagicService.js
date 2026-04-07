@@ -112,8 +112,12 @@ async function upsertPokemonMagicLoadout({ slackUserId, pokemonId, selectedEleme
     return { ok: false, reason: "invalid_selected_elements", pokemon, allElements };
   }
 
+  const existingLoadout = await getPokemonMagicLoadout(pokemonId);
+  const existingCharacteristicSkills = Array.isArray(existingLoadout?.spells)
+    ? existingLoadout.spells.filter((entry) => entry?.kind === 'characteristic').slice(0, 2)
+    : [];
   const regularSpells = buildMagicEntriesFromElements(finalElements);
-  const spells = [...regularSpells];
+  const spells = [...regularSpells, ...existingCharacteristicSkills];
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("pokemon_magic_loadouts")
