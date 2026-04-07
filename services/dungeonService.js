@@ -61,6 +61,8 @@ function mapDungeonFailureReason(reason) {
     invalid_target: 'Alvo inválido para essa habilidade.',
     characteristic_skill_requires_level_50: 'Magia característica exige Pokémon nível 50.',
     action_execution_failed: 'Não foi possível usar essa habilidade agora.',
+    limit: 'Você já usou o limite de poções nesta batalha.',
+    full_hp: 'Seu Pokémon já está com HP cheio.',
     defeat: 'Seu Pokémon foi derrotado na dungeon.',
   }[reason] || 'Não foi possível iniciar a dungeon agora.';
 }
@@ -1232,6 +1234,21 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
       enemyTurn,
       completion,
       turnLog,
+    };
+  } catch (error) {
+    logger.error('Erro inesperado ao processar ação da dungeon', {
+      file: 'services/dungeonService.js',
+      method: 'processDungeonTurn',
+      sessionId: channelId,
+      slackUserId: actorUserId,
+      actionType,
+      actionPayload,
+      errorMessage: error?.message,
+    });
+    return {
+      ok: false,
+      reason: 'action_execution_failed',
+      battle: getDungeonBattle(channelId) || battle,
     };
   } finally {
     releaseDungeonLock(channelId);
