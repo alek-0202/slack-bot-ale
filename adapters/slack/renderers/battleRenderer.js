@@ -7,6 +7,7 @@ const { describeEffectGameplayImpact, normalizeEffectKey } = require("../../../a
 const { PASSIVE_DEFINITIONS } = require("../../../services/legendaryPassiveRegistry");
 const { getPassiveDetailsText } = require("../../../application/battle/domain/legendaryPassiveEngine");
 const { getLevelBorderStyle } = require("./pokemonVisualTier");
+const { renderStatusBadge } = require("./statusVisualRegistry");
 
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
 const BATTLE_DECLINE_ACTION_ID = "battle_decline_invite";
@@ -89,7 +90,12 @@ function renderSelectionPrompt({ challengerId, challengedId }) {
 
 function renderBattleState(battle, options = {}) {
   const view = buildBattleViewModel(battle);
-  const [challenger, challenged] = view.players;
+  const playersWithStatusFallback = view.players.map((player) => ({
+    ...player,
+    activeEffects: player.activeEffects?.length ? player.activeEffects : (battle?.players?.[player.userId]?.elementalState?.effects || []),
+    activeStatuses: player.activeStatuses?.length ? player.activeStatuses : (battle?.players?.[player.userId]?.elementalState?.statuses || []),
+  }));
+  const [challenger, challenged] = playersWithStatusFallback;
   const title = options.title || "⚔️ *Batalha Pokémon PvP*";
   const stateTextPrefix = options.stateTextPrefix || "⚔️ Batalha em andamento";
   const shouldShowActions = options.shouldShowActions
@@ -212,19 +218,28 @@ function buildCombatantSummary({ battle, userId, ownerLabel }) {
       ?.reduce((total, effect) => total + Math.max(0, Number(effect.shieldCurrentHp || 0)), 0) || 0),
     buffDetails: [],
     debuffDetails: [],
+    statusBadges: [],
+    appliedEffects: [],
+    passiveEvents: [],
+    elementalDamageLabel: null,
+    round: Number(battle?.round || 1),
   };
 }
 
 function formatCombatantSummaryLines(summary) {
+  const badgeLine = summary.statusBadges.length ? summary.statusBadges.join(" ") : "—";
+  const details = [];
+  details.push(`• Ação: ${summary.actionLabel || "—"}`);
+  details.push(`• Dano total: ${summary.directDamage || 0}${summary.absorbedDamage ? ` (🛡️ ${summary.absorbedDamage} absorvido)` : ""}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}${summary.dodged ? " (esquivado)" : ""}`);
+  if (summary.elementalDamageLabel) details.push(`• Dano elemental: ${summary.elementalDamageLabel}`);
+  if (summary.statusDamage.length) details.push(`• Dano de status: ${summary.statusDamage.map((entry) => `${entry.label} ${entry.value}`).join(", ")}`);
+  if (summary.appliedEffects.length) details.push(`• Buff/Debuff aplicado: ${summary.appliedEffects.join(" | ")}`);
+  if (summary.healingReceived.length) details.push(`• Cura realizada: ${summary.healingReceived.map((entry) => `${entry.label} ${entry.value}`).join(", ")}`);
+  if (summary.passiveEvents.length) details.push(`• Passiva: ${summary.passiveEvents.join(" | ")}`);
   return [
-    `• Ação: ${summary.actionLabel ? `*${summary.actorName}* usou ${summary.actionLabel}` : "—"}`,
-    `• DOT/Contínuo: ${summary.continuousEffects.length ? summary.continuousEffects.join(", ") : "—"}`,
-    `• Dano status: ${summary.statusDamage.length ? summary.statusDamage.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
-    `• Dano: ${summary.directDamage || 0}${summary.absorbedDamage ? ` (barreira absorveu ${summary.absorbedDamage})` : ""}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}${summary.dodged ? " (esquivado)" : ""}${summary.elementalTag ? ` (${summary.elementalTag})` : ""}`,
-    `• Cura recebida: ${summary.healingReceived.length ? summary.healingReceived.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
-    `• Vida: ${summary.currentHp}/${summary.maxHp}${summary.currentShield > 0 ? ` | Barreira: ${summary.currentShield}` : ""}`,
-    `• Buffs: ${summary.buffs.length ? summary.buffs.join(" | ") : "—"}`,
-    `• Debuffs: ${summary.debuffs.length ? summary.debuffs.join(" | ") : "—"}`,
+    `• <@${summary.actorId}> — *${summary.actorName}* | ❤️ ${summary.currentHp}/${summary.maxHp}${summary.currentShield > 0 ? ` | 🛡️ ${summary.currentShield}` : ""} | x${Math.max(1, Number(summary.round || 1))}`,
+    `• Status: ${badgeLine}`,
+    ...details,
   ];
 }
 
@@ -257,6 +272,9 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     const normalized = normalizeLogEntry(rawEntry);
     if (!normalized) continue;
     if (normalized.kind !== 'action_summary') {
+      if (normalized.kind === 'legendary_passive') {
+        summaries.player.passiveEvents.push([normalized.label, normalized.detail].filter(Boolean).join(" — "));
+      }
       if (!hasStructuredSummaries) {
         const textLane = classifyTextLane(normalized.text, laneIds);
         applyTextMetricsToSummary(summaries[textLane], normalized.text);
@@ -275,6 +293,9 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
       : normalized.elementalRelation === "disadvantage"
         ? "resistido"
         : null;
+    summary.elementalDamageLabel = summary.elementalTag
+      ? `${summary.directDamage} (${summary.elementalTag})`
+      : null;
     if (Number(normalized.statusDamage || 0) > 0) {
       summary.statusDamage = [{ label: 'Status', value: Number(normalized.statusDamage || 0) }];
     } else {
@@ -297,6 +318,9 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     summary.debuffs = Array.isArray(normalized.activeDebuffs) ? normalized.activeDebuffs : [];
     summary.buffDetails = Array.isArray(normalized.activeBuffDetails) ? normalized.activeBuffDetails : [];
     summary.debuffDetails = Array.isArray(normalized.activeDebuffDetails) ? normalized.activeDebuffDetails : [];
+    summary.statusBadges = buildStatusBadgesFromSummary(summary);
+    summary.appliedEffects = (Array.isArray(normalized.appliedEffects) ? normalized.appliedEffects : [])
+      .map((effect) => compactCombatLogLine(effect).replace(/^Status:\s*/i, "").replace(/^Extra:\s*/i, ""));
     for (const effect of (Array.isArray(normalized.appliedEffects) ? normalized.appliedEffects : [])) {
       if (effect && !summary.continuousEffects.includes(effect)) summary.continuousEffects.push(effect);
     }
@@ -304,6 +328,7 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
       extras.push(`Falha: ${summary.actorName} bloqueado (${normalized.blockedReason})`);
     }
     for (const note of (Array.isArray(normalized.extraNotes) ? normalized.extraNotes : [])) {
+      if (/passiva lendária/i.test(String(note || ""))) summary.passiveEvents.push(String(note));
       extras.push(compactCombatLogLine(note));
     }
   }
@@ -314,23 +339,50 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
   const nextTurnName = getNextTurnLabel(battle);
   const playerLabel = laneIds.playerName || "Jogador";
   const enemyLabel = laneIds.enemyName || "Inimigo";
+  const compactExtras = extras.slice(-4);
   return [
     `*${title}*`,
     "──────────────",
-    `*Rodada:* ${battle?.round || 1}`,
-    `*Próximo turno:* ${nextTurnName}`,
+    `🧾 *Rodada ${battle?.round || 1}* • Próximo turno: ${nextTurnName}`,
     "",
-    `*[${playerLabel}]*`,
+    `*${playerLabel}*`,
     ...formatCombatantSummaryLines(summaries.player),
     "",
-    `*[${enemyLabel}]*`,
+    `*${enemyLabel}*`,
     ...formatCombatantSummaryLines(summaries.enemy),
-    "",
-    ...formatDetailsSection(battle, laneIds),
-    extras.length ? "" : null,
-    extras.length ? '*Eventos:*' : null,
-    ...extras.slice(-6).map((line) => `• ${line}`),
+    compactExtras.length ? "" : null,
+    compactExtras.length ? '*Eventos da rodada:*' : null,
+    ...compactExtras.map((line) => `• ${line}`),
   ].filter(Boolean).join("\n");
+}
+
+function buildStatusBadgesFromSummary(summary = {}) {
+  const badges = [];
+  const explicitItems = [
+    ...(Array.isArray(summary.buffDetails) ? summary.buffDetails.map((entry) => ({ ...entry, isDebuff: false })) : []),
+    ...(Array.isArray(summary.debuffDetails) ? summary.debuffDetails.map((entry) => ({ ...entry, isDebuff: true })) : []),
+  ];
+  const textFallbackItems = [
+    ...(Array.isArray(summary.buffs) ? summary.buffs.map((name) => ({ id: null, name, isDebuff: false })) : []),
+    ...(Array.isArray(summary.debuffs) ? summary.debuffs.map((name) => ({ id: null, name, isDebuff: true })) : []),
+  ];
+  const items = explicitItems.length ? explicitItems : textFallbackItems;
+  for (const item of items) {
+    const rounds = Number(String(item?.name || "").match(/\[(\d+)\]/)?.[1] || item?.remainingRounds || 0) || null;
+    const stackCount = Number(item?.stacks || 1);
+    const badge = renderStatusBadge({
+      effect: {
+        id: item?.id,
+        name: String(item?.name || "").replace(/\s*\[\d+\]\s*$/, "") || item?.id || "Status",
+        description: item?.description,
+        isDebuff: Boolean(item?.isDebuff),
+      },
+      stacks: stackCount,
+      remainingRounds: rounds,
+    });
+    badges.push(badge.text);
+  }
+  return badges;
 }
 
 function formatDetailsSection(battle, laneIds) {
@@ -419,6 +471,14 @@ function normalizeLogEntry(entry) {
       }
     }
     return normalized;
+  }
+  if (typeof entry === 'object' && entry.kind === 'legendary_passive') {
+    return {
+      kind: 'legendary_passive',
+      label: entry.label || 'Passiva Lendária',
+      detail: entry.detail || null,
+      text: [entry.label, entry.detail].filter(Boolean).join(' — '),
+    };
   }
   if (typeof entry === 'string') return { kind: 'text', text: entry.trim() };
   if (typeof entry === 'object') return { kind: 'text', text: String(entry.message || entry.text || entry.summary || JSON.stringify(entry)).trim() };
@@ -641,16 +701,34 @@ function renderMagicRegisterElementPrompt({ pokemon, elements, maxSlots }) {
 }
 
 function renderPokemonBlock(player) {
+  const headerBadges = renderPlayerStatusBadges(player);
   return (
     `*<@${player.userId}>*\n` +
     `*${player.selectedPokemonName}* (Nv. ${player.level})${player.starText !== "-" ? ` | ${player.starText}` : ""}\n` +
     `${buildPokemonTypesLabel(player.selectedPokemonTypes) ? `🧪 ${buildPokemonTypesLabel(player.selectedPokemonTypes)}\n` : ""}` +
     `❤️ ${player.hpCurrent}/${player.hpMax}${Number(player?.shieldCurrent || 0) > 0 ? ` | 🛡️ ${Number(player.shieldCurrent || 0)}` : ""}\n` +
+    `${headerBadges ? `🧩 ${headerBadges}\n` : ""}` +
     `⚔️ ATK ${player.attack} | ✨ MAG ${player.magic}\n` +
     `🛡️ DEF ${player.defense} | 💨 SPD ${player.speed}\n` +
     `⚡ Iniciativa ${player.initiativeGauge}/${player.initiativeThreshold}` +
     `${renderReserveLines(player)}`
   );
+}
+
+function renderPlayerStatusBadges(player) {
+  const effects = [
+    ...((player?.activeEffects || []).map((entry) => ({ ...entry, isDebuff: false }))),
+    ...((player?.activeStatuses || []).map((entry) => ({ ...entry, isDebuff: true }))),
+  ];
+  if (!effects.length) return "";
+  return effects
+    .slice(0, 6)
+    .map((effect) => renderStatusBadge({
+      effect,
+      stacks: effect?.stacks,
+      remainingRounds: effect?.remainingRounds,
+    }).text)
+    .join(" ");
 }
 
 function renderReserveLines(player) {

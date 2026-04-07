@@ -54,8 +54,8 @@ test('renderDungeonBattleState renderiza ação quando turnLog traz summary estr
 
   const logBlock = payload.blocks.find((block) => block.type === 'section' && String(block.text?.text || '').includes('Log da dungeon'));
   assert.ok(logBlock);
-  assert.match(logBlock.text.text, /\*\[Pikachu\]\*[\s\S]*Ação: \*Pikachu\* usou/);
-  assert.match(logBlock.text.text, /Dano: 42/);
+  assert.match(logBlock.text.text, /\*Pikachu\*[\s\S]*Ação: ⚔️ Ataque Básico/);
+  assert.match(logBlock.text.text, /Dano total: 42/);
 });
 
 test('renderDungeonMagicOptions usa action_ids de magia da dungeon e inclui botão de voltar', () => {
