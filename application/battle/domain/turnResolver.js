@@ -1137,15 +1137,6 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
 
   const player = battle.players[actorUserId];
   const result = resolvePotionTurn(player);
-  const resolvedPotionAction = buildResolvedActionPayload({
-    battle,
-    actorUserId,
-    actionType: "potion",
-    actionName: "Poção",
-    didHit: true,
-    healingDone: Number(result.healAmount || 0),
-    extraNotes: [`poções_restantes:${result.remainingPotions}`],
-  });
 
   if (!result.ok) {
     return {
@@ -1160,6 +1151,15 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       shouldPassTurn: false,
     };
   }
+  const resolvedPotionAction = buildResolvedActionPayload({
+    battle,
+    actorUserId,
+    actionType: "potion",
+    actionName: "Poção",
+    didHit: true,
+    healingDone: Number(result.healAmount || 0),
+    extraNotes: [`poções_restantes:${result.remainingPotions}`],
+  });
 
   const finalized = applyRoundEndAndCheck(battle, actorUserId);
   if (finalized) {

@@ -216,6 +216,22 @@ create index if not exists idx_user_pokemons_user on public.user_pokemons(slack_
 create index if not exists idx_user_pokemons_species on public.user_pokemons(species_id);
 create index if not exists idx_transactions_user on public.transactions(slack_user_id);
 
+create table if not exists public.user_pokemon_characteristic_skills (
+  id bigint generated always as identity primary key,
+  pokemon_id bigint not null references public.user_pokemons(id) on delete cascade,
+  slack_user_id text not null,
+  skill_id text not null,
+  slot smallint not null check (slot between 1 and 2),
+  is_active boolean not null default true,
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now()),
+  unique (pokemon_id, slot),
+  unique (pokemon_id, skill_id)
+);
+
+create index if not exists user_pokemon_characteristic_skills_owner_idx
+  on public.user_pokemon_characteristic_skills (slack_user_id, pokemon_id);
+
 do $$
 begin
   if not exists (
