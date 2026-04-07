@@ -42,6 +42,7 @@ const {
   onDamageTaken: applyLegendaryDamageTaken,
   consumeRetaliationOnAttack,
   rememberLastMagic,
+  isEggFormActive,
 } = require('./legendaryPassiveEngine');
 
 
@@ -467,6 +468,24 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
   }
 
   const forcedAction = getForcedAction(battle.players?.[actorUserId]);
+  if (isEggFormActive(battle.players?.[actorUserId])) {
+    mergeRoundLogs(battle, `🥚 <@${actorUserId}> está em forma de ovo e não pode executar ações neste turno.`);
+    const turnFlow = advanceTurnForActor(battle, actorUserId);
+    return {
+      battle,
+      actionType,
+      outcome: {
+        ok: true,
+        type: actionType,
+        actorUserId,
+        canceledByPassive: true,
+        reason: 'legendary_egg_form_cannot_act',
+        turnFlow,
+      },
+      finished: false,
+      shouldPassTurn: true,
+    };
+  }
   if (forcedAction && forcedAction.forcedAction !== actionType) {
     return {
       battle,

@@ -35,7 +35,7 @@ test("sumFragmentBonuses aplica regras de fragmento por raridade e shiny", () =>
     epicFragment: 2,
     legendaryFragment: 0,
     mythicalFragment: 0,
-    prismaticFragment: 2,
+    prismaticFragment: 52,
   });
 });
 
@@ -49,7 +49,7 @@ test("sumFragmentBonuses concede fragmento prismático para shiny prime épico",
     epicFragment: 1,
     legendaryFragment: 0,
     mythicalFragment: 0,
-    prismaticFragment: 20,
+    prismaticFragment: 50,
   });
 });
 

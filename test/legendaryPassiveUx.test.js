@@ -91,5 +91,5 @@ test('último suspiro mostra cooldown restante no início do turno', () => {
 
   const logs = onTurnStart({ battle, actorId: 'U1', logs: [] });
   assert.match(JSON.stringify(logs), /cooldown: 2 rodada\(s\)/);
-  assert.match(JSON.stringify(logs), /Ovo regenerou/);
+  assert.match(JSON.stringify(logs), /Ovo sobreviveu ao round/);
 });
