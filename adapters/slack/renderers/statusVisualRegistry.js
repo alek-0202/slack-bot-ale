@@ -8,9 +8,9 @@ const STATUS_ICON_CATEGORY_ASSETS = {
 };
 
 const VISUAL_CATEGORY_META = {
-  buff: { label: "buff", blockColor: "green", badge: "🟩" },
-  debuff: { label: "debuff", blockColor: "red", badge: "🟥" },
-  special: { label: "special", blockColor: "blue", badge: "🟦" },
+  buff: { label: "buff", blockColor: "green" },
+  debuff: { label: "debuff", blockColor: "red" },
+  special: { label: "special", blockColor: "blue" },
 };
 
 const STATUS_VISUAL_REGISTRY = {
@@ -101,7 +101,6 @@ function resolveStatusVisual(effect = {}) {
     category,
     categoryLabel: categoryMeta.label,
     blockColor: categoryMeta.blockColor,
-    badge: categoryMeta.badge,
     symbol: base?.symbol || "⬜",
     description: describeEffectGameplayImpact(effect) || base?.description || effect?.description || "Status ativo.",
     tooltip: describeEffectGameplayImpact(effect) || base?.tooltip || effect?.description || effect?.name || "Status ativo",
@@ -116,11 +115,12 @@ function renderStatusBadge({ effect, stacks = 1, remainingRounds = null }) {
   const stackTag = Number(stacks || 1) > 1 ? `x${Math.max(1, Number(stacks || 1))}` : null;
   const roundsTag = remainingRounds == null ? null : `${Math.max(0, Number(remainingRounds || 0))}r`;
   const tags = [stackTag, roundsTag].filter(Boolean).join("·");
-  const suffix = tags ? `(${tags})` : "";
+  const suffix = tags ? ` (${tags})` : "";
   const tooltip = buildStatusTooltip(effect, { stacks, remainingRounds, charges });
+  const shortName = visual.name || "Status";
 
   return {
-    text: `${visual.badge}${visual.symbol}${suffix}`,
+    text: `${shortName}${suffix}`,
     metadata: {
       id: visual.id,
       name: visual.name,
