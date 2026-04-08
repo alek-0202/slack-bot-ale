@@ -649,14 +649,27 @@ async function castMagic({ event, say, magicSlot }) {
     : result.elemental?.hasDisadvantage
       ? `⚠️ Desvantagem elemental contra: ${result.elemental.disadvantagedAgainst.join(", ")}\n`
       : "";
+  const magicLabel = result.magicEntry?.name || "Magia";
+  const magicIcon = result.magicEntry?.icon || "✨";
+  const baseStatUsed = typeof result.baseStatUsed === "string" && result.baseStatUsed.trim()
+    ? result.baseStatUsed.trim().toUpperCase()
+    : null;
+  const hasClassicMagicRollData = result.primaryRollValue != null || result.bonusRollValue != null || baseStatUsed || result.attackBonusBase != null;
+  const diceLine = hasClassicMagicRollData
+    ? `🎲 d12: ${result.primaryRollValue ?? "-"} | d6 bônus: ${result.bonusRollValue ?? "-"}\n`
+    : "";
+  const baseLine = hasClassicMagicRollData
+    ? `🧠 Base: *${baseStatUsed || "SKILL"}* (${result.magicStat ?? "-"}) | bônus ataque 15%: *${result.attackBonusBase ?? "-"}*\n`
+    : "";
+  const multiplierValue = Number(result.multiplier || result.elemental?.multiplier || 1);
 
   await say(
-    `✨ <@${event.user}> lançou *${result.magicEntry.name}* ${result.magicEntry.icon} em <@${result.defenderId}>!\n` +
-    `🎲 d12: ${result.primaryRollValue} | d6 bônus: ${result.bonusRollValue}\n` +
-    `🧠 Base: *${result.baseStatUsed.toUpperCase()}* (${result.magicStat}) | bônus ataque 15%: *${result.attackBonusBase}*\n` +
+    `✨ <@${event.user}> lançou *${magicLabel}* ${magicIcon} em <@${result.defenderId}>!\n` +
+    diceLine +
+    baseLine +
     `${result.isCritical ? "💥 CRÍTICO MÁGICO GARANTIDO!\n" : ""}` +
     relationMessage +
-    `Multiplicador: *x${result.multiplier}* | Energia consumida: *${result.energyConsumed}*\n` +
+    `Multiplicador: *x${multiplierValue}* | Energia consumida: *${result.energyConsumed}*\n` +
     `Dano final: *${result.finalDamage}*\n` +
     `HP restante de <@${result.defenderId}>: *${result.defenderRemainingHp}/${battle.players[result.defenderId].battleHp.max}*`,
   );
