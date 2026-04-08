@@ -395,6 +395,9 @@ function buildStatusBadgesFromSummary(summary = {}) {
         name: String(item?.name || "").replace(/\s*\[\d+\]\s*$/, "") || item?.id || "Status",
         description: item?.description,
         isDebuff: Boolean(item?.isDebuff),
+        type: item?.type,
+        visualCategory: item?.visualCategory,
+        charges: item?.charges,
       },
       stacks: stackCount,
       remainingRounds: rounds,
@@ -736,8 +739,8 @@ function renderPokemonBlock(player) {
 
 function renderPlayerStatusBadges(player) {
   const effects = [
-    ...((player?.activeEffects || []).map((entry) => ({ ...entry, isDebuff: false }))),
-    ...((player?.activeStatuses || []).map((entry) => ({ ...entry, isDebuff: true }))),
+    ...(player?.activeEffects || []),
+    ...(player?.activeStatuses || []),
   ];
   if (!effects.length) return "";
   return effects
@@ -745,7 +748,7 @@ function renderPlayerStatusBadges(player) {
     .map((effect) => renderStatusBadge({
       effect,
       stacks: effect?.stacks,
-      remainingRounds: effect?.remainingRounds,
+      remainingRounds: effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null,
     }).text)
     .join(" ");
 }
