@@ -70,7 +70,7 @@ test('renderDungeonError mostra mensagem de indisponibilidade', () => {
   assert.match(payload.blocks[1].text.text, /Erro qualquer/);
 });
 
-test('renderDungeonBattleState força contexto de status em emoji ao invés de imagem', () => {
+test('renderDungeonBattleState usa o mesmo render de ícones do PvP quando base pública está configurada', () => {
   const battle = {
     channelId: 'C-dungeon',
     status: 'active',
@@ -96,10 +96,10 @@ test('renderDungeonBattleState força contexto de status em emoji ao invés de i
   const originalBaseUrl = process.env.RENDERED_IMAGE_PUBLIC_BASE_URL;
   process.env.RENDERED_IMAGE_PUBLIC_BASE_URL = 'https://cdn.example.com';
   const payload = renderDungeonBattleState(battle);
-  const contextBlock = payload.blocks.find((block) => block.type === 'context' && Array.isArray(block.elements) && block.elements.some((entry) => entry.text?.includes('Barreira')));
+  const contextBlock = payload.blocks.find((block) => block.type === 'context' && Array.isArray(block.elements) && block.elements.some((entry) => entry.type === 'image'));
 
   assert.ok(contextBlock);
-  assert.equal(contextBlock.elements.some((entry) => entry.type === 'image'), false);
-  assert.equal(contextBlock.elements.every((entry) => entry.type === 'mrkdwn'), true);
+  assert.equal(contextBlock.elements.some((entry) => entry.type === 'image'), true);
+  assert.match(contextBlock.elements[0].image_url, /^https:\/\/cdn\.example\.com\/assets\/status-icons\//);
   process.env.RENDERED_IMAGE_PUBLIC_BASE_URL = originalBaseUrl;
 });

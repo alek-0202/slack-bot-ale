@@ -71,14 +71,20 @@ function inferGameplayDescription(entry = {}) {
   if (entry.cannotAct || entry.skipTurn || entry.blockAction) parts.push("impede o alvo de agir");
   if (entry.taunt || entry.forcedAction) parts.push("força ação básica e limita escolhas");
 
-  return parts.join("; ") || "altera o fluxo da luta enquanto estiver ativo";
+  return parts.join("; ") || "efeito ativo sem metadados detalhados no registry";
+}
+
+function isGenericDescription(text) {
+  const normalized = String(text || "").trim().toLowerCase();
+  if (!normalized) return true;
+  return normalized.includes("altera o fluxo da luta");
 }
 
 function describeEffectGameplayImpact(entry = {}) {
   if (entry?.gameplayDescription) return String(entry.gameplayDescription);
   const key = normalizeEffectKey(entry);
   if (key && EFFECT_GAMEPLAY_DESCRIPTIONS[key]) return EFFECT_GAMEPLAY_DESCRIPTIONS[key];
-  if (entry?.description) return String(entry.description);
+  if (entry?.description && !isGenericDescription(entry.description)) return String(entry.description);
   return inferGameplayDescription(entry);
 }
 
