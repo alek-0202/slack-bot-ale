@@ -1,4 +1,4 @@
-const { normalizeEffectKey } = require("../../../application/battle/domain/effectDetailsRegistry");
+const { describeEffectGameplayImpact, normalizeEffectKey } = require("../../../application/battle/domain/effectDetailsRegistry");
 
 const STATUS_ICON_ASSET_BASE_PATH = "assets/status-icons";
 const STATUS_ICON_CATEGORY_ASSETS = {
@@ -75,13 +75,13 @@ function inferCategoryFromEffect(effect = {}) {
 function resolveStatusIconPath({ category, key } = {}) {
   const directCategoryAsset = STATUS_ICON_CATEGORY_ASSETS[category];
   if (directCategoryAsset) return directCategoryAsset;
-  const fallbackKey = key || "status_special";
-  return `${STATUS_ICON_ASSET_BASE_PATH}/${fallbackKey}.png`;
+  if (key && STATUS_ICON_CATEGORY_ASSETS[key]) return STATUS_ICON_CATEGORY_ASSETS[key];
+  return STATUS_ICON_CATEGORY_ASSETS.special;
 }
 
 function buildStatusTooltip(effect = {}, { stacks = null, remainingRounds = null, charges = null } = {}) {
   const name = effect?.name || effect?.id || "Status";
-  const description = effect?.description || "Status ativo.";
+  const description = describeEffectGameplayImpact(effect);
   const roundsText = remainingRounds == null ? null : `${Math.max(0, Number(remainingRounds || 0))} rounds`;
   const stacksText = stacks == null || Number(stacks || 0) <= 1 ? null : `${Math.max(1, Number(stacks || 1))} stacks`;
   const chargesText = charges == null || Number(charges || 0) <= 0 ? null : `${Math.max(0, Number(charges || 0))} cargas`;
@@ -103,8 +103,8 @@ function resolveStatusVisual(effect = {}) {
     blockColor: categoryMeta.blockColor,
     badge: categoryMeta.badge,
     symbol: base?.symbol || "⬜",
-    description: base?.description || effect?.description || "Status ativo.",
-    tooltip: base?.tooltip || effect?.description || effect?.name || "Status ativo",
+    description: describeEffectGameplayImpact(effect) || base?.description || effect?.description || "Status ativo.",
+    tooltip: describeEffectGameplayImpact(effect) || base?.tooltip || effect?.description || effect?.name || "Status ativo",
     iconPath,
     placeholder: !base,
   };

@@ -52,6 +52,24 @@ test("renderBattleState mantém topo e inclui mini-ícones de status no bloco su
   assert.match(firstPokemonSection.text.text, /🟥🔥\(1r\)/);
 });
 
+test("renderBattleState inclui seção fixa de Details antes do resumo da rodada", () => {
+  const battle = createBattleStub();
+  battle.metadata = {
+    turnLog: ["⚔️ <@U1> atacou <@U2> e causou *35* de dano."],
+  };
+  battle.players.U1.selectedPokemon.legendaryPassive = { passiveId: "blindagem_reativa", values: {} };
+  battle.players.U2.selectedPokemon.legendaryPassive = { passiveId: "colapso_elemental", values: {} };
+
+  const payload = renderBattleState(battle);
+  const detailsIndex = payload.blocks.findIndex((block) => block.type === "section" && String(block.text?.text || "").includes("*Details*"));
+  const logIndex = payload.blocks.findIndex((block) => block.type === "section" && String(block.text?.text || "").includes("RESUMO DA RODADA"));
+
+  assert.ok(detailsIndex >= 0);
+  assert.ok(logIndex > detailsIndex);
+  assert.match(payload.blocks[detailsIndex].text.text, /Seu Pokémon ativo:/);
+  assert.match(payload.blocks[detailsIndex].text.text, /Pokémon inimigo ativo:/);
+});
+
 test("renderMagicOptions gera um action_id único por slot de magia", () => {
   const payload = renderMagicOptions({
     battle: { channelId: "C1" },

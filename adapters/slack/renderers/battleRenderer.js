@@ -9,6 +9,8 @@ const { getPassiveDetailsText } = require("../../../application/battle/domain/le
 const { getLevelBorderStyle } = require("./pokemonVisualTier");
 const { renderStatusBadge } = require("./statusVisualRegistry");
 
+const PUBLIC_BASE_URL = String(process.env.RENDERED_IMAGE_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL || "").trim().replace(/\/+$/g, "");
+
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
 const BATTLE_DECLINE_ACTION_ID = "battle_decline_invite";
 const BATTLE_TURN_ACTION_ID = "battle_turn_action";
@@ -105,6 +107,7 @@ function renderBattleState(battle, options = {}) {
     ? options.waitingTextBuilder({ battle, view })
     : null;
   const logBlock = buildBattleLogBlock(battle, options);
+  const detailsBlock = buildBattleDetailsBlock({ battle, challenger, challenged });
 
   return {
     text:
@@ -144,6 +147,7 @@ function renderBattleState(battle, options = {}) {
         },
         ...(buildPokemonAccessory(challenger) ? { accessory: buildPokemonAccessory(challenger) } : {}),
       },
+      buildStatusTooltipContextBlock(challenger),
       {
         type: "section",
         text: {
@@ -152,6 +156,7 @@ function renderBattleState(battle, options = {}) {
         },
         ...(buildPokemonAccessory(challenged) ? { accessory: buildPokemonAccessory(challenged) } : {}),
       },
+      buildStatusTooltipContextBlock(challenged),
       {
         type: "context",
         elements: [
@@ -161,6 +166,7 @@ function renderBattleState(battle, options = {}) {
           },
         ],
       },
+      detailsBlock,
       logBlock,
       !shouldShowActions && waitingText ? {
         type: "context",
@@ -169,6 +175,45 @@ function renderBattleState(battle, options = {}) {
       shouldShowActions ? buildBattleActionBlock(battle, options) : null,
     ].filter(Boolean),
   };
+}
+
+function resolveStatusIconPublicUrl(iconPath) {
+  if (!iconPath || typeof iconPath !== "string") return null;
+  if (/^https?:\/\//i.test(iconPath)) return iconPath;
+  if (!PUBLIC_BASE_URL) return null;
+  const normalizedPath = iconPath.startsWith("/") ? iconPath : `/${iconPath}`;
+  return `${PUBLIC_BASE_URL}${normalizedPath}`;
+}
+
+function buildStatusTooltipContextBlock(player) {
+  const effects = [
+    ...(player?.activeEffects || []),
+    ...(player?.activeStatuses || []),
+  ];
+  if (!effects.length) return null;
+  const elements = [];
+  for (const effect of effects.slice(0, 8)) {
+    const badge = renderStatusBadge({
+      effect,
+      stacks: effect?.stacks,
+      remainingRounds: effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null,
+    });
+    const iconUrl = resolveStatusIconPublicUrl(badge?.metadata?.iconPath);
+    if (iconUrl) {
+      elements.push({
+        type: "image",
+        image_url: iconUrl,
+        alt_text: badge.metadata.tooltip,
+      });
+      continue;
+    }
+    elements.push({
+      type: "mrkdwn",
+      text: `${badge.text} ${badge.metadata.tooltip}`,
+    });
+  }
+  if (!elements.length) return null;
+  return { type: "context", elements };
 }
 
 function buildBattleLogBlock(battle, options = {}) {
@@ -415,6 +460,30 @@ function formatDetailsSection(battle, laneIds) {
     lines.push(`• ${item.name} -> ${item.description}`);
   }
   return lines;
+}
+
+function buildBattleDetailsBlock({ battle, challenger, challenged }) {
+  const lines = [
+    "*Details*",
+    `• Seu Pokémon ativo: ${formatLegendaryPassiveDetails(challenger, battle?.players?.[challenger?.userId])}`,
+    `• Pokémon inimigo ativo: ${formatLegendaryPassiveDetails(challenged, battle?.players?.[challenged?.userId])}`,
+  ];
+  return {
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: lines.join("\n"),
+    },
+  };
+}
+
+function formatLegendaryPassiveDetails(viewPlayer, battlePlayer) {
+  const passive = battlePlayer?.selectedPokemon?.legendaryPassive;
+  if (!passive?.passiveId) return "Sem passiva lendária";
+  const passiveName = PASSIVE_DEFINITIONS[passive.passiveId]?.name || passive.passiveId;
+  const shortDescription = getPassiveDetailsText(battlePlayer) || "passiva lendária ativa.";
+  const pokemonName = viewPlayer?.selectedPokemonName || battlePlayer?.selectedPokemon?.name || "Pokémon";
+  return `*${pokemonName}* — *${passiveName}*: ${shortDescription}`;
 }
 
 function collectBattleActiveEffectDetails(battle = {}, laneIds = {}) {

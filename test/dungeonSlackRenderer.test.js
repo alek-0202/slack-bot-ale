@@ -42,6 +42,22 @@ test('renderDungeonBattleState inclui log textual de combate quando disponível'
   assert.match(logBlock.text.text, /Charmander/);
 });
 
+test('renderDungeonBattleState inclui Details antes do log da dungeon', () => {
+  const battle = createBattleStub({
+    metadata: {
+      turnLog: ['⚔️ Pikachu atacou e causou 30 de dano.'],
+    },
+  });
+  battle.players.U1.selectedPokemon.legendaryPassive = { passiveId: 'blindagem_reativa', values: {} };
+  battle.players.__dungeon_enemy__.selectedPokemon.legendaryPassive = { passiveId: 'colapso_elemental', values: {} };
+
+  const payload = renderDungeonBattleState(battle);
+  const detailsIndex = payload.blocks.findIndex((block) => block.type === 'section' && String(block.text?.text || '').includes('*Details*'));
+  const logIndex = payload.blocks.findIndex((block) => block.type === 'section' && String(block.text?.text || '').includes('Log da dungeon'));
+  assert.ok(detailsIndex >= 0);
+  assert.ok(logIndex > detailsIndex);
+});
+
 test('renderDungeonBattleState renderiza ação quando turnLog traz summary estruturado', () => {
   const payload = renderDungeonBattleState(createBattleStub({
     metadata: {
