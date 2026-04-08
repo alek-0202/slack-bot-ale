@@ -147,7 +147,7 @@ function renderBattleState(battle, options = {}) {
         },
         ...(buildPokemonAccessory(challenger) ? { accessory: buildPokemonAccessory(challenger) } : {}),
       },
-      buildStatusTooltipContextBlock(challenger),
+      buildStatusTooltipContextBlock(challenger, options),
       {
         type: "section",
         text: {
@@ -156,7 +156,7 @@ function renderBattleState(battle, options = {}) {
         },
         ...(buildPokemonAccessory(challenged) ? { accessory: buildPokemonAccessory(challenged) } : {}),
       },
-      buildStatusTooltipContextBlock(challenged),
+      buildStatusTooltipContextBlock(challenged, options),
       {
         type: "context",
         elements: [
@@ -185,12 +185,14 @@ function resolveStatusIconPublicUrl(iconPath) {
   return `${PUBLIC_BASE_URL}${normalizedPath}`;
 }
 
-function buildStatusTooltipContextBlock(player) {
+function buildStatusTooltipContextBlock(player, options = {}) {
   const effects = [
     ...(player?.activeEffects || []),
     ...(player?.activeStatuses || []),
   ];
   if (!effects.length) return null;
+  const statusTooltipMode = String(options.statusTooltipMode || "auto").toLowerCase();
+  const forceEmoji = statusTooltipMode === "emoji";
   const elements = [];
   for (const effect of effects.slice(0, 8)) {
     const badge = renderStatusBadge({
@@ -198,7 +200,7 @@ function buildStatusTooltipContextBlock(player) {
       stacks: effect?.stacks,
       remainingRounds: effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null,
     });
-    const iconUrl = resolveStatusIconPublicUrl(badge?.metadata?.iconPath);
+    const iconUrl = forceEmoji ? null : resolveStatusIconPublicUrl(badge?.metadata?.iconPath);
     if (iconUrl) {
       elements.push({
         type: "image",
