@@ -11,7 +11,6 @@ const {
 test('resolveStatusVisual aplica categoria e usa ícone global da categoria', () => {
   const visual = resolveStatusVisual({ id: 'custom_future_status', name: 'Future Status', isDebuff: false });
   assert.equal(visual.category, 'buff');
-  assert.equal(visual.badge, '🟩');
   assert.equal(visual.placeholder, true);
   assert.equal(visual.iconPath, 'assets/status-icons/status_buff.png');
 });
@@ -29,7 +28,7 @@ test('renderStatusBadge renderiza categoria debuff com rounds e stacks', () => {
     remainingRounds: 3,
   });
 
-  assert.equal(badge.text, '🟥🔥(x2·3r)');
+  assert.equal(badge.text, 'Burn (x2·3r)');
   assert.equal(badge.metadata.category, 'debuff');
   assert.equal(badge.metadata.name, 'Burn');
   assert.equal(badge.metadata.iconPath, 'assets/status-icons/status_debuff.png');

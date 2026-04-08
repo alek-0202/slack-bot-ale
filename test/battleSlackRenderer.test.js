@@ -48,8 +48,8 @@ test("renderBattleState mantém topo e inclui mini-ícones de status no bloco su
   assert.ok(firstPokemonSection);
   assert.match(firstPokemonSection.text.text, /⚡ Iniciativa/);
   assert.match(firstPokemonSection.text.text, /🧩/);
-  assert.match(firstPokemonSection.text.text, /🟩🛡️\(2r\)/);
-  assert.match(firstPokemonSection.text.text, /🟥🔥\(1r\)/);
+  assert.match(firstPokemonSection.text.text, /Barreira Psíquica \(2r\)/);
+  assert.match(firstPokemonSection.text.text, /Burn \(1r\)/);
 });
 
 test("renderBattleState inclui seção fixa de Details antes do resumo da rodada", () => {
@@ -155,7 +155,7 @@ test("formatBattleLogForSlack usa critBonusDamage e resolvedAction como fonte ú
 
   assert.match(text, /Dano extra: Status 5 contínuo/);
   assert.match(text, /Dano total: 48 \(\+crit 18\)/);
-  assert.match(text, /❤️ 111\/150 \| 🛡️ 30 \| 🟩⬜/);
+  assert.match(text, /❤️ 111\/150 \| 🛡️ 30 \| Foco: \+15% chance crítica/);
   assert.doesNotMatch(text, /• Status:/);
 });
 
@@ -191,8 +191,8 @@ test("formatBattleLogForSlack exibe absorção de barreira e duração restante 
   });
 
   assert.match(text, /Dano total: 0 \(🛡️ 40 absorvido\)/);
-  assert.match(text, /🟩⬜\(2r\) 🟩⬜\(1r\)/);
-  assert.match(text, /🟥🔥\(3r\)/);
+  assert.match(text, /Controle Mental \(2r\) Barreira Psíquica \(1r\)/);
+  assert.match(text, /Burn \(3r\)/);
 });
 
 test("formatBattleLogForSlack usa fallback textual quando não há action_summary", () => {
