@@ -59,3 +59,13 @@ test('buildStatusTooltip inclui rounds/stacks/cargas por efeito individual', () 
   assert.match(tooltip, /3 stacks/);
   assert.match(tooltip, /1 cargas/);
 });
+
+test('renderStatusBadge ignora descrição genérica e usa fallback sem frase vaga', () => {
+  const badge = renderStatusBadge({
+    effect: { id: 'misterioso', name: 'Misterioso', description: 'altera o fluxo da luta enquanto estiver ativo' },
+    stacks: 1,
+    remainingRounds: 1,
+  });
+
+  assert.doesNotMatch(badge.metadata.tooltip, /altera o fluxo da luta enquanto estiver ativo/i);
+});

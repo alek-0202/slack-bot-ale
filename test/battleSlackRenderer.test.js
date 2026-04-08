@@ -153,7 +153,7 @@ test("formatBattleLogForSlack usa critBonusDamage e resolvedAction como fonte ú
     }],
   });
 
-  assert.match(text, /Dano extra: Status 5 contínuo/);
+  assert.match(text, /Dano extra: Dano contínuo 5 contínuo/);
   assert.match(text, /Dano total: 48 \(\+crit 18\)/);
   assert.match(text, /❤️ 111\/150 \| 🛡️ 30 \| Foco: \+15% chance crítica/);
   assert.doesNotMatch(text, /• Status:/);
@@ -243,7 +243,7 @@ test("formatBattleLogForSlack agrega múltiplas fontes em Dano extra acima do Da
   const extraIndex = text.indexOf("• Dano extra:");
   const totalIndex = text.indexOf("• Dano total:");
   assert.ok(extraIndex >= 0 && totalIndex > extraIndex);
-  assert.match(text, /Dano extra: Status 12 contínuo \| Burn 12 \| Passiva Lendária 23 físico/);
+  assert.match(text, /Dano extra: Dano contínuo 12 contínuo \| Burn 12 fogo \| Passiva Lendária — Eco 23 físico/);
 });
 
 function createBattleStub({ withReserves = false } = {}) {

@@ -52,8 +52,8 @@ test('blindagem reativa registra ativação, escudo e cooldown com marcador de p
   const logs = onDamageTaken({ battle, attackerId: 'U2', defenderId: 'U1', damage: 60, logs: [] });
 
   const rendered = formatBattleLogForSlack({ battle, lines: logs, title: 'LOG' });
-  assert.match(rendered, /Passiva Lendária: Gerou escudo de 30 por 1 turno\(s\)\./);
-  assert.match(rendered, /Passiva Lendária: Blindagem Reativa em cooldown por 5 turno\(s\)\./);
+  assert.match(rendered, /Passiva Lendária — Gerou escudo de 30 por 1 turno\(s\)\./);
+  assert.match(rendered, /Passiva Lendária — Blindagem Reativa em cooldown por 5 turno\(s\)\./);
 });
 
 test('colapso elemental e sangue adaptativo exibem stacks com marcador de passiva lendária', () => {

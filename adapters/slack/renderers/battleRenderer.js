@@ -9,8 +9,6 @@ const { getPassiveDetailsText } = require("../../../application/battle/domain/le
 const { getLevelBorderStyle } = require("./pokemonVisualTier");
 const { renderStatusBadge } = require("./statusVisualRegistry");
 
-const PUBLIC_BASE_URL = String(process.env.RENDERED_IMAGE_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL || "").trim().replace(/\/+$/g, "");
-
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
 const BATTLE_DECLINE_ACTION_ID = "battle_decline_invite";
 const BATTLE_TURN_ACTION_ID = "battle_turn_action";
@@ -180,16 +178,88 @@ function renderBattleState(battle, options = {}) {
 function resolveStatusIconPublicUrl(iconPath) {
   if (!iconPath || typeof iconPath !== "string") return null;
   if (/^https?:\/\//i.test(iconPath)) return iconPath;
-  if (!PUBLIC_BASE_URL) return null;
+  const publicBaseUrl = String(process.env.RENDERED_IMAGE_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL || "")
+    .trim()
+    .replace(/\/+$/g, "");
+  if (!publicBaseUrl) return null;
   const normalizedPath = iconPath.startsWith("/") ? iconPath : `/${iconPath}`;
-  return `${PUBLIC_BASE_URL}${normalizedPath}`;
+  return `${publicBaseUrl}${normalizedPath}`;
+}
+
+function collectActiveStatusEntries(player = {}) {
+  const activeEffects = Array.isArray(player?.activeEffects) ? player.activeEffects : [];
+  const activeStatuses = Array.isArray(player?.activeStatuses) ? player.activeStatuses : [];
+  return [...activeEffects, ...activeStatuses].filter((effect) => {
+    const rounds = Number(effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? 1);
+    const stacks = Number(effect?.stacks ?? 1);
+    return rounds > 0 && stacks > 0;
+  });
+}
+
+function buildStatusBadgesFromBattleState(player = {}) {
+  return collectActiveStatusEntries({
+    activeEffects: player?.elementalState?.effects || [],
+    activeStatuses: player?.elementalState?.statuses || [],
+  }).map((effect) => renderStatusBadge({
+    effect,
+    stacks: effect?.stacks,
+    remainingRounds: effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null,
+  }).text);
+}
+
+function buildStatusMetadataFromBattleState(player = {}) {
+  return collectActiveStatusEntries({
+    activeEffects: player?.elementalState?.effects || [],
+    activeStatuses: player?.elementalState?.statuses || [],
+  }).map((effect) => ({
+    id: effect?.id || null,
+    name: effect?.name || effect?.id || "Status",
+    description: describeEffectGameplayImpact(effect),
+    isDebuff: Boolean(effect?.isDebuff || effect?.type === "debuff" || effect?.type === "debuff_status"),
+    type: effect?.type,
+    visualCategory: effect?.visualCategory,
+    charges: effect?.charges,
+    remainingRounds: effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null,
+    stacks: effect?.stacks ?? 1,
+  }));
+}
+
+function resolveDamageTypeFromText(line = "") {
+  const normalized = String(line || "").toLowerCase();
+  if (!normalized) return null;
+  if (/\btrue\b|verdadeir/.test(normalized)) return "true damage";
+  if (/físic/.test(normalized)) return "físico";
+  if (/fogo|burn|queim/.test(normalized)) return "fogo";
+  if (/gelo|gelid|congel/.test(normalized)) return "gelo";
+  if (/elétr|choque|raio/.test(normalized)) return "elétrico";
+  if (/ps[ií]quic|mental/.test(normalized)) return "psíquico";
+  if (/água|water/.test(normalized)) return "água";
+  if (/grama|grass|ra[ií]z/.test(normalized)) return "grama";
+  return null;
+}
+
+function normalizeDamageSource(source = "") {
+  const cleaned = String(source || "")
+    .replace(/^passiva\/caracter[íi]stica:\s*/i, "")
+    .replace(/^caracter[íi]stica:\s*/i, "")
+    .replace(/^passiva lend[áa]ria:\s*/i, "Passiva Lendária — ")
+    .replace(/^passiva lend[áa]ria\s*[-—:]\s*/i, "Passiva Lendária — ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "Efeito";
+  return cleaned;
+}
+
+function parseExtraDamageSource(line = "") {
+  const directCause = line.match(/^[^\w<@]*(.+?)\s+causou\s+\d+/i)?.[1];
+  if (directCause) return normalizeDamageSource(directCause);
+  const splitByDivider = line.match(/^[^\w<@]*(.+?)(?:\s*[-—:])/);
+  if (splitByDivider) return normalizeDamageSource(splitByDivider[1]);
+  return "Efeito";
 }
 
 function buildStatusTooltipContextBlock(player, options = {}) {
-  const effects = [
-    ...(player?.activeEffects || []),
-    ...(player?.activeStatuses || []),
-  ];
+  const effects = collectActiveStatusEntries(player);
   if (!effects.length) return null;
   const statusTooltipMode = String(options.statusTooltipMode || "auto").toLowerCase();
   const forceEmoji = statusTooltipMode === "emoji";
@@ -242,6 +312,7 @@ function buildBattleLogBlock(battle, options = {}) {
 
 function buildCombatantSummary({ battle, userId, ownerLabel }) {
   const player = battle?.players?.[userId];
+  const seededStatusDetails = buildStatusMetadataFromBattleState(player);
   return {
     actorId: userId,
     actorName: player?.selectedPokemon?.name || "Pokémon",
@@ -263,9 +334,9 @@ function buildCombatantSummary({ battle, userId, ownerLabel }) {
     currentShield: Number(player?.elementalState?.effects
       ?.filter((effect) => Number(effect?.remainingRounds ?? 1) > 0 && effect?.shieldCurrentHp != null)
       ?.reduce((total, effect) => total + Math.max(0, Number(effect.shieldCurrentHp || 0)), 0) || 0),
-    buffDetails: [],
-    debuffDetails: [],
-    statusBadges: [],
+    buffDetails: seededStatusDetails.filter((entry) => !entry.isDebuff),
+    debuffDetails: seededStatusDetails.filter((entry) => entry.isDebuff),
+    statusBadges: buildStatusBadgesFromBattleState(player),
     appliedEffects: [],
     passiveEvents: [],
     extraDamageEntries: [],
@@ -394,8 +465,8 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
 function buildExtraDamageEntries(entry = {}) {
   const items = [];
   const statusDamage = Math.max(0, Number(entry.statusDamage || 0));
-  if (statusDamage > 0) items.push({ source: "Status", value: statusDamage, type: "contínuo" });
-  if (Number(entry.extraDamage || 0) > 0) items.push({ source: "Bônus", value: Math.max(0, Number(entry.extraDamage || 0)), type: null });
+  if (statusDamage > 0) items.push({ source: "Dano contínuo", value: statusDamage, type: "contínuo" });
+  if (Number(entry.extraDamage || 0) > 0) items.push({ source: "Bônus adicional", value: Math.max(0, Number(entry.extraDamage || 0)), type: null });
 
   const notes = Array.isArray(entry.extraNotes) ? entry.extraNotes : [];
   for (const note of notes) {
@@ -404,6 +475,7 @@ function buildExtraDamageEntries(entry = {}) {
   }
   const unique = new Set();
   return items.filter((item) => {
+    if (Number(item?.value || 0) <= 0) return false;
     const key = `${item.source}|${item.value}|${item.type || ""}`;
     if (unique.has(key)) return false;
     unique.add(key);
@@ -414,11 +486,10 @@ function buildExtraDamageEntries(entry = {}) {
 function parseExtraDamageNote(note) {
   const line = String(note || "").replace(/\s+/g, " ").trim();
   if (!line) return null;
-  const value = Number(line.match(/(\d+)/)?.[1] || 0);
+  const value = Number(line.match(/\b(\d+)\b/)?.[1] || 0);
   if (value <= 0) return null;
-  const source = line.match(/^(?:[^\w<@]*)([^:—-]+?)(?:[:—-]|\s+causou|\s+atingiu|\s+absorveu)/i)?.[1]?.trim() || "Efeito";
-  const lower = line.toLowerCase();
-  const type = lower.includes("true") ? "true" : lower.includes("fogo") ? "fogo" : lower.includes("elétr") ? "elétrico" : lower.includes("fís") ? "físico" : null;
+  const source = parseExtraDamageSource(line);
+  const type = resolveDamageTypeFromText(line);
   return { source, value, type };
 }
 
@@ -809,10 +880,7 @@ function renderPokemonBlock(player) {
 }
 
 function renderPlayerStatusBadges(player) {
-  const effects = [
-    ...(player?.activeEffects || []),
-    ...(player?.activeStatuses || []),
-  ];
+  const effects = collectActiveStatusEntries(player);
   if (!effects.length) return "";
   return effects
     .slice(0, 6)
