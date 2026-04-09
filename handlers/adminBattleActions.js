@@ -3,6 +3,7 @@ const {
   parseAdminCloseAllBattlesActionValue,
 } = require('../services/adminBattleControlViewService');
 const { clearAllActiveBattles } = require('../services/battleStateStore');
+const { sendEphemeral } = require('../utils/slackResponse');
 
 const ADMIN_SLACK_USER_ID = 'U0ABLSVUZ41';
 
@@ -14,8 +15,7 @@ function registerAdminBattleActions(app) {
     const payload = parseAdminCloseAllBattlesActionValue(action.value);
 
     if (actorUserId !== ADMIN_SLACK_USER_ID || payload.requestedBy !== ADMIN_SLACK_USER_ID) {
-      await respond({
-        response_type: 'ephemeral',
+      await sendEphemeral(respond, {
         text: `Somente <@${ADMIN_SLACK_USER_ID}> pode confirmar esta ação.`,
       });
       return;

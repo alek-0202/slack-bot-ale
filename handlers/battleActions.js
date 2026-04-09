@@ -10,6 +10,7 @@ const {
   MAGIC_REGISTER_REMOVE_ACTION_ID,
   renderMagicRegisterElementPrompt,
 } = require("../services/battleRenderService");
+const { sendEphemeral } = require("../utils/slackResponse");
 
 const BATTLE_TURN_ACTION_PATTERN = new RegExp(`^${BATTLE_TURN_ACTION_ID}_.+$`);
 const BATTLE_MAGIC_ACTION_PATTERN = new RegExp(`^${BATTLE_MAGIC_ACTION_ID}_.+$`);
@@ -33,7 +34,7 @@ function buildSayAdapter({ say, respond }) {
       return;
     }
     if (respond) {
-      await respond(payload);
+      await sendEphemeral(respond, payload);
     }
   };
 }
@@ -48,7 +49,7 @@ function registerBattleActions(app) {
     if (!channelId) {
       logger.warn("Ação de batalha sem channelId", { actionId: action?.action_id });
       if (respond) {
-        await respond({ response_type: "ephemeral", text: "Não consegui identificar o canal desse desafio." });
+        await sendEphemeral(respond, { text: "Não consegui identificar o canal desse desafio." });
       }
       return;
     }

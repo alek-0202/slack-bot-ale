@@ -1,5 +1,6 @@
 const { createLogger } = require('../utils/logger');
 const { parsePokemonActionValue, buildUnauthorizedActionMessage } = require('../services/slackPokemonActionService');
+const { sendEphemeral } = require('../utils/slackResponse');
 const {
   FARM_LEVELS,
   getEligibleDungeonPokemons,
@@ -51,8 +52,7 @@ async function updateMessage(client, body, payload) {
 }
 
 async function respondEphemeral(respond, text) {
-  if (!respond) return;
-  await respond({ response_type: 'ephemeral', text });
+  await sendEphemeral(respond, { text });
 }
 
 async function ensureDungeonActionContext({ battle, actorUserId, respond, requireActive = true }) {
