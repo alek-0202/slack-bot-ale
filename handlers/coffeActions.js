@@ -3,6 +3,7 @@ const {
   COFFE_CONFIRM_ACTION_ID,
   parseCoffeActionValue,
 } = require("../services/coffeCardService");
+const { sendEphemeral } = require("../utils/slackResponse");
 
 const logger = createLogger("handler:coffe-actions");
 const coffePresenceByCard = new Map();
@@ -31,8 +32,7 @@ function registerCoffeActions(app) {
 
     if (!actorUserId || !payload?.cardId || !payload.channelId) {
       if (respond) {
-        await respond({
-          response_type: "ephemeral",
+        await sendEphemeral(respond, {
           text: "Não consegui registrar sua presença nesse coffe 😵",
         });
       }
@@ -43,8 +43,7 @@ function registerCoffeActions(app) {
 
     if (attendees.has(actorUserId)) {
       if (respond) {
-        await respond({
-          response_type: "ephemeral",
+        await sendEphemeral(respond, {
           text: "Você já marcou presença nesse coffe ☕",
         });
       }
