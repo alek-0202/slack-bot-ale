@@ -1,3 +1,5 @@
+const fs = require("fs");
+const path = require("path");
 const { buildBattleViewModel } = require("../../../application/battle/renderers/battlePresenter");
 const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService");
 const { getAvailableElementalSkills } = require("../../../application/battle/domain/elementalRules");
@@ -6,6 +8,7 @@ const { sanitizeResolvedAction } = require("../../../application/battle/domain/r
 const { describeEffectGameplayImpact, normalizeEffectKey } = require("../../../application/battle/domain/effectDetailsRegistry");
 const { PASSIVE_DEFINITIONS } = require("../../../services/legendaryPassiveRegistry");
 const { getPassiveDetailsText } = require("../../../application/battle/domain/legendaryPassiveEngine");
+const { saveRenderedImage } = require("../../../utils/renderedImageStore");
 const { getLevelBorderStyle } = require("./pokemonVisualTier");
 const { renderStatusBadge } = require("./statusVisualRegistry");
 
@@ -15,6 +18,7 @@ const BATTLE_TURN_ACTION_ID = "battle_turn_action";
 const BATTLE_MAGIC_ACTION_ID = "battle_magic_action";
 const BATTLE_SWITCH_ACTION_ID = "battle_switch_action";
 const MAGIC_REGISTER_REMOVE_ACTION_ID = "magic_register_remove_element";
+const RENDERED_IMAGE_PATH_PREFIX = "/rendered-images/";
 const BATTLE_ACTION_BUTTONS = {
   attack: { label: "Ataque", emoji: "⚔️", style: "primary" },
   magic: { label: "Magia", emoji: "✨" },
@@ -182,6 +186,17 @@ function resolveStatusIconPublicUrl(iconPath) {
     .trim()
     .replace(/\/+$/g, "");
   if (!publicBaseUrl) return null;
+  const normalizedAssetPath = iconPath.replace(/^\/+/, "");
+  if (normalizedAssetPath.startsWith("assets/")) {
+    const absoluteAssetPath = path.resolve(__dirname, "../../..", normalizedAssetPath);
+    try {
+      const iconBuffer = fs.readFileSync(absoluteAssetPath);
+      const imageId = saveRenderedImage({ buffer: iconBuffer, mimeType: "image/png" });
+      if (imageId) return `${publicBaseUrl}${RENDERED_IMAGE_PATH_PREFIX}${imageId}`;
+    } catch (_) {
+      return null;
+    }
+  }
   const normalizedPath = iconPath.startsWith("/") ? iconPath : `/${iconPath}`;
   return `${publicBaseUrl}${normalizedPath}`;
 }
