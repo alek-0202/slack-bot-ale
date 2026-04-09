@@ -54,6 +54,7 @@ function buildPokemonHelp() {
     "⚡ *Captura, coleção e consulta*",
     ...linesFrom(["capture", "pokedex", "pa"], sharedPokemonCommands),
     "`!c` → captura usando Pokebola (!c), sem depender do cooldown do `!capture`",
+    "`!ca` → usa Pokebola (!c) em lote (até 15) e lista os Pokémons obtidos",
     "`!pokeall` → abre o catálogo global de espécies",
     ...linesFrom(["pokename", "poketag", "pokeid", "applyitem", "pokeplayer", "elements"], sharedPokemonCommands),
     "`!pokeid` mostra shiny (normal/prime), IV, botão *Stats* e extras do Pokémon",

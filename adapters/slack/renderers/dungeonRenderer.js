@@ -209,7 +209,10 @@ function buildRewardLines(result) {
     }
   }
   const speciesName = result?.capturedSpecies?.name || result?.rewards?.captured?.pokemon_species?.name;
-  if (speciesName) lines.push(`${DUNGEON_REWARD_EMOJI.pokemon} Pokémon recebido: *${speciesName}*`);
+  const capturedPokeId = result?.rewards?.captured?.id || null;
+  if (speciesName) {
+    lines.push(`${DUNGEON_REWARD_EMOJI.pokemon} Pokémon recebido: *${speciesName}*${capturedPokeId ? ` • PokeID *${capturedPokeId}*` : ''}`);
+  }
   if (result?.rewards?.xpResult?.leveledUp) {
     const xpResult = result.rewards.xpResult;
     const currentLevel = xpResult.current?.level || xpResult.current_level;

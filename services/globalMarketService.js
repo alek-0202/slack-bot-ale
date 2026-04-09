@@ -13,6 +13,13 @@ function parseJson(value) {
 }
 
 function buildGlobalMarketMainHud({ listings = [], ownerFilter = null }) {
+  const quantityOptionsForListing = (entry) => {
+    const available = Math.max(0, Number(entry.quantity || 0));
+    if (available <= 0) return [];
+    if (entry.listing_type === 'pokemon') return [1];
+    return [1, 10, 50, 100, 1000].filter((qty) => qty <= available);
+  };
+
   const rows = listings.length
     ? listings.map((entry) => `#${entry.id} • *${entry.title}* • x${entry.quantity} • 💰 ${Number(entry.price).toLocaleString('pt-BR')} • vendedor <@${entry.seller_slack_user_id}>`).join('\n')
     : 'Sem anúncios ativos.';
@@ -25,13 +32,13 @@ function buildGlobalMarketMainHud({ listings = [], ownerFilter = null }) {
       { type: 'section', text: { type: 'mrkdwn', text: rows } },
       ...listings.slice(0, 20).map((entry) => ({
         type: 'actions',
-        elements: [1, 10, 50, 100, 1000].map((qty) => ({
+        elements: quantityOptionsForListing(entry).map((qty) => ({
           type: 'button',
           action_id: `${GLOBAL_MARKET_ACTION_ADD_PREFIX}_${entry.id}_${qty}`,
           text: { type: 'plain_text', text: `x${qty}` },
           value: JSON.stringify({ listingId: entry.id, quantity: qty }),
         })),
-      })),
+      })).filter((block) => block.elements.length),
     ],
   };
 }
@@ -206,15 +213,49 @@ async function removeListing({ slackUserId, listingId }) {
   return { ok: true, listing };
 }
 
-function addToGlobalCart({ slackUserId, channelId, listingId, quantity }) {
-  const cart = addToCart({ scope: GLOBAL_MARKET_SCOPE, userId: slackUserId, channelId, itemKey: String(listingId), quantity });
-  return { ok: true, cart };
+async function addToGlobalCart({ slackUserId, channelId, listingId, quantity }) {
+  const supabase = getSupabaseClient();
+  const safeListingId = Number(listingId);
+  if (!Number.isInteger(safeListingId) || safeListingId <= 0) return { ok: false, reason: 'invalid_listing' };
+
+  const { data: listing, error } = await supabase
+    .from('global_market_listings')
+    .select('*')
+    .eq('id', safeListingId)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (error) throw error;
+  if (!listing) return { ok: false, reason: 'listing_unavailable' };
+
+  const available = Math.max(0, Number(listing.quantity || 0));
+  if (available <= 0) return { ok: false, reason: 'listing_unavailable' };
+
+  const requested = Math.max(1, Number(quantity) || 1);
+  const currentCart = getCart({ scope: GLOBAL_MARKET_SCOPE, userId: slackUserId, channelId });
+  const existing = currentCart.items.find((entry) => Number(entry.itemKey) === safeListingId);
+
+  if (listing.listing_type === 'pokemon') {
+    if (existing) return { ok: false, reason: 'duplicate_unique_listing', cart: currentCart, listing };
+    const cart = addToCart({ scope: GLOBAL_MARKET_SCOPE, userId: slackUserId, channelId, itemKey: String(safeListingId), quantity: 1 });
+    return { ok: true, cart, listing, quantityAdded: 1 };
+  }
+
+  const currentQty = Math.max(0, Number(existing?.quantity || 0));
+  const maxAllowedToAdd = Math.max(0, available - currentQty);
+  if (maxAllowedToAdd <= 0) return { ok: false, reason: 'listing_quantity_limit', cart: currentCart, listing };
+
+  const quantityToAdd = Math.min(requested, maxAllowedToAdd);
+  const cart = addToCart({ scope: GLOBAL_MARKET_SCOPE, userId: slackUserId, channelId, itemKey: String(safeListingId), quantity: quantityToAdd });
+  return { ok: true, cart, listing, quantityAdded: quantityToAdd };
 }
 
 async function checkoutGlobalCart({ slackUserId, channelId }) {
   const supabase = getSupabaseClient();
   const cart = getCart({ scope: GLOBAL_MARKET_SCOPE, userId: slackUserId, channelId });
   if (!cart.items.length) return { ok: false, reason: 'empty_cart' };
+
+  let totalSpent = 0;
+  const purchasedEntries = [];
 
   for (const entry of cart.items) {
     const listingId = Number(entry.itemKey);
@@ -234,16 +275,19 @@ async function checkoutGlobalCart({ slackUserId, channelId }) {
 
     if (listing.listing_type === 'item') {
       await addItem(slackUserId, listing.item_key, purchasedQty);
+      purchasedEntries.push({ type: 'item', quantity: purchasedQty, name: listing.title || listing.item_key || 'Item' });
     } else if (listing.listing_type === 'pokemon' && listing.pokemon_id) {
       await supabase.from('user_pokemons').update({ slack_user_id: slackUserId, is_battle_available: true }).eq('id', listing.pokemon_id);
+      purchasedEntries.push({ type: 'pokemon', quantity: 1, name: listing.title || `Pokémon #${listing.pokemon_id}`, pokemonId: listing.pokemon_id });
     }
+    totalSpent += total;
 
     const nextQty = Number(listing.quantity || 0) - purchasedQty;
     await supabase.from('global_market_listings').update({ quantity: nextQty, status: nextQty > 0 ? 'active' : 'sold' }).eq('id', listing.id);
   }
 
   clearCart({ scope: GLOBAL_MARKET_SCOPE, userId: slackUserId, channelId });
-  return { ok: true };
+  return { ok: true, totalSpent, purchasedEntries };
 }
 
 function cancelGlobalCart({ slackUserId, channelId }) {

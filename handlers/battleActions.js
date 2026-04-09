@@ -1,5 +1,5 @@
 const { createLogger } = require("../utils/logger");
-const { decideInvite, attack, showPotionOptions, showMagicOptions, castMagic, showSwitchOptions, switchPokemon } = require("../services/battleService");
+const { decideInvite, attack, showPotionOptions, showMagicOptions, castMagic, showSwitchOptions, switchPokemon, usePotion } = require("../services/battleService");
 const { upsertPokemonMagicLoadout, getPendingMagicSelection, clearPendingMagicSelection, storePendingMagicSelection, buildMagicSummary, MAX_MAGIC_SLOTS } = require("../services/pokemonMagicService");
 const {
   BATTLE_ACCEPT_ACTION_ID,
@@ -64,11 +64,15 @@ function registerBattleActions(app) {
     const channelId = payload.channelId || body.channel?.id;
     const event = { channel: channelId, user: body.user?.id };
     const reply = buildSayAdapter({ say, respond });
+    const actionName = String(payload.action || payload.actionType || '').toLowerCase();
 
-    if (payload.action === "attack") return attack({ event, say: reply });
-    if (payload.action === "potion") return showPotionOptions({ event, say: reply });
-    if (payload.action === "magic") return showMagicOptions({ event, say: reply });
-    if (payload.action === "switch") return showSwitchOptions({ event, say: reply });
+    if (actionName === "attack") return attack({ event, say: reply });
+    if (actionName === "potion") {
+      if (payload.potionType) return usePotion({ event, say: reply, potionType: payload.potionType });
+      return showPotionOptions({ event, say: reply });
+    }
+    if (actionName === "magic") return showMagicOptions({ event, say: reply });
+    if (actionName === "switch") return showSwitchOptions({ event, say: reply });
     await reply("Ação de batalha inválida.");
   };
 
