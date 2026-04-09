@@ -95,6 +95,7 @@ function calculateMagicDamage({
   defenderElements = [],
   d12Roll,
   d6Roll,
+  magicEfficiencyBonusPct = 0,
 }) {
   const attack = Math.max(1, Number(attackerAttack) || 1);
   const magic = Math.max(1, Number(attackerMagic) || attack);
@@ -105,7 +106,8 @@ function calculateMagicDamage({
   const attackBonusBase = Math.max(1, Math.round(attack * 0.15));
   const normalDamage = magic + primaryRoll + attackBonusBase + bonusRoll;
 
-  let finalDamage = normalDamage;
+  const efficiencyMultiplier = 1 + (Math.max(0, Number(magicEfficiencyBonusPct || 0)) / 100);
+  let finalDamage = normalDamage * efficiencyMultiplier;
   let isCritical = false;
   let multiplier = 1;
 
@@ -126,6 +128,7 @@ function calculateMagicDamage({
     primaryRollValue: primaryRoll,
     bonusRollSides: 6,
     bonusRollValue: bonusRoll,
+    magicEfficiencyBonusPct: Math.max(0, Number(magicEfficiencyBonusPct || 0)),
     attackBonusBase,
     normalDamage: Math.round(normalDamage),
     multiplier,
@@ -167,6 +170,7 @@ function resolveMagicTurn({ attacker, defender, magicEntry }) {
     attackerMagic: attacker.stats.magic,
     magicElement: magicEntry?.element,
     defenderElements: defender.selectedPokemon?.elementTypes || [],
+    magicEfficiencyBonusPct: attacker.stats.magicEfficiencyBonusPct || 0,
   });
 
   defender.battleHp.current = Math.max(0, defender.battleHp.current - result.finalDamage);

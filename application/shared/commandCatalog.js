@@ -139,6 +139,20 @@ const sharedCommandCatalog = {
     slackUsage: '`!transform <id>`',
     discordDescription: 'Transforma um Pokémon em SHINE',
   },
+  invoke: {
+    name: 'invoke',
+    category: 'pokemon',
+    summary: 'Consome ticket e invoca um Pokémon mítico aleatório',
+    slackUsage: '`!invoke`',
+    discordDescription: 'Invoca um Pokémon mítico',
+  },
+  epictome: {
+    name: 'epictome',
+    category: 'pokemon',
+    summary: 'Aplica Tomo Épico para escolher um afixo fixo do Pokémon',
+    slackUsage: '`!epictome <id>`',
+    discordDescription: 'Aplica Tomo Épico em um Pokémon',
+  },
   transformprime: {
     name: 'transformprime',
     category: 'pokemon',

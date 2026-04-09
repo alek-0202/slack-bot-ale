@@ -44,8 +44,8 @@ const ITEM_CATALOG = {
   mythical_pokemon_token: {
     itemKey: 'mythical_pokemon_token',
     itemName: 'Ticket Pokémon Mítico',
-    description: 'Ticket de item para futura integração de invocação mítica.',
-    extraData: { kind: 'voucher', category: 'market' },
+    description: 'Consumível. Use `!invoke` para invocar 1 Pokémon mítico aleatório.',
+    extraData: { kind: 'voucher', category: 'market', command: '!invoke' },
   },
   dungeon_60_supply_bag: {
     itemKey: 'dungeon_60_supply_bag',
@@ -100,6 +100,12 @@ const ITEM_CATALOG = {
     itemName: 'Tomo Lendário',
     description: 'Consumível. Use `!usetomo` para gerar uma passiva lendária aleatória no seu códex.',
     extraData: { kind: 'consumable', category: 'fusion', command: '!usetomo' },
+  },
+  epic_tome: {
+    itemKey: 'epic_tome',
+    itemName: 'Tomo Épico',
+    description: 'Consumível. Use `!epictome <pokeid>` para rolar e fixar um afixo épico no Pokémon.',
+    extraData: { kind: 'consumable', category: 'fusion', command: '!epictome' },
   },
   prism_prime: {
     itemKey: 'prism_prime',

@@ -4,6 +4,7 @@ const { getOwnedPokemonById } = require("../../services/pokemonLookupService");
 const { buildPokemonTypesLabel } = require("../../services/pokemonTypeService");
 const { buildPokemonStatAudit, IV_STAT_RANGES } = require("../../services/pokemonStatsService");
 const { PASSIVE_DEFINITIONS } = require("../../services/legendaryPassiveRegistry");
+const { buildEpicAffixDisplayLine } = require('../../services/epicAffixService');
 const {
   buildPokemonVisualBlocks,
   buildPokemonVisualSummary,
@@ -128,6 +129,7 @@ module.exports = {
       const sign = (value) => `${Number(value || 0) >= 0 ? "+" : ""}${Number(value || 0)}`;
       const legendaryPassiveName = pokemon.legendary_passive_id ? (PASSIVE_DEFINITIONS[pokemon.legendary_passive_id]?.name || pokemon.legendary_passive_id) : null;
       const legendaryPassiveLine = legendaryPassiveName ? `\n🜂 *Passiva Lendária:* ${legendaryPassiveName}` : "";
+      const epicAffixLine = `\n🧿 *${buildEpicAffixDisplayLine(pokemon)}*`;
 
       await say({
         text: `Consulta do Pokémon ID ${pokemonId}`,
@@ -153,7 +155,8 @@ module.exports = {
                 rarityLabel +
                 typesLabel +
                 shinyLabel +
-                legendaryPassiveLine,
+                legendaryPassiveLine +
+                epicAffixLine,
             },
             ...(visualBlocks.accessory ? { accessory: visualBlocks.accessory } : {}),
           },

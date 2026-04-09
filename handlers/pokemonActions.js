@@ -13,6 +13,10 @@ const { getOwnedPokemonById } = require('../services/pokemonLookupService');
 const { getMrSkillSetup, saveMrSkillSelection } = require('../services/pokemonMagicService');
 const { FUSION_BUY_ACTION_ID, craftFusionItem } = require('../services/fusionService');
 const { sendEphemeral } = require("../utils/slackResponse");
+const { EPICTOME_CHOOSE_ACTION_ID } = require('../commands/pokemon/epictome');
+const { removeItem, addItem } = require('../services/inventoryService');
+const { setPokemonEpicAffix } = require('../services/epicAffixService');
+const { formatEpicAffix, normalizeEpicAffix } = require('../services/epicAffixRegistry');
 const {
   upgradePokemonExtraStat,
   transferShiny,
@@ -634,6 +638,54 @@ ${fragmentBonusLine}
     }
   });
 
+
+
+  app.action(EPICTOME_CHOOSE_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parseActionValue(action?.value);
+    if (!payload?.ownerSlackUserId || actorUserId !== payload.ownerSlackUserId) {
+      await sendEphemeral(respond, { text: 'Somente quem abriu o Tomo Épico pode escolher.' });
+      return;
+    }
+
+    const option1 = normalizeEpicAffix(payload.options?.[0]);
+    const option2 = normalizeEpicAffix(payload.options?.[1]);
+    const current = normalizeEpicAffix(payload.currentAffix);
+    const chosen = payload.choice === 'option_1'
+      ? option1
+      : payload.choice === 'option_2'
+        ? option2
+        : current;
+
+    const consume = await removeItem(actorUserId, 'epic_tome', 1);
+    if (!consume.ok) {
+      await sendEphemeral(respond, { text: '❌ Você não possui Tomo Épico suficiente para concluir essa escolha.' });
+      return;
+    }
+
+    try {
+      const result = await setPokemonEpicAffix({
+        slackUserId: actorUserId,
+        pokemonId: payload.pokemonId,
+        affix: chosen,
+      });
+      if (!result.ok) {
+        await addItem(actorUserId, 'epic_tome', 1);
+        await sendEphemeral(respond, { text: 'Não consegui aplicar esse afixo agora; seu tomo foi devolvido.' });
+        return;
+      }
+
+      const finalLine = formatEpicAffix(result.affix);
+      const updated = buildUpdatedMessage(`✅ Tomo Épico aplicado por <@${actorUserId}>.
+Afixo final: *${finalLine}*`);
+      await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+    } catch (error) {
+      logger.error('Falha ao aplicar escolha de Tomo Épico', { actorUserId, payload, error });
+      await addItem(actorUserId, 'epic_tome', 1);
+      await sendEphemeral(respond, { text: 'Erro ao aplicar o afixo. O Tomo Épico foi devolvido.' });
+    }
+  });
 
   app.action(PROFILE_OPEN_BAG_ACTION_ID, async ({ ack, body, action, client, respond }) => {
     await ack();
