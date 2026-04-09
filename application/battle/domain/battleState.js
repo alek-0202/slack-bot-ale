@@ -32,6 +32,7 @@ function createPlayerState(userId) {
     stats: null,
     battleHp: null,
     potionsUsed: 0,
+    potionUsageByType: { small: 0, medium: 0, large: 0 },
     magicCooldown: {
       blockedOwnTurnsRemaining: 0,
       lastAppliedAtRound: null,
@@ -204,6 +205,7 @@ function assignSelectedPokemonTeam(battle, userId, pokemons = []) {
   playerState.team = pokemons.map((pokemon) => buildTeamMemberFromPokemon(pokemon));
   playerState.activeTeamIndex = 0;
   playerState.potionsUsed = 0;
+  playerState.potionUsageByType = { small: 0, medium: 0, large: 0 };
   playerState.magicCooldown = {
     blockedOwnTurnsRemaining: 0,
     lastAppliedAtRound: null,

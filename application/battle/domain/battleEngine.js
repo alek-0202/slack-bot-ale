@@ -3,7 +3,12 @@ const { resolveElementalRelation } = require("../../../services/pokemonElementsS
 const { ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER } = require("./elementalRules");
 
 const BATTLE_HP_MULTIPLIER = 12.5;
-const MAX_POTIONS_PER_BATTLE = 5;
+const MAX_POTIONS_PER_BATTLE = 9;
+const POTION_CONFIG = {
+  small: { key: 'small', healRatio: 0.1, battleLimit: 5 },
+  medium: { key: 'medium', healRatio: 0.3, battleLimit: 3 },
+  large: { key: 'large', healRatio: 0.5, battleLimit: 1 },
+};
 const INITIATIVE_THRESHOLD = 100;
 const MAGIC_ENERGY_COST = 50;
 
@@ -175,8 +180,15 @@ function resolveMagicTurn({ attacker, defender, magicEntry }) {
   };
 }
 
-function resolvePotionTurn(playerState) {
-  if (playerState.potionsUsed >= MAX_POTIONS_PER_BATTLE) {
+function resolvePotionTurn(playerState, options = {}) {
+  const potionType = String(options.potionType || 'small').toLowerCase();
+  const config = POTION_CONFIG[potionType];
+  if (!config) return { ok: false, reason: 'invalid_potion_type' };
+  playerState.potionUsageByType = playerState.potionUsageByType || { small: 0, medium: 0, large: 0 };
+  playerState.potionsUsed = Number(playerState.potionsUsed || 0);
+  const usedForType = Number(playerState.potionUsageByType[potionType] || 0);
+
+  if (playerState.potionsUsed >= MAX_POTIONS_PER_BATTLE || usedForType >= config.battleLimit) {
     return { ok: false, reason: "limit" };
   }
 
@@ -185,9 +197,10 @@ function resolvePotionTurn(playerState) {
     return { ok: false, reason: "full_hp" };
   }
 
-  const healAmount = Math.max(1, Math.round(missingHp * 0.35));
+  const healAmount = Math.max(1, Math.round(playerState.battleHp.max * config.healRatio));
 
   playerState.potionsUsed += 1;
+  playerState.potionUsageByType[potionType] = usedForType + 1;
   playerState.battleHp.current = Math.min(
     playerState.battleHp.max,
     playerState.battleHp.current + healAmount,
@@ -195,6 +208,9 @@ function resolvePotionTurn(playerState) {
 
   return {
     ok: true,
+    potionType,
+    potionTypeUsed: playerState.potionUsageByType[potionType],
+    potionTypeLimit: config.battleLimit,
     healAmount,
     remainingPotions: MAX_POTIONS_PER_BATTLE - playerState.potionsUsed,
     currentHp: playerState.battleHp.current,
@@ -296,6 +312,7 @@ function resolveNextTurnBySpeed({ battle, actorUserId, energyPenalty = 0 }) {
 module.exports = {
   BATTLE_HP_MULTIPLIER,
   MAX_POTIONS_PER_BATTLE,
+  POTION_CONFIG,
   INITIATIVE_THRESHOLD,
   MAGIC_ENERGY_COST,
   rollDie,

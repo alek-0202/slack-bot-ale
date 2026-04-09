@@ -34,6 +34,7 @@ const { getSupabaseClient } = require("../database/supabase");
 const { getAvailableMagicActions, getSkillCooldownRemaining } = require("../application/battle/domain/elementalRules");
 const { validateSkillActionRequest } = require("../application/battle/domain/skillActionValidator");
 const { buildActionSummaryFromResolvedAction } = require("../application/battle/domain/resolvedAction");
+const { removeItem, getUserItemQuantity } = require("./inventoryService");
 
 const logger = createLogger("battle-service");
 const PVP_ENTRY_FEE = 2000;
@@ -402,20 +403,68 @@ async function attack({ event, say }) {
   await say(renderBattleState(battle));
 }
 
-async function usePotion({ event, say }) {
+const BATTLE_POTION_TYPES = {
+  small: { key: "potion_small", label: "Poção pequena" },
+  medium: { key: "potion_medium", label: "Poção média" },
+  large: { key: "potion_large", label: "Poção grande" },
+};
+
+function resolvePotionTypeFromInput(raw = "") {
+  const normalized = String(raw || "").trim().toLowerCase();
+  if (!normalized) return "small";
+  if (["small", "pequena", "p"].includes(normalized)) return "small";
+  if (["medium", "media", "média", "m"].includes(normalized)) return "medium";
+  if (["large", "grande", "g"].includes(normalized)) return "large";
+  return null;
+}
+
+async function showPotionOptions({ event, say }) {
   const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.POTION });
   if (!battle) return;
+
+  const [small, medium, large] = await Promise.all([
+    getUserItemQuantity(event.user, "potion_small"),
+    getUserItemQuantity(event.user, "potion_medium"),
+    getUserItemQuantity(event.user, "potion_large"),
+  ]);
+
+  await say(
+    "🧪 *Poções disponíveis*\n" +
+    `• Pequena (10% HP, limite 5): *${small}*\n` +
+    `• Média (30% HP, limite 3): *${medium}*\n` +
+    `• Grande (50% HP, limite 1): *${large}*\n\n` +
+    "Use `!pocao pequena`, `!pocao media` ou `!pocao grande`.",
+  );
+}
+
+async function usePotion({ event, say, potionType: potionTypeInput = "small" }) {
+  const battle = await validateActionContext({ event, say, actionType: BATTLE_ACTION.POTION });
+  if (!battle) return;
+
+  const potionType = resolvePotionTypeFromInput(potionTypeInput);
+  if (!potionType) {
+    await say("Informe o tipo da poção: `!pocao pequena|media|grande`.");
+    return;
+  }
+
+  const potionConfig = BATTLE_POTION_TYPES[potionType];
+  const inventoryQty = await getUserItemQuantity(event.user, potionConfig.key);
+  if (inventoryQty <= 0) {
+    await say(`❌ Você não possui *${potionConfig.label}* no inventário.`);
+    return;
+  }
 
   const resolution = resolveBattleTurn({
     battle,
     actorUserId: event.user,
     actionType: BATTLE_ACTION.POTION,
+    actionPayload: { potionType },
   });
   const result = resolution.outcome;
 
   if (!result.ok) {
     if (result.reason === "limit") {
-      await say("❌ Você já usou o máximo de 5 poções nesta batalha.");
+      await say("❌ Você já atingiu o limite dessa poção nesta batalha.");
       return;
     }
 
@@ -425,11 +474,18 @@ async function usePotion({ event, say }) {
     }
   }
 
+  const consume = await removeItem(event.user, potionConfig.key, 1);
+  if (!consume.ok) {
+    await say(`❌ Falha ao consumir ${potionConfig.label} do inventário.`);
+    return;
+  }
+
   logger.info("Uso de poção", {
     channelId: battle.channelId,
     userId: event.user,
     healAmount: result.healAmount,
     remainingPotions: result.remainingPotions,
+    potionType,
     speedContext: result.turnFlow || null,
   });
 
@@ -439,14 +495,14 @@ async function usePotion({ event, say }) {
     buildActionSummaryFromResolvedAction(result.resolvedAction, {
       actorUserId: event.user,
       actorName: battle.players?.[event.user]?.selectedPokemon?.name || `<@${event.user}>`,
-      skillName: "Poção",
+      skillName: potionConfig.label,
       skillIcon: "🧪",
       modifiers: [`cura ${result.healAmount}`, `poções restantes ${result.remainingPotions}`],
     }),
   );
 
   await say(
-    `🧪 <@${event.user}> usou poção e curou *${result.healAmount}* HP.\n` +
+    `🧪 <@${event.user}> usou *${potionConfig.label}* e curou *${result.healAmount}* HP.\n` +
     `HP atual: *${result.currentHp}/${battle.players[event.user].battleHp.max}*\n` +
     `Poções restantes: *${result.remainingPotions}*`,
   );
@@ -731,6 +787,7 @@ module.exports = {
   decideInvite,
   pickPokemon,
   attack,
+  showPotionOptions,
   usePotion,
   showMagicOptions,
   showSwitchOptions,
