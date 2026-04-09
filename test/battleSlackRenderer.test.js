@@ -52,6 +52,28 @@ test("renderBattleState mantém topo e inclui mini-ícones de status no bloco su
   assert.match(firstPokemonSection.text.text, /Burn \(1r\)/);
 });
 
+test("renderBattleState publica ícone de status local em /rendered-images para Slack", () => {
+  const originalPublicBaseUrl = process.env.PUBLIC_BASE_URL;
+  process.env.PUBLIC_BASE_URL = "https://example.com";
+  try {
+    const battle = createBattleStub();
+    battle.players.U1.elementalState = {
+      effects: [],
+      statuses: [{ id: "burn", name: "Burn", remainingRounds: 1, stacks: 1 }],
+    };
+    const payload = renderBattleState(battle);
+    const statusContext = payload.blocks.find((block) => block.type === "context"
+      && block.elements?.some((element) => element.type === "image"));
+
+    assert.ok(statusContext);
+    const imageElement = statusContext.elements.find((element) => element.type === "image");
+    assert.ok(imageElement?.image_url?.startsWith("https://example.com/rendered-images/"));
+  } finally {
+    if (originalPublicBaseUrl == null) delete process.env.PUBLIC_BASE_URL;
+    else process.env.PUBLIC_BASE_URL = originalPublicBaseUrl;
+  }
+});
+
 test("renderBattleState inclui seção fixa de Details antes do resumo da rodada", () => {
   const battle = createBattleStub();
   battle.metadata = {
