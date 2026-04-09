@@ -640,7 +640,7 @@ ${fragmentBonusLine}
 
 
 
-  app.action(EPICTOME_CHOOSE_ACTION_ID, async ({ ack, body, action, client, respond }) => {
+  app.action(new RegExp(`^${EPICTOME_CHOOSE_ACTION_ID}__`), async ({ ack, body, action, client, respond }) => {
     await ack();
     const actorUserId = body.user?.id;
     const payload = parseActionValue(action?.value);

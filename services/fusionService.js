@@ -3,7 +3,7 @@ const { getOwnedPokemonById } = require('./pokemonLookupService');
 const { getUserItemQuantity, removeItem, addItem } = require('./inventoryService');
 const { getFusionItem, listFusionItems } = require('./fusionCatalogService');
 const { assertPokemonAvailableForAction } = require('./healingStationService');
-const { rollPokemonIvOffsets, calculatePokemonStats } = require('./pokemonStatsService');
+const { rollPokemonIvOffsets, calculatePokemonStats, IV_STAT_RANGES } = require('./pokemonStatsService');
 const { getUser } = require('./userService');
 
 const FUSION_BUY_ACTION_ID = 'fusion_buy_item';
@@ -130,10 +130,17 @@ async function useTransform({ slackUserId, pokemonId, prime = false }) {
     hp_iv: Number(pokemon.hp_iv || 0),
     speed_iv: Number(pokemon.speed_iv || 0),
   };
+  const primeMaxIv = {
+    attack_iv: Number(IV_STAT_RANGES.attack?.max || 0),
+    magic_iv: Number(IV_STAT_RANGES.magic?.max || 0),
+    defense_iv: Number(IV_STAT_RANGES.defense?.max || 0),
+    hp_iv: Number(IV_STAT_RANGES.hp?.max || 0),
+    speed_iv: Number(IV_STAT_RANGES.speed?.max || 0),
+  };
 
   const updated = await updatePokemonAfterMutation({
     pokemon,
-    nextIvOffsets: currentIv,
+    nextIvOffsets: prime ? primeMaxIv : currentIv,
     shiny: true,
     shinyType: prime ? 'prime' : 'normal',
   });
