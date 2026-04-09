@@ -139,7 +139,7 @@ function getAvailableElementalSkills(playerState) {
       ...entry,
       kind: "elemental",
       slot: `elemental:${entry.id}`,
-    }));
+    })).filter((entry) => !entry?.isPassive && !entry?.hiddenFromActionMenu && entry?.activationType !== "passive");
   }
 
   const level = Number(playerState?.selectedPokemon?.level || 0);
@@ -161,7 +161,7 @@ function getAvailableElementalSkills(playerState) {
     ...entry,
     kind: "elemental",
     slot: `elemental:${entry.id}`,
-  }));
+  })).filter((entry) => !entry?.isPassive && !entry?.hiddenFromActionMenu && entry?.activationType !== "passive");
 }
 
 function getAvailableMagicActions(playerState) {

@@ -57,23 +57,43 @@ function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage, isMagi
   const attackerEffects = ensureElementalState(battle.players[attackerId]).effects || [];
   for (const effect of attackerEffects) {
     if (effect?.outgoingDamageMultiplier != null) {
+      const previous = modifiedDamage;
       modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.outgoingDamageMultiplier || 1)));
+      if (modifiedDamage !== previous) {
+        logs.push(`📈 ${effect.name || effect.id || "Buff"} (dano causado) ${previous}→${modifiedDamage}.`);
+      }
     }
     if (isMagic && effect?.outgoingMagicDamageMultiplier != null) {
+      const previous = modifiedDamage;
       modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.outgoingMagicDamageMultiplier || 1)));
+      if (modifiedDamage !== previous) {
+        logs.push(`✨ ${effect.name || effect.id || "Buff"} (magia) ${previous}→${modifiedDamage}.`);
+      }
     }
     if (!isMagic && effect?.outgoingAttackDamageMultiplier != null) {
+      const previous = modifiedDamage;
       modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.outgoingAttackDamageMultiplier || 1)));
+      if (modifiedDamage !== previous) {
+        logs.push(`⚔️ ${effect.name || effect.id || "Buff"} (ataque) ${previous}→${modifiedDamage}.`);
+      }
     }
   }
 
   const defenderEffects = ensureElementalState(battle.players[defenderId]).effects || [];
   for (const effect of defenderEffects) {
     if (effect?.incomingDamageTakenMultiplier != null) {
+      const previous = modifiedDamage;
       modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.incomingDamageTakenMultiplier || 1)));
+      if (modifiedDamage !== previous) {
+        logs.push(`🛡️ ${effect.name || effect.id || "Debuff"} (dano recebido) ${previous}→${modifiedDamage}.`);
+      }
     }
     if (isMagic && effect?.incomingSkillDamageTakenMultiplier != null) {
+      const previous = modifiedDamage;
       modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.incomingSkillDamageTakenMultiplier || 1)));
+      if (modifiedDamage !== previous) {
+        logs.push(`💥 ${effect.name || effect.id || "Debuff"} (dano de habilidade recebido) ${previous}→${modifiedDamage}.`);
+      }
     }
   }
 

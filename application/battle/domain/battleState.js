@@ -3,6 +3,7 @@ const { SKILL_ENERGY_MAX, ensureSkillEnergyState, regenerateSkillEnergy } = requ
 const { getPokemonStars, formatPokemonStars } = require("../../../services/pokemonProgressionService");
 const { normalizeElementList } = require("../../../services/elementType");
 const { onBattleStart } = require("./legendaryPassiveEngine");
+const { ensureDraconicImpetusPassive } = require("./dragonElementRules");
 
 const BATTLE_STATUS = {
   PENDING: "pending",
@@ -187,6 +188,7 @@ function syncPlayerActiveState(playerState) {
   playerState.magicSlots = active?.magicSlots || [];
   playerState.characteristicSlots = active?.characteristicSlots || [];
   playerState.elementalState = playerState.elementalState || { statuses: [], effects: [], skillCooldowns: {} };
+  ensureDraconicImpetusPassive(playerState);
   return playerState;
 }
 
@@ -263,6 +265,8 @@ function startBattle(battle) {
 
   ensureSkillEnergyState(battle.players[battle.challengerId]);
   ensureSkillEnergyState(battle.players[battle.challengedId]);
+  ensureDraconicImpetusPassive(battle.players[battle.challengerId]);
+  ensureDraconicImpetusPassive(battle.players[battle.challengedId]);
   onBattleStart({ battle });
 
   return {

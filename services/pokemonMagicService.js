@@ -61,6 +61,9 @@ function buildCharacteristicSkillEntriesFromElements(elements = [], pokemonLevel
         icon: skill.icon || getElementIcon(element),
         cooldownRounds: skill.cooldownRounds || null,
         extraEnergyCost: skill.extraEnergyCost || 0,
+        isPassive: Boolean(skill.isPassive || skill.activationType === "passive"),
+        activationType: skill.activationType || "active",
+        hiddenFromActionMenu: Boolean(skill.hiddenFromActionMenu),
       });
     }
   }

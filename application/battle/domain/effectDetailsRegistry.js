@@ -32,10 +32,14 @@ const EFFECT_GAMEPLAY_DESCRIPTIONS = {
   legendary_execute: "acumula stacks de execução e elimina o alvo quando o limiar de vida é alcançado",
   legendary_reactive_shield: "absorve dano antes do HP",
   dragon_impetus_state: "acumula stacks ofensivos e amplifica dano/eficiência/energia",
+  dragon_impetus_stack: "acertos válidos acumulam stacks; cada stack aumenta ATK/MAG/eficiência e, no máximo, aumenta energia",
+  dragon_impetus_unlock: "passiva equipada que habilita o acúmulo automático de Ímpeto desde o início da batalha",
   exhaustion: "reduz em 35% a geração de energia do alvo",
   dragonic_rupture: "aumenta em 20% o dano de habilidades recebido",
+  legendary_true_burn: "causa dano verdadeiro por rodada e ignora mitigação",
   ancestral_presence: "ativa aura ancestral com resistência e burn de fogo por turno",
   ancestral_presence_enemy_aura: "reduz iniciativa e dano causado sob domínio ancestral",
+  execute: "acumula stacks de execução e elimina abaixo do limiar calculado",
 };
 
 function normalizeEffectKey(entry = {}) {
@@ -71,7 +75,7 @@ function inferGameplayDescription(entry = {}) {
   if (entry.cannotAct || entry.skipTurn || entry.blockAction) parts.push("impede o alvo de agir");
   if (entry.taunt || entry.forcedAction) parts.push("força ação básica e limita escolhas");
 
-  return parts.join("; ") || "efeito ativo sem metadados detalhados no registry";
+  return parts.join("; ") || "efeito ativo com impacto não mapeado; consulte nome/tags para origem";
 }
 
 function isGenericDescription(text) {
