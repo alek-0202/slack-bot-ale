@@ -92,6 +92,54 @@ test("renderBattleState inclui seção fixa de Details antes do resumo da rodada
   assert.match(payload.blocks[detailsIndex].text.text, /Pokémon inimigo ativo:/);
 });
 
+test("renderBattleState renderiza status do registro com imagem e sem texto/emoji de status na linha de HP", () => {
+  const originalPublicBaseUrl = process.env.PUBLIC_BASE_URL;
+  process.env.PUBLIC_BASE_URL = "https://example.com";
+  try {
+    const battle = createBattleStub();
+    battle.metadata = {
+      slackUserId: "U1",
+      turnLog: [{
+        kind: "action_summary",
+        actorUserId: "U1",
+        resolvedAction: {
+          actorId: "U1",
+          actorName: "Pikachu",
+          actionType: "attack",
+          actionName: "Ataque Básico",
+          didHit: true,
+          isCrit: false,
+          baseDamage: 20,
+          finalDamage: 20,
+          activeBuffs: ["Controle Mental [2]"],
+          activeDebuffs: ["Burn [1]"],
+          actorCurrentHp: 115,
+          actorMaxHp: 150,
+        },
+      }],
+    };
+    battle.players.U1.elementalState = {
+      effects: [{ id: "mind_control", name: "Controle Mental", remainingRounds: 2 }],
+      statuses: [{ id: "burn", name: "Burn", remainingRounds: 1, stacks: 1 }],
+    };
+    const payload = renderBattleState(battle);
+    const logSection = payload.blocks.find((block) => block.type === "section"
+      && String(block.text?.text || "").includes("RESUMO DA RODADA"));
+    assert.ok(logSection);
+    assert.match(logSection.text.text, /❤️ 115\/150/);
+    assert.doesNotMatch(logSection.text.text, /Controle Mental/);
+    assert.doesNotMatch(logSection.text.text, /Burn/);
+
+    const battleLogStatusContext = payload.blocks.find((block) => block.type === "context"
+      && block.elements?.some((element) => element.type === "mrkdwn" && /Status \(seu Pokémon ativo\)/.test(element.text))
+      && block.elements?.some((element) => element.type === "image"));
+    assert.ok(battleLogStatusContext);
+  } finally {
+    if (originalPublicBaseUrl == null) delete process.env.PUBLIC_BASE_URL;
+    else process.env.PUBLIC_BASE_URL = originalPublicBaseUrl;
+  }
+});
+
 test("renderMagicOptions gera um action_id único por slot de magia", () => {
   const payload = renderMagicOptions({
     battle: { channelId: "C1" },

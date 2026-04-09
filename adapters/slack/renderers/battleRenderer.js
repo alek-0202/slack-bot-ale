@@ -108,7 +108,7 @@ function renderBattleState(battle, options = {}) {
   const waitingText = options.waitingTextBuilder
     ? options.waitingTextBuilder({ battle, view })
     : null;
-  const logBlock = buildBattleLogBlock(battle, options);
+  const logBlocks = buildBattleLogBlocks(battle, options);
   const detailsBlock = buildBattleDetailsBlock({ battle, challenger, challenged });
 
   return {
@@ -169,7 +169,7 @@ function renderBattleState(battle, options = {}) {
         ],
       },
       detailsBlock,
-      logBlock,
+      ...logBlocks,
       !shouldShowActions && waitingText ? {
         type: "context",
         elements: [{ type: "mrkdwn", text: waitingText }],
@@ -316,25 +316,74 @@ function buildStatusTooltipContextBlock(player, options = {}) {
   return { type: "context", elements };
 }
 
-function buildBattleLogBlock(battle, options = {}) {
+function buildBattleLogBlocks(battle, options = {}) {
   const lines = Array.isArray(options.logLinesBuilder ? options.logLinesBuilder(battle) : battle?.metadata?.turnLog)
     ? (options.logLinesBuilder ? options.logLinesBuilder(battle) : battle?.metadata?.turnLog)
     : [];
 
-  if (!lines.length) return null;
+  if (!lines.length) return [];
   const formatted = formatBattleLogForSlack({
     battle,
     lines,
     title: options.logTitle || "📜 RESUMO DA RODADA",
     rawMode: Boolean(options.debugRawLog || battle?.metadata?.debugRawLog),
+    showStatusBadgesInText: false,
   });
 
-  return {
+  const blocks = [{
     type: "section",
     text: {
       type: "mrkdwn",
       text: formatted.slice(0, 2900),
     },
+  }];
+  const playerStatusBlock = buildBattleLogStatusIconContextBlock({
+    player: battle?.players?.[battle?.metadata?.slackUserId || battle?.challengerId],
+    label: "Status (seu Pokémon ativo)",
+    options,
+  });
+  const enemyStatusBlock = buildBattleLogStatusIconContextBlock({
+    player: battle?.players?.[resolveBattleLogLanes(battle).enemyId],
+    label: "Status (pokémon inimigo)",
+    options,
+  });
+  if (playerStatusBlock) blocks.push(playerStatusBlock);
+  if (enemyStatusBlock) blocks.push(enemyStatusBlock);
+  return blocks;
+}
+
+function buildBattleLogStatusIconContextBlock({ player, label, options = {} }) {
+  const effects = collectActiveStatusEntries({
+    activeEffects: player?.elementalState?.effects || [],
+    activeStatuses: player?.elementalState?.statuses || [],
+  });
+  if (!effects.length) return null;
+  const statusTooltipMode = String(options.statusTooltipMode || "auto").toLowerCase();
+  const forceEmoji = statusTooltipMode === "emoji";
+  const imageElements = effects
+    .slice(0, 8)
+    .map((effect) => renderStatusBadge({
+      effect,
+      stacks: effect?.stacks,
+      remainingRounds: effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null,
+    }))
+    .map((badge) => {
+      const iconUrl = forceEmoji ? null : resolveStatusIconPublicUrl(badge?.metadata?.iconPath);
+      if (!iconUrl) return null;
+      return {
+        type: "image",
+        image_url: iconUrl,
+        alt_text: badge.metadata.tooltip,
+      };
+    })
+    .filter(Boolean);
+  if (!imageElements.length) return null;
+  return {
+    type: "context",
+    elements: [
+      { type: "mrkdwn", text: `${label}:` },
+      ...imageElements,
+    ],
   };
 }
 
@@ -373,8 +422,9 @@ function buildCombatantSummary({ battle, userId, ownerLabel }) {
   };
 }
 
-function formatCombatantSummaryLines(summary) {
+function formatCombatantSummaryLines(summary, options = {}) {
   const badgeLine = summary.statusBadges.length ? summary.statusBadges.join(" ") : null;
+  const shouldShowStatusBadgesInText = options.showStatusBadgesInText !== false;
   const details = [];
   if (summary.actionLabel) details.push(`• Ação: ${summary.actionLabel}`);
   if (summary.extraDamageEntries.length) details.push(`• Dano extra: ${summary.extraDamageEntries.map((entry) => `${entry.source} ${entry.value}${entry.type ? ` ${entry.type}` : ""}`).join(" | ")}`);
@@ -385,7 +435,7 @@ function formatCombatantSummaryLines(summary) {
   if (summary.passiveEvents.length) details.push(`• Passiva: ${summary.passiveEvents.join(" | ")}`);
   const headerParts = [`• <@${summary.actorId}> — *${summary.actorName}*`, `❤️ ${summary.currentHp}/${summary.maxHp}`];
   if (summary.currentShield > 0) headerParts.push(`🛡️ ${summary.currentShield}`);
-  if (badgeLine) headerParts.push(badgeLine);
+  if (shouldShowStatusBadgesInText && badgeLine) headerParts.push(badgeLine);
   return [`${headerParts.join(" | ")}`, ...details];
 }
 
@@ -401,7 +451,7 @@ function resolveBattleLogLanes(battle) {
   };
 }
 
-function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
+function formatBattleLogForSlack({ battle, lines, title, rawMode = false, showStatusBadgesInText = true }) {
   if (rawMode) {
     return [`*${title}*`, ...lines.map((line) => `• ${typeof line === "string" ? line : JSON.stringify(line)}`)].join("\n");
   }
@@ -483,10 +533,10 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     `🧾 *Rodada ${battle?.round || 1}* • Próximo turno: ${nextTurnName}`,
     "",
     `*${playerLabel}*`,
-    ...formatCombatantSummaryLines(summaries.player),
+    ...formatCombatantSummaryLines(summaries.player, { showStatusBadgesInText }),
     "",
     `*${enemyLabel}*`,
-    ...formatCombatantSummaryLines(summaries.enemy),
+    ...formatCombatantSummaryLines(summaries.enemy, { showStatusBadgesInText }),
   ].filter(Boolean).join("\n");
 }
 
