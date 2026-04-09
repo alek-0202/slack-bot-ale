@@ -4,6 +4,9 @@ const { createEpicTomeRoll, validateOwnedPokemon } = require('../../services/epi
 const { formatEpicAffix } = require('../../services/epicAffixRegistry');
 
 const EPICTOME_CHOOSE_ACTION_ID = 'epictome_choose_affix';
+const EPICTOME_CHOOSE_KEEP_ACTION_ID = `${EPICTOME_CHOOSE_ACTION_ID}__keep`;
+const EPICTOME_CHOOSE_OPTION1_ACTION_ID = `${EPICTOME_CHOOSE_ACTION_ID}__option_1`;
+const EPICTOME_CHOOSE_OPTION2_ACTION_ID = `${EPICTOME_CHOOSE_ACTION_ID}__option_2`;
 
 function buildChoiceMessage({ slackUserId, pokemon, roll }) {
   const currentLabel = formatEpicAffix(roll.currentAffix);
@@ -38,20 +41,20 @@ function buildChoiceMessage({ slackUserId, pokemon, roll }) {
         elements: [
           {
             type: 'button',
-            action_id: EPICTOME_CHOOSE_ACTION_ID,
+            action_id: EPICTOME_CHOOSE_KEEP_ACTION_ID,
             text: { type: 'plain_text', text: 'Manter atual', emoji: true },
             value: JSON.stringify({ ...valuePayload, choice: 'keep' }),
           },
           {
             type: 'button',
-            action_id: EPICTOME_CHOOSE_ACTION_ID,
+            action_id: EPICTOME_CHOOSE_OPTION1_ACTION_ID,
             text: { type: 'plain_text', text: 'Aplicar opção 1', emoji: true },
             style: 'primary',
             value: JSON.stringify({ ...valuePayload, choice: 'option_1' }),
           },
           {
             type: 'button',
-            action_id: EPICTOME_CHOOSE_ACTION_ID,
+            action_id: EPICTOME_CHOOSE_OPTION2_ACTION_ID,
             text: { type: 'plain_text', text: 'Aplicar opção 2', emoji: true },
             style: 'primary',
             value: JSON.stringify({ ...valuePayload, choice: 'option_2' }),
@@ -89,4 +92,7 @@ module.exports = {
 };
 
 module.exports.EPICTOME_CHOOSE_ACTION_ID = EPICTOME_CHOOSE_ACTION_ID;
+module.exports.EPICTOME_CHOOSE_KEEP_ACTION_ID = EPICTOME_CHOOSE_KEEP_ACTION_ID;
+module.exports.EPICTOME_CHOOSE_OPTION1_ACTION_ID = EPICTOME_CHOOSE_OPTION1_ACTION_ID;
+module.exports.EPICTOME_CHOOSE_OPTION2_ACTION_ID = EPICTOME_CHOOSE_OPTION2_ACTION_ID;
 module.exports.buildEpicTomeChoiceMessage = buildChoiceMessage;
