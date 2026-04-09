@@ -550,6 +550,8 @@ function buildSellPreviewMessage({ slackUserId, preview }) {
 function buildUnauthorizedActionMessage(ownerSlackUserId) {
   return {
     response_type: "ephemeral",
+    replace_original: false,
+    delete_original: false,
     text: `Somente <@${ownerSlackUserId}> pode confirmar esta ação.`,
   };
 }

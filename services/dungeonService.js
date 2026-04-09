@@ -50,6 +50,7 @@ function mapDungeonFailureReason(reason) {
     reward_already_granted: 'Essa dungeon já foi finalizada anteriormente.',
     battle_not_active: 'A batalha da dungeon já não está mais ativa.',
     actor_not_in_battle: 'Você não participa desta batalha de dungeon.',
+    invalid_actor: 'Você não participa desta batalha de dungeon.',
     not_actor_turn: 'Ainda não é o seu turno na dungeon.',
     unsupported_action: 'Ação de dungeon inválida.',
     magic_not_found: 'Não encontrei essa magia no loadout atual.',
@@ -72,6 +73,12 @@ function normalizeDungeonMagicSlot(rawMagicSlot) {
   if (!value) return value;
   if (value.startsWith('characteristic:')) return `elemental:${value.slice('characteristic:'.length)}`;
   return value;
+}
+
+function normalizeDungeonPotionType(rawPotionType) {
+  const value = String(rawPotionType || '').trim().toLowerCase();
+  if (['small', 'medium', 'large'].includes(value)) return value;
+  return 'small';
 }
 
 async function validateDungeonPokemonSelection({ slackUserId, pokemonId }) {
@@ -1073,7 +1080,9 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
 
     const normalizedActionPayload = actionType === BATTLE_ACTION.MAGIC
       ? { ...actionPayload, magicSlot: normalizeDungeonMagicSlot(actionPayload?.magicSlot) }
-      : actionPayload;
+      : actionType === BATTLE_ACTION.POTION
+        ? { ...actionPayload, potionType: normalizeDungeonPotionType(actionPayload?.potionType) }
+        : actionPayload;
 
     logger.info('Ação recebida do player na dungeon', {
       file: 'services/dungeonService.js',

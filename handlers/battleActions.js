@@ -1,5 +1,5 @@
 const { createLogger } = require("../utils/logger");
-const { decideInvite, attack, usePotion, showMagicOptions, castMagic, showSwitchOptions, switchPokemon } = require("../services/battleService");
+const { decideInvite, attack, showPotionOptions, showMagicOptions, castMagic, showSwitchOptions, switchPokemon, usePotion } = require("../services/battleService");
 const { upsertPokemonMagicLoadout, getPendingMagicSelection, clearPendingMagicSelection, storePendingMagicSelection, buildMagicSummary, MAX_MAGIC_SLOTS } = require("../services/pokemonMagicService");
 const {
   BATTLE_ACCEPT_ACTION_ID,
@@ -10,6 +10,7 @@ const {
   MAGIC_REGISTER_REMOVE_ACTION_ID,
   renderMagicRegisterElementPrompt,
 } = require("../services/battleRenderService");
+const { sendEphemeral } = require("../utils/slackResponse");
 
 const BATTLE_TURN_ACTION_PATTERN = new RegExp(`^${BATTLE_TURN_ACTION_ID}_.+$`);
 const BATTLE_MAGIC_ACTION_PATTERN = new RegExp(`^${BATTLE_MAGIC_ACTION_ID}_.+$`);
@@ -33,7 +34,7 @@ function buildSayAdapter({ say, respond }) {
       return;
     }
     if (respond) {
-      await respond(payload);
+      await sendEphemeral(respond, payload);
     }
   };
 }
@@ -48,7 +49,7 @@ function registerBattleActions(app) {
     if (!channelId) {
       logger.warn("Ação de batalha sem channelId", { actionId: action?.action_id });
       if (respond) {
-        await respond({ response_type: "ephemeral", text: "Não consegui identificar o canal desse desafio." });
+        await sendEphemeral(respond, { text: "Não consegui identificar o canal desse desafio." });
       }
       return;
     }
@@ -63,11 +64,15 @@ function registerBattleActions(app) {
     const channelId = payload.channelId || body.channel?.id;
     const event = { channel: channelId, user: body.user?.id };
     const reply = buildSayAdapter({ say, respond });
+    const actionName = String(payload.action || payload.actionType || '').toLowerCase();
 
-    if (payload.action === "attack") return attack({ event, say: reply });
-    if (payload.action === "potion") return usePotion({ event, say: reply });
-    if (payload.action === "magic") return showMagicOptions({ event, say: reply });
-    if (payload.action === "switch") return showSwitchOptions({ event, say: reply });
+    if (actionName === "attack") return attack({ event, say: reply });
+    if (actionName === "potion") {
+      if (payload.potionType) return usePotion({ event, say: reply, potionType: payload.potionType });
+      return showPotionOptions({ event, say: reply });
+    }
+    if (actionName === "magic") return showMagicOptions({ event, say: reply });
+    if (actionName === "switch") return showSwitchOptions({ event, say: reply });
     await reply("Ação de batalha inválida.");
   };
 

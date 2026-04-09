@@ -9,6 +9,15 @@ const dungeonServicePath = path.resolve(__dirname, '../services/dungeonService.j
 const actionResolverPath = path.resolve(__dirname, '../application/battle/domain/actionResolver.js');
 const rendererPath = path.resolve(__dirname, '../adapters/slack/renderers/dungeonRenderer.js');
 
+function expectedEphemeral(text) {
+  return {
+    response_type: 'ephemeral',
+    replace_original: false,
+    delete_original: false,
+    text,
+  };
+}
+
 function loadDungeonActions({
   getDungeonBattleImpl,
   getDungeonOwnerUserIdImpl,
@@ -123,7 +132,7 @@ test('defesa na dungeon responde ephemeral e não processa turno nem desmonta UI
 
   assert.equal(processCalls, 0);
   assert.equal(updates.length, 0);
-  assert.deepEqual(responds, [{ response_type: 'ephemeral', text: 'unsupported_action' }]);
+  assert.deepEqual(responds, [expectedEphemeral('unsupported_action')]);
 });
 
 test('clique de outro player na dungeon é no-op completo', async () => {
@@ -155,7 +164,7 @@ test('clique de outro player na dungeon é no-op completo', async () => {
   assert.equal(processCalls, 0);
   assert.equal(processingChecks, 0);
   assert.equal(updates.length, 0);
-  assert.deepEqual(responds, [{ response_type: 'ephemeral', text: 'Você não pode interagir na dungeon de outro jogador' }]);
+  assert.deepEqual(responds, [expectedEphemeral('Você não pode interagir na dungeon de outro jogador')]);
 });
 
 test('ação fora do turno responde ephemeral e não sobrescreve mensagem principal', async () => {
@@ -181,7 +190,7 @@ test('ação fora do turno responde ephemeral e não sobrescreve mensagem princi
   });
 
   assert.equal(updates.length, 0);
-  assert.deepEqual(responds, [{ response_type: 'ephemeral', text: '⏳ Ainda não é o seu turno. O inimigo age automaticamente quando for a vez dele.' }]);
+  assert.deepEqual(responds, [expectedEphemeral('⏳ Ainda não é o seu turno. O inimigo age automaticamente quando for a vez dele.')]);
 });
 
 test('sessão de dungeon inexistente responde ephemeral sem atualizar blocks', async () => {
@@ -201,5 +210,5 @@ test('sessão de dungeon inexistente responde ephemeral sem atualizar blocks', a
   });
 
   assert.equal(updates.length, 0);
-  assert.deepEqual(responds, [{ response_type: 'ephemeral', text: 'battle_not_found' }]);
+  assert.deepEqual(responds, [expectedEphemeral('battle_not_found')]);
 });

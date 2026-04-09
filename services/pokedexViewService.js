@@ -9,6 +9,7 @@ const {
 const { createLogger } = require("../utils/logger");
 const { IV_STAT_RANGES } = require("./pokemonStatsService");
 const { PASSIVE_DEFINITIONS } = require("./legendaryPassiveRegistry");
+const { buildEpicAffixDisplayLine } = require('./epicAffixService');
 
 const POKEDEX_NAV_PREV_ACTION_ID = "pokedex_navigate_prev";
 const POKEDEX_NAV_NEXT_ACTION_ID = "pokedex_navigate_next";
@@ -141,6 +142,7 @@ async function buildPokedexMessage({
     `${buildPokemonTypesLabel(species.element_types) ? `🧪 ${buildPokemonTypesLabel(species.element_types)}\n` : ""}` +
     `🏷️ Origem: *${entry.source || "capture"}*\n` +
     `${legendaryPassiveName ? `🜂 Passiva Lendária: *${legendaryPassiveName}*\n` : ""}` +
+    `🧿 ${buildEpicAffixDisplayLine(entry)}\n` +
     `${entry.grouped ? "📦 Grupo: *instâncias equivalentes (Lv 1)*\n" : ""}` +
     `🎯 Captura #${entry.id}${shinyTag}${favoriteTag}${attributesText}`;
 

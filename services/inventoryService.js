@@ -17,6 +17,36 @@ const ITEM_CATALOG = {
     description: 'Permite capturar um Pokémon sem cooldown',
     extraData: { kind: 'consumable', category: 'capture' },
   },
+  potion_small: {
+    itemKey: 'potion_small',
+    itemName: 'Poção pequena',
+    description: 'Cura 10% do HP máximo em batalha.',
+    extraData: { kind: 'consumable', category: 'battle', healRatio: 0.1, battlePotionType: 'small' },
+  },
+  potion_medium: {
+    itemKey: 'potion_medium',
+    itemName: 'Poção média',
+    description: 'Cura 30% do HP máximo em batalha.',
+    extraData: { kind: 'consumable', category: 'battle', healRatio: 0.3, battlePotionType: 'medium' },
+  },
+  potion_large: {
+    itemKey: 'potion_large',
+    itemName: 'Poção grande',
+    description: 'Cura 50% do HP máximo em batalha.',
+    extraData: { kind: 'consumable', category: 'battle', healRatio: 0.5, battlePotionType: 'large' },
+  },
+  reset_energy_token: {
+    itemKey: 'reset_energy_token',
+    itemName: 'Reset Energy',
+    description: 'Consumível para resetar energia com `!re`.',
+    extraData: { kind: 'consumable', category: 'energy', command: '!re' },
+  },
+  mythical_pokemon_token: {
+    itemKey: 'mythical_pokemon_token',
+    itemName: 'Ticket Pokémon Mítico',
+    description: 'Consumível. Use `!invoke` para invocar 1 Pokémon mítico aleatório.',
+    extraData: { kind: 'voucher', category: 'market', command: '!invoke' },
+  },
   dungeon_60_supply_bag: {
     itemKey: 'dungeon_60_supply_bag',
     itemName: 'Bag de Suprimentos (Dungeon 60)',
@@ -70,6 +100,12 @@ const ITEM_CATALOG = {
     itemName: 'Tomo Lendário',
     description: 'Consumível. Use `!usetomo` para gerar uma passiva lendária aleatória no seu códex.',
     extraData: { kind: 'consumable', category: 'fusion', command: '!usetomo' },
+  },
+  epic_tome: {
+    itemKey: 'epic_tome',
+    itemName: 'Tomo Épico',
+    description: 'Consumível. Use `!epictome <pokeid>` para rolar e fixar um afixo épico no Pokémon.',
+    extraData: { kind: 'consumable', category: 'fusion', command: '!epictome' },
   },
   prism_prime: {
     itemKey: 'prism_prime',

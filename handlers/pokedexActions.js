@@ -14,6 +14,7 @@ const {
   getSpeciesView,
   buildSpeciesMessage,
 } = require("../services/speciesCatalogViewService");
+const { sendEphemeral } = require("../utils/slackResponse");
 
 const POKEDEX_FILTER_RARITY_ACTION_ID = "pokedex_filter_rarity";
 const POKEDEX_FILTER_ELEMENT_ACTION_ID = "pokedex_filter_element";
@@ -36,8 +37,7 @@ function registerPokedexActions(app) {
 
       if (!ownerSlackUserId || !actorSlackUserId || actorSlackUserId !== ownerSlackUserId) {
         if (respond) {
-          await respond({
-            response_type: "ephemeral",
+          await sendEphemeral(respond, {
             text: "Você só pode navegar na Pokédex que você abriu com `!pokedex` ou `!pa`.",
           });
         }
@@ -68,8 +68,7 @@ function registerPokedexActions(app) {
       console.error("Erro na navegação da pokédex:", error.message || error);
 
       if (respond) {
-        await respond({
-          response_type: "ephemeral",
+        await sendEphemeral(respond, {
           text: "Não consegui atualizar essa visualização da Pokédex 😵",
         });
       }
@@ -83,7 +82,7 @@ function registerPokedexActions(app) {
     const actorSlackUserId = body.user?.id;
     if (!payload?.ownerSlackUserId || payload.ownerSlackUserId !== actorSlackUserId) {
       if (respond) {
-        await respond({ response_type: "ephemeral", text: "Só o dono pode usar este filtro." });
+        await sendEphemeral(respond, { text: "Só o dono pode usar este filtro." });
       }
       return;
     }
@@ -126,8 +125,7 @@ function registerPokedexActions(app) {
 
       if (!ownerSlackUserId || !actorSlackUserId || actorSlackUserId !== ownerSlackUserId) {
         if (respond) {
-          await respond({
-            response_type: "ephemeral",
+          await sendEphemeral(respond, {
             text: "Você só pode navegar na consulta de espécies que você abriu com `!pokeall` ou `!pokename`.",
           });
         }
@@ -154,8 +152,7 @@ function registerPokedexActions(app) {
       console.error("Erro na navegação de espécies:", error.message || error);
 
       if (respond) {
-        await respond({
-          response_type: "ephemeral",
+        await sendEphemeral(respond, {
           text: "Não consegui atualizar essa visualização do catálogo global 😵",
         });
       }

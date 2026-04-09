@@ -20,6 +20,7 @@ const {
   renderHealingSelection,
   renderHealingStationUpgradePreview,
 } = require('../adapters/slack/renderers/healingStationRenderer');
+const { sendEphemeral } = require('../utils/slackResponse');
 
 const logger = createLogger('handler:healing-station-actions');
 
@@ -49,7 +50,7 @@ function registerHealingStationActions(app) {
       await client.chat.update({ channel: body.channel.id, ts: body.message.ts, ...renderHealingSelection({ mode: 'add', slackUserId: actorUserId, pokemons: eligible }) });
     } catch (error) {
       logger.error('Erro no botão de adicionar da healstation', { actorUserId: body.user?.id, error });
-      await respond({ response_type: 'ephemeral', text: 'Não consegui abrir a lista de adição agora 😵' });
+      await sendEphemeral(respond, { text: 'Não consegui abrir a lista de adição agora 😵' });
     }
   });
 
@@ -63,7 +64,7 @@ function registerHealingStationActions(app) {
       await client.chat.update({ channel: body.channel.id, ts: body.message.ts, ...renderHealingSelection({ mode: 'remove', slackUserId: actorUserId, pokemons: view.slots }) });
     } catch (error) {
       logger.error('Erro no botão de remover da healstation', { actorUserId: body.user?.id, error });
-      await respond({ response_type: 'ephemeral', text: 'Não consegui abrir a lista de remoção agora 😵' });
+      await sendEphemeral(respond, { text: 'Não consegui abrir a lista de remoção agora 😵' });
     }
   });
 
@@ -73,7 +74,7 @@ function registerHealingStationActions(app) {
     const actorUserId = body.user?.id;
     if (actorUserId !== payload?.slackUserId) return respond(buildUnauthorizedActionMessage(payload?.slackUserId));
     const result = await addPokemonToHealingStation({ slackUserId: actorUserId, pokemonId: payload.pokemonId });
-    if (!result.ok) return respond({ response_type: 'ephemeral', text: mapReason(result.reason) });
+    if (!result.ok) return sendEphemeral(respond, { text: mapReason(result.reason) });
     const view = await getHealingStationView(actorUserId);
     logger.info('Interação de botão adicionou Pokémon na estação', { actorUserId, pokemonId: payload.pokemonId });
     await client.chat.update({ channel: body.channel.id, ts: body.message.ts, ...renderHealingStation(view, actorUserId) });
@@ -85,7 +86,7 @@ function registerHealingStationActions(app) {
     const actorUserId = body.user?.id;
     if (actorUserId !== payload?.slackUserId) return respond(buildUnauthorizedActionMessage(payload?.slackUserId));
     const result = await removePokemonFromHealingStation({ slackUserId: actorUserId, pokemonId: payload.pokemonId });
-    if (!result.ok) return respond({ response_type: 'ephemeral', text: mapReason(result.reason) });
+    if (!result.ok) return sendEphemeral(respond, { text: mapReason(result.reason) });
     const view = await getHealingStationView(actorUserId);
     logger.info('Interação de botão removeu Pokémon da estação', { actorUserId, pokemonId: payload.pokemonId });
     await client.chat.update({ channel: body.channel.id, ts: body.message.ts, ...renderHealingStation(view, actorUserId) });
@@ -114,7 +115,7 @@ function registerHealingStationActions(app) {
           max_level_reached: 'Sua estação de cura já está no nível máximo (30/30).',
           insufficient_gold: `Gold insuficiente para subir sua estação. Custo: *${result.cost}* | Seu gold: *${result.currentGold}*.`,
         };
-        await respond({ response_type: 'ephemeral', text: map[result.reason] || 'Não consegui concluir o upgrade da estação agora 😵' });
+        await sendEphemeral(respond, { text: map[result.reason] || 'Não consegui concluir o upgrade da estação agora 😵' });
         return;
       }
 
@@ -124,7 +125,7 @@ function registerHealingStationActions(app) {
       await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
     } catch (error) {
       logger.error('Erro ao confirmar !upstation', { actorUserId, error });
-      await respond({ response_type: 'ephemeral', text: 'Não consegui concluir o upgrade da estação agora 😵' });
+      await sendEphemeral(respond, { text: 'Não consegui concluir o upgrade da estação agora 😵' });
     }
   });
 

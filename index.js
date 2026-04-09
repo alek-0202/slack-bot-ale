@@ -20,6 +20,7 @@ const coffeCommand = require("./commands/coffe");
 const pokeCommand = require("./commands/pokemon/poke");
 const captureCommand = require("./commands/pokemon/capture");
 const captureItemCommand = require("./commands/pokemon/c");
+const captureBatchItemCommand = require("./commands/pokemon/ca");
 const profileCommand = require("./commands/pokemon/profile");
 const dungeonCommand = require("./commands/pokemon/dungeon");
 const mochilaCommand = require("./commands/pokemon/mochila");
@@ -37,6 +38,11 @@ const battleoffCommand = require("./commands/pokemon/battleoff");
 const favpokeCommand = require("./commands/pokemon/favpoke");
 const upgradeCommand = require("./commands/pokemon/upgrade");
 const marketCommand = require("./commands/pokemon/market");
+const miCommand = require("./commands/pokemon/mi");
+const mgCommand = require("./commands/pokemon/mg");
+const mCommand = require("./commands/pokemon/m");
+const mgmlCommand = require("./commands/pokemon/mgml");
+const reCommand = require("./commands/pokemon/re");
 const fusaoCommand = require("./commands/pokemon/fusao");
 const tradeCommand = require("./commands/pokemon/trade");
 const rerollCommand = require("./commands/pokemon/reroll");
@@ -75,6 +81,8 @@ const giveFragmentCommand = require("./commands/givefragment");
 const openBagCommand = require("./commands/openbag");
 const codexCommand = require("./commands/codex");
 const useTomoCommand = require("./commands/usetomo");
+const invokeCommand = require('./commands/pokemon/invoke');
+const epicTomeCommand = require('./commands/pokemon/epictome');
 const applycodexCommand = require("./commands/pokemon/applycodex");
 const { registerPokedexActions } = require("./handlers/pokedexActions");
 const { registerCoffeActions } = require("./handlers/coffeActions");
@@ -130,6 +138,7 @@ for (const commandModule of [
   pokeCommand,
   captureCommand,
   captureItemCommand,
+  captureBatchItemCommand,
   profileCommand,
   dungeonCommand,
   mochilaCommand,
@@ -147,6 +156,11 @@ for (const commandModule of [
   favpokeCommand,
   upgradeCommand,
   marketCommand,
+  miCommand,
+  mgCommand,
+  mCommand,
+  mgmlCommand,
+  reCommand,
   fusaoCommand,
   tradeCommand,
   rerollCommand,
@@ -185,6 +199,8 @@ for (const commandModule of [
   openBagCommand,
   codexCommand,
   useTomoCommand,
+  invokeCommand,
+  epicTomeCommand,
   applycodexCommand,
 ]) {
   commandRegistry.set(commandModule.name, commandModule);

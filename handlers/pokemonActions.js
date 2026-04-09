@@ -12,6 +12,11 @@ const { MRSKILL_TOGGLE_ACTION_ID, buildMrSkillBlocks } = require('../commands/mr
 const { getOwnedPokemonById } = require('../services/pokemonLookupService');
 const { getMrSkillSetup, saveMrSkillSelection } = require('../services/pokemonMagicService');
 const { FUSION_BUY_ACTION_ID, craftFusionItem } = require('../services/fusionService');
+const { sendEphemeral } = require("../utils/slackResponse");
+const { EPICTOME_CHOOSE_ACTION_ID } = require('../commands/pokemon/epictome');
+const { removeItem, addItem } = require('../services/inventoryService');
+const { setPokemonEpicAffix } = require('../services/epicAffixService');
+const { formatEpicAffix, normalizeEpicAffix } = require('../services/epicAffixRegistry');
 const {
   upgradePokemonExtraStat,
   transferShiny,
@@ -138,7 +143,7 @@ function registerPokemonActions(app) {
     });
 
     if (!payload?.slackUserId || !payload?.pokemonId) {
-      await respond({ response_type: "ephemeral", text: "Não consegui validar essa confirmação de evolução 😵" });
+      await sendEphemeral(respond, { text: "Não consegui validar essa confirmação de evolução 😵" });
       return;
     }
 
@@ -158,7 +163,7 @@ function registerPokemonActions(app) {
           insufficient_gold: `Gold insuficiente para evoluir. Custo: *${result.cost}* | Seu gold: *${result.currentGold}*.`,
           species_stats_missing: "Os dados da próxima evolução ainda estão incompletos. Tente novamente depois.",
         };
-        await respond({ response_type: "ephemeral", text: map[result.reason] || "Não consegui evoluir esse Pokémon agora 😵" });
+        await sendEphemeral(respond, { text: map[result.reason] || "Não consegui evoluir esse Pokémon agora 😵" });
         return;
       }
 
@@ -184,7 +189,7 @@ function registerPokemonActions(app) {
         success: false,
         error,
       });
-      await respond({ response_type: "ephemeral", text: "Não consegui evoluir agora 😵‍💫" });
+      await sendEphemeral(respond, { text: "Não consegui evoluir agora 😵‍💫" });
     }
   });
 
@@ -215,7 +220,7 @@ function registerPokemonActions(app) {
     });
 
     if (!payload?.slackUserId || !payload?.pokemonId || !payload?.targetLevel) {
-      await respond({ response_type: "ephemeral", text: "Não consegui validar essa confirmação de upgrade 😵" });
+      await sendEphemeral(respond, { text: "Não consegui validar essa confirmação de upgrade 😵" });
       return;
     }
 
@@ -242,7 +247,7 @@ function registerPokemonActions(app) {
           insufficient_gold: `Gold insuficiente para subir até o nível alvo. Custo total: *${result.cost}* | Seu gold: *${result.currentGold}*.`,
           max_level_reached: "Esse Pokémon já chegou no nível máximo.",
         };
-        await respond({ response_type: "ephemeral", text: map[result.reason] || "Não consegui aplicar esse upgrade em lote agora 😵" });
+        await sendEphemeral(respond, { text: map[result.reason] || "Não consegui aplicar esse upgrade em lote agora 😵" });
         return;
       }
 
@@ -271,7 +276,7 @@ function registerPokemonActions(app) {
         success: false,
         error,
       });
-      await respond({ response_type: "ephemeral", text: "Não consegui aplicar esse upgrade agora 😵" });
+      await sendEphemeral(respond, { text: "Não consegui aplicar esse upgrade agora 😵" });
     }
   });
 
@@ -306,7 +311,7 @@ function registerPokemonActions(app) {
     });
 
     if (!payload?.slackUserId || !payload?.pokemonId || !payload?.statKey) {
-      await respond({ response_type: "ephemeral", text: "Não consegui validar essa aplicação de item 😵" });
+      await sendEphemeral(respond, { text: "Não consegui validar essa aplicação de item 😵" });
       return;
     }
 
@@ -330,7 +335,7 @@ function registerPokemonActions(app) {
           insufficient_item: "Você não possui 5 Livros do Ancião na mochila.",
           pokemon_in_healing_station: "Esse Pokémon está na estação de cura e não pode receber Livro do Ancião agora.",
         };
-        await respond({ response_type: "ephemeral", text: map[result.reason] || "Não consegui aplicar o Livro do Ancião agora 😵" });
+        await sendEphemeral(respond, { text: map[result.reason] || "Não consegui aplicar o Livro do Ancião agora 😵" });
         return;
       }
 
@@ -367,7 +372,7 @@ function registerPokemonActions(app) {
         statKey: payload?.statKey,
         error,
       });
-      await respond({ response_type: "ephemeral", text: "Não consegui aplicar o Livro do Ancião agora 😵" });
+      await sendEphemeral(respond, { text: "Não consegui aplicar o Livro do Ancião agora 😵" });
     }
   });
 
@@ -386,7 +391,7 @@ function registerPokemonActions(app) {
     const isSellAll = Boolean(payload?.sellAll);
 
     if (!payload?.slackUserId || (!pokemonIds.length && !isSellAll)) {
-      await respond({ response_type: "ephemeral", text: "Não consegui validar essa confirmação de venda 😵" });
+      await sendEphemeral(respond, { text: "Não consegui validar essa confirmação de venda 😵" });
       return;
     }
 
@@ -409,7 +414,7 @@ function registerPokemonActions(app) {
           no_sellable_pokemon: "Não há Pokémons elegíveis para vender agora no !sellall.",
           sale_price_changed: "O valor da venda mudou desde a confirmação. Abra o !sell novamente para revisar o total atualizado.",
         };
-        await respond({ response_type: "ephemeral", text: map[result.reason] || "Não consegui vender esse Pokémon agora 😵" });
+        await sendEphemeral(respond, { text: map[result.reason] || "Não consegui vender esse Pokémon agora 😵" });
         return;
       }
 
@@ -435,7 +440,7 @@ ${fragmentBonusLine}
       logger.info("Venda confirmada com sucesso", { actorUserId, pokemonIds, sellValue: result.goldReceived });
     } catch (error) {
       logger.error("Falha ao confirmar venda", { actorUserId, pokemonIds, error });
-      await respond({ response_type: "ephemeral", text: "Não consegui vender esse Pokémon agora 😵‍💫" });
+      await sendEphemeral(respond, { text: "Não consegui vender esse Pokémon agora 😵‍💫" });
     }
   });
 
@@ -460,12 +465,12 @@ ${fragmentBonusLine}
     const actorUserId = body.user?.id;
     const payload = parseActionValue(action?.value);
     if (!payload?.pokemonId) {
-      await respond({ response_type: 'ephemeral', text: 'Não consegui abrir os stats.' });
+      await sendEphemeral(respond, { text: 'Não consegui abrir os stats.' });
       return;
     }
     const pokemon = await getOwnedPokemonById(payload.pokemonId);
     if (!pokemon || pokemon.slack_user_id !== actorUserId) {
-      await respond({ response_type: 'ephemeral', text: 'Você só pode abrir stats dos seus Pokémons.' });
+      await sendEphemeral(respond, { text: 'Você só pode abrir stats dos seus Pokémons.' });
       return;
     }
 
@@ -481,7 +486,7 @@ ${fragmentBonusLine}
     const actorUserId = body.user?.id;
     const payload = parseActionValue(action?.value);
     if (!payload?.pokemonId || !payload?.statKey || !EXTRA_STAT_CONFIG[payload.statKey]) {
-      await respond({ response_type: 'ephemeral', text: 'Upgrade inválido.' });
+      await sendEphemeral(respond, { text: 'Upgrade inválido.' });
       return;
     }
 
@@ -494,7 +499,7 @@ ${fragmentBonusLine}
         insufficient_gold: 'Gold insuficiente para o upgrade.',
         insufficient_essence: 'Essência insuficiente para o upgrade.',
       };
-      await respond({ response_type: 'ephemeral', text: map[result.reason] || 'Não consegui aplicar o upgrade.' });
+      await sendEphemeral(respond, { text: map[result.reason] || 'Não consegui aplicar o upgrade.' });
       return;
     }
 
@@ -508,7 +513,7 @@ ${fragmentBonusLine}
 
   app.action(POKEID_BACK_ACTION_ID, async ({ ack, respond }) => {
     await ack();
-    await respond({ response_type: 'ephemeral', text: 'Use `!pokeid <id>` para voltar ao HUD principal.' });
+    await sendEphemeral(respond, { text: 'Use `!pokeid <id>` para voltar ao HUD principal.' });
   });
 
   app.action(TSHINY_CONFIRM_ACTION_ID, async ({ ack, body, action, client, respond }) => {
@@ -516,7 +521,7 @@ ${fragmentBonusLine}
     const actorUserId = body.user?.id;
     const payload = parseActionValue(action?.value);
     if (!payload?.slackUserId || !payload?.sourcePokemonId || !payload?.targetPokemonId) {
-      await respond({ response_type: 'ephemeral', text: 'Não consegui validar essa confirmação de transferência shiny.' });
+      await sendEphemeral(respond, { text: 'Não consegui validar essa confirmação de transferência shiny.' });
       return;
     }
 
@@ -564,7 +569,7 @@ ${fragmentBonusLine}
 
     const setup = await getMrSkillSetup({ slackUserId: actorUserId, pokemonId: payload?.pokemonId });
     if (!setup.ok) {
-      await respond({ response_type: 'ephemeral', text: 'Não consegui atualizar esse HUD de skills agora 😵' });
+      await sendEphemeral(respond, { text: 'Não consegui atualizar esse HUD de skills agora 😵' });
       return;
     }
 
@@ -580,13 +585,13 @@ ${fragmentBonusLine}
       selectedSkillIds: nextSelection,
     });
     if (!result.ok) {
-      await respond({ response_type: 'ephemeral', text: 'Não consegui aplicar essa troca de skills agora 😵' });
+      await sendEphemeral(respond, { text: 'Não consegui aplicar essa troca de skills agora 😵' });
       return;
     }
 
     const refreshed = await getMrSkillSetup({ slackUserId: actorUserId, pokemonId: setup.pokemon.id });
     if (!refreshed.ok) {
-      await respond({ response_type: 'ephemeral', text: 'As skills foram salvas, mas não consegui recarregar o HUD.' });
+      await sendEphemeral(respond, { text: 'As skills foram salvas, mas não consegui recarregar o HUD.' });
       return;
     }
 
@@ -602,7 +607,7 @@ ${fragmentBonusLine}
     const actorUserId = body.user?.id;
     const payload = parseActionValue(action?.value);
     if (!payload?.ownerSlackUserId || actorUserId !== payload.ownerSlackUserId) {
-      await respond({ response_type: 'ephemeral', text: 'Somente quem abriu o HUD de fusão pode usar esses botões.' });
+      await sendEphemeral(respond, { text: 'Somente quem abriu o HUD de fusão pode usar esses botões.' });
       return;
     }
 
@@ -615,26 +620,72 @@ ${fragmentBonusLine}
 
       if (!result.ok) {
         if (result.reason === 'insufficient_materials') {
-          await respond({
-            response_type: 'ephemeral',
+          await sendEphemeral(respond, {
             text: `Fragmentos insuficientes para craftar ${result.item?.itemName || 'este item'} x${payload.quantity}.`,
           });
           return;
         }
-        await respond({ response_type: 'ephemeral', text: 'Não consegui concluir essa fusão agora.' });
+        await sendEphemeral(respond, { text: 'Não consegui concluir essa fusão agora.' });
         return;
       }
 
-      await respond({
-        response_type: 'ephemeral',
+      await sendEphemeral(respond, {
         text: `✅ Fusão concluída: ${result.item.itemName} x${result.quantity} adicionada à mochila.`,
       });
     } catch (error) {
       logger.error('Falha ao processar compra de fusão', { actorUserId, payload, error });
-      await respond({ response_type: 'ephemeral', text: 'Erro ao processar fusão 😵' });
+      await sendEphemeral(respond, { text: 'Erro ao processar fusão 😵' });
     }
   });
 
+
+
+  app.action(new RegExp(`^${EPICTOME_CHOOSE_ACTION_ID}__`), async ({ ack, body, action, client, respond }) => {
+    await ack();
+    const actorUserId = body.user?.id;
+    const payload = parseActionValue(action?.value);
+    if (!payload?.ownerSlackUserId || actorUserId !== payload.ownerSlackUserId) {
+      await sendEphemeral(respond, { text: 'Somente quem abriu o Tomo Épico pode escolher.' });
+      return;
+    }
+
+    const option1 = normalizeEpicAffix(payload.options?.[0]);
+    const option2 = normalizeEpicAffix(payload.options?.[1]);
+    const current = normalizeEpicAffix(payload.currentAffix);
+    const chosen = payload.choice === 'option_1'
+      ? option1
+      : payload.choice === 'option_2'
+        ? option2
+        : current;
+
+    const consume = await removeItem(actorUserId, 'epic_tome', 1);
+    if (!consume.ok) {
+      await sendEphemeral(respond, { text: '❌ Você não possui Tomo Épico suficiente para concluir essa escolha.' });
+      return;
+    }
+
+    try {
+      const result = await setPokemonEpicAffix({
+        slackUserId: actorUserId,
+        pokemonId: payload.pokemonId,
+        affix: chosen,
+      });
+      if (!result.ok) {
+        await addItem(actorUserId, 'epic_tome', 1);
+        await sendEphemeral(respond, { text: 'Não consegui aplicar esse afixo agora; seu tomo foi devolvido.' });
+        return;
+      }
+
+      const finalLine = formatEpicAffix(result.affix);
+      const updated = buildUpdatedMessage(`✅ Tomo Épico aplicado por <@${actorUserId}>.
+Afixo final: *${finalLine}*`);
+      await client.chat.update({ channel: body.channel.id, ts: body.message.ts, text: updated.text, blocks: updated.blocks });
+    } catch (error) {
+      logger.error('Falha ao aplicar escolha de Tomo Épico', { actorUserId, payload, error });
+      await addItem(actorUserId, 'epic_tome', 1);
+      await sendEphemeral(respond, { text: 'Erro ao aplicar o afixo. O Tomo Épico foi devolvido.' });
+    }
+  });
 
   app.action(PROFILE_OPEN_BAG_ACTION_ID, async ({ ack, body, action, client, respond }) => {
     await ack();
@@ -653,7 +704,7 @@ ${fragmentBonusLine}
 
     const items = await getUserItems(actorUserId);
     if (!items.length) {
-      await respond({ response_type: 'ephemeral', text: '🎒 Sua mochila está vazia no momento.' });
+      await sendEphemeral(respond, { text: '🎒 Sua mochila está vazia no momento.' });
       return;
     }
 
