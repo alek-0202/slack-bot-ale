@@ -7,6 +7,7 @@ const {
   GLOBAL_EFFECT_IDS,
   applyGlobalEffect,
   applyExecuteStacks,
+  getExecuteStatus,
   getExecuteThresholdPct,
   tryExecuteTarget,
 } = require('../application/battle/domain/globalEffectRegistry');
@@ -59,11 +60,20 @@ test('Resfriamento reduz iniciativa em 15%', () => {
   assert.equal(effect.speedMultiplier, 0.85);
 });
 
-test('Execute usa limiar base de 15% + stack parametrizado', () => {
+test('Execute é opt-in e limiar base começa em 0%', () => {
   const target = makePlayer();
-  applyExecuteStacks(target, { stacks: 3, baseThresholdPct: 0.15, stackThresholdPct: 0.02 });
-  assert.equal(getExecuteThresholdPct(target), 0.21);
-  target.battleHp.current = 200;
+  assert.equal(getExecuteStatus(target), null);
+  assert.equal(getExecuteThresholdPct(target), 0);
+  assert.equal(tryExecuteTarget(target), false);
+});
+
+test('Execute cresce por stacks e respeita teto absoluto de 15%', () => {
+  const target = makePlayer();
+  applyExecuteStacks(target, { stacks: 3, baseThresholdPct: 0, stackThresholdPct: 0.02 });
+  assert.equal(getExecuteThresholdPct(target), 0.06);
+  applyExecuteStacks(target, { stacks: 20, baseThresholdPct: 0, stackThresholdPct: 0.02 });
+  assert.equal(getExecuteThresholdPct(target), 0.15);
+  target.battleHp.current = 150;
   assert.equal(tryExecuteTarget(target), true);
 });
 

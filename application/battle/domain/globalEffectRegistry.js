@@ -51,12 +51,13 @@ const GLOBAL_EFFECT_DEFINITIONS = Object.freeze({
   [GLOBAL_EFFECT_IDS.EXECUTE]: {
     id: GLOBAL_EFFECT_IDS.EXECUTE,
     name: 'Execute',
-    description: 'Executa ao ficar abaixo do limiar base de 15% + bônus por stack.',
+    description: 'Executa ao ficar abaixo do limiar calculado por fontes aplicadas.',
     gameplayDescription: 'acumula stacks e elimina ao atingir limiar de vida calculado',
     type: 'debuff_status',
     stackable: true,
-    baseThresholdPct: 0.15,
+    baseThresholdPct: 0,
     stackThresholdPct: 0.01,
+    maxThresholdPct: 0.15,
   },
 });
 
@@ -86,42 +87,53 @@ function applyGlobalEffect(target, effectId, overrides = {}) {
 function getExecuteStatus(target) {
   const state = ensureElementalState(target);
   state.statuses = Array.isArray(state.statuses) ? state.statuses : [];
-  let status = state.statuses.find((entry) => entry.id === GLOBAL_EFFECT_IDS.EXECUTE);
-  if (!status) {
-    const def = getGlobalEffectDefinition(GLOBAL_EFFECT_IDS.EXECUTE);
-    status = {
-      id: def.id,
-      name: def.name,
-      description: def.description,
-      gameplayDescription: def.gameplayDescription,
-      stacks: 0,
-      maxStacks: 99,
-      baseThresholdPct: def.baseThresholdPct,
-      stackThresholdPct: def.stackThresholdPct,
-    };
-    state.statuses.push(status);
-  }
+  return state.statuses.find((entry) => entry.id === GLOBAL_EFFECT_IDS.EXECUTE) || null;
+}
+
+function ensureExecuteStatus(target) {
+  const existing = getExecuteStatus(target);
+  if (existing) return existing;
+  const state = ensureElementalState(target);
+  const def = getGlobalEffectDefinition(GLOBAL_EFFECT_IDS.EXECUTE);
+  const status = {
+    id: def.id,
+    name: def.name,
+    description: def.description,
+    gameplayDescription: def.gameplayDescription,
+    stacks: 0,
+    maxStacks: 99,
+    baseThresholdPct: 0,
+    stackThresholdPct: def.stackThresholdPct,
+    maxThresholdPct: def.maxThresholdPct,
+  };
+  state.statuses.push(status);
   return status;
 }
 
-function applyExecuteStacks(target, { stacks = 1, maxStacks = 99, baseThresholdPct = 0.15, stackThresholdPct = 0.01 } = {}) {
-  const status = getExecuteStatus(target);
+function applyExecuteStacks(target, { stacks = 1, maxStacks = 99, baseThresholdPct = 0, stackThresholdPct = 0.01 } = {}) {
+  const status = ensureExecuteStatus(target);
+  const maxThresholdPct = Math.max(0, Number(status.maxThresholdPct || getGlobalEffectDefinition(GLOBAL_EFFECT_IDS.EXECUTE)?.maxThresholdPct || 0.15));
   status.maxStacks = Math.max(1, Number(maxStacks || status.maxStacks || 99));
-  status.baseThresholdPct = Math.max(0, Number(baseThresholdPct || status.baseThresholdPct || 0.15));
+  status.baseThresholdPct = Math.min(maxThresholdPct, Math.max(0, Number(baseThresholdPct)));
   status.stackThresholdPct = Math.max(0, Number(stackThresholdPct || status.stackThresholdPct || 0.01));
+  status.maxThresholdPct = maxThresholdPct;
   status.stacks = Math.min(status.maxStacks, Math.max(0, Number(status.stacks || 0) + Math.max(0, Number(stacks || 0))));
   return status;
 }
 
 function getExecuteThresholdPct(target) {
   const status = getExecuteStatus(target);
-  return Math.max(0, Number(status.baseThresholdPct || 0) + (Math.max(0, Number(status.stacks || 0)) * Math.max(0, Number(status.stackThresholdPct || 0))));
+  if (!status) return 0;
+  const maxThresholdPct = Math.max(0, Number(status.maxThresholdPct || getGlobalEffectDefinition(GLOBAL_EFFECT_IDS.EXECUTE)?.maxThresholdPct || 0.15));
+  const calculated = Math.max(0, Number(status.baseThresholdPct || 0) + (Math.max(0, Number(status.stacks || 0)) * Math.max(0, Number(status.stackThresholdPct || 0))));
+  return Math.min(maxThresholdPct, calculated);
 }
 
 function tryExecuteTarget(target) {
   const antiExecute = (ensureElementalState(target).effects || []).some((effect) => effect.antiExecute === true && Number(effect?.remainingRounds ?? 1) > 0);
   if (antiExecute) return false;
   const thresholdPct = getExecuteThresholdPct(target);
+  if (thresholdPct <= 0) return false;
   const threshold = Math.round(Number(target?.battleHp?.max || 0) * thresholdPct);
   if (Number(target?.battleHp?.current || 0) > 0 && Number(target?.battleHp?.current || 0) <= threshold) {
     target.battleHp.current = 0;
@@ -137,6 +149,7 @@ module.exports = {
   createGlobalEffect,
   applyGlobalEffect,
   applyExecuteStacks,
+  ensureExecuteStatus,
   getExecuteStatus,
   getExecuteThresholdPct,
   tryExecuteTarget,

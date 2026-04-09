@@ -220,7 +220,7 @@ const ghostRules = {
           applyExecuteStacks(targetPlayer, {
             stacks: addStacks,
             maxStacks: 20,
-            baseThresholdPct: 0.15,
+            baseThresholdPct: 0,
             stackThresholdPct: 0.01,
           });
           logs.push(`🌑 Sombra atacou <@${targetRef.userId}> por ${result.damageApplied} e aplicou Marca Sombria (+${addStacks} stack).`);

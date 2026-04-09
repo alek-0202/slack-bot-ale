@@ -61,12 +61,15 @@ function buildPlayerViewModel(userId, playerState, initiative, battle) {
         .filter((entry) => entry.kind === "elemental")
         .map((entry) => [entry.id, getSkillCooldownRemaining(playerState, entry.id)]),
     ),
-    activeStatuses: ENABLE_ELEMENTAL_SKILLS_BATTLE ? (playerState.elementalState?.statuses || []).map((status) => ({
-      id: status.id,
-      name: status.name,
-      stacks: status.stacks,
-      remainingRounds: status.remainingRounds,
-    })) : [],
+    activeStatuses: ENABLE_ELEMENTAL_SKILLS_BATTLE ? (playerState.elementalState?.statuses || [])
+      .filter((status) => Number(status?.remainingRounds ?? status?.durationTurnsRemaining ?? 1) > 0)
+      .filter((status) => status?.stacks == null || Number(status.stacks) > 0)
+      .map((status) => ({
+        id: status.id,
+        name: status.name,
+        stacks: status.stacks,
+        remainingRounds: status.remainingRounds,
+      })) : [],
     activeEffects: ENABLE_ELEMENTAL_SKILLS_BATTLE ? (playerState.elementalState?.effects || []).map((effect) => ({
       id: effect.id,
       name: effect.name,
