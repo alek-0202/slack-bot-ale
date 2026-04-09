@@ -37,6 +37,11 @@ const battleoffCommand = require("./commands/pokemon/battleoff");
 const favpokeCommand = require("./commands/pokemon/favpoke");
 const upgradeCommand = require("./commands/pokemon/upgrade");
 const marketCommand = require("./commands/pokemon/market");
+const miCommand = require("./commands/pokemon/mi");
+const mgCommand = require("./commands/pokemon/mg");
+const mCommand = require("./commands/pokemon/m");
+const mgmlCommand = require("./commands/pokemon/mgml");
+const reCommand = require("./commands/pokemon/re");
 const fusaoCommand = require("./commands/pokemon/fusao");
 const tradeCommand = require("./commands/pokemon/trade");
 const rerollCommand = require("./commands/pokemon/reroll");
@@ -147,6 +152,11 @@ for (const commandModule of [
   favpokeCommand,
   upgradeCommand,
   marketCommand,
+  miCommand,
+  mgCommand,
+  mCommand,
+  mgmlCommand,
+  reCommand,
   fusaoCommand,
   tradeCommand,
   rerollCommand,

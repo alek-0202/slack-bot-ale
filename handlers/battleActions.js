@@ -1,5 +1,5 @@
 const { createLogger } = require("../utils/logger");
-const { decideInvite, attack, usePotion, showMagicOptions, castMagic, showSwitchOptions, switchPokemon } = require("../services/battleService");
+const { decideInvite, attack, showPotionOptions, showMagicOptions, castMagic, showSwitchOptions, switchPokemon } = require("../services/battleService");
 const { upsertPokemonMagicLoadout, getPendingMagicSelection, clearPendingMagicSelection, storePendingMagicSelection, buildMagicSummary, MAX_MAGIC_SLOTS } = require("../services/pokemonMagicService");
 const {
   BATTLE_ACCEPT_ACTION_ID,
@@ -65,7 +65,7 @@ function registerBattleActions(app) {
     const reply = buildSayAdapter({ say, respond });
 
     if (payload.action === "attack") return attack({ event, say: reply });
-    if (payload.action === "potion") return usePotion({ event, say: reply });
+    if (payload.action === "potion") return showPotionOptions({ event, say: reply });
     if (payload.action === "magic") return showMagicOptions({ event, say: reply });
     if (payload.action === "switch") return showSwitchOptions({ event, say: reply });
     await reply("Ação de batalha inválida.");

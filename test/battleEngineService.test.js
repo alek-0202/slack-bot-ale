@@ -292,18 +292,19 @@ test("ataque básico continua reduzido por defesa física", () => {
   }
 });
 
-test("resolvePotionTurn limita em 5 poções e não passa HP máximo", () => {
+test("resolvePotionTurn respeita limites por tipo e não passa HP máximo", () => {
   const player = {
     battleHp: { max: 100, current: 40 },
     potionsUsed: 0,
+    potionUsageByType: { small: 0, medium: 0, large: 0 },
   };
 
-  const first = resolvePotionTurn(player);
+  const first = resolvePotionTurn(player, { potionType: "small" });
   assert.equal(first.ok, true);
-  assert.equal(player.battleHp.current, 61);
+  assert.equal(player.battleHp.current, 50);
 
-  player.potionsUsed = 5;
-  const blocked = resolvePotionTurn(player);
+  player.potionUsageByType.small = 5;
+  const blocked = resolvePotionTurn(player, { potionType: "small" });
   assert.equal(blocked.ok, false);
   assert.equal(blocked.reason, "limit");
 });

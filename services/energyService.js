@@ -161,6 +161,31 @@ async function consumeDungeonEnergy(slackUserId, amount = 1) {
   };
 }
 
+async function resetUserEnergy(slackUserId) {
+  await createUserIfMissing(slackUserId);
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('users')
+    .select('max_energy')
+    .eq('slack_user_id', slackUserId)
+    .single();
+  if (error) throw error;
+  const maxEnergy = Math.max(1, Number(data?.max_energy) || DEFAULT_MAX_ENERGY);
+  const nowIso = new Date().toISOString();
+  const { data: updated, error: updateError } = await supabase
+    .from('users')
+    .update({ current_energy: maxEnergy, last_energy_update: nowIso })
+    .eq('slack_user_id', slackUserId)
+    .select('current_energy, max_energy')
+    .single();
+  if (updateError) throw updateError;
+  return {
+    ok: true,
+    currentEnergy: Number(updated.current_energy) || maxEnergy,
+    maxEnergy: Number(updated.max_energy) || maxEnergy,
+  };
+}
+
 function formatTimeToNextEnergy(msToNextEnergy) {
   const totalSeconds = Math.ceil((Number(msToNextEnergy) || 0) / 1000);
   if (totalSeconds <= 0) return 'cheia';
@@ -176,5 +201,6 @@ module.exports = {
   calculateEnergyState,
   refreshUserEnergy,
   consumeDungeonEnergy,
+  resetUserEnergy,
   formatTimeToNextEnergy,
 };
