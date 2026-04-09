@@ -16,16 +16,15 @@ test('!att envia changelog da versão atual com blocos e melhorias recentes', as
 
   assert.match(text, /Atualização de Produção/);
   assert.match(text, /⚔️ Combate/);
-  assert.match(text, /🧠 Magias/);
-  assert.match(text, /!magicregister/);
+  assert.match(text, /🐉 Características e Passivas/);
+  assert.match(text, /🧩 Magias Características/);
+  assert.match(text, /!codex/);
+  assert.match(text, /!applycodex/);
+  assert.match(text, /Tomo Lendário/);
   assert.match(text, /!mrskill/);
-  assert.match(text, /x1, x10, x50 e x100/);
-  assert.match(text, /Roleta Mágica/);
-  assert.match(text, /Prisma PRIME/);
-  assert.match(text, /!fusão/);
-  assert.match(text, /Fragmento Épico/);
-  assert.match(text, /Fragmento Prismático/);
-  assert.match(text, /!pa/);
-  assert.match(text, /!pokeid/);
+  assert.match(text, /dracônico/i);
+  assert.match(text, /fragmentos/i);
+  assert.match(text, /shiny\/prime/i);
+  assert.match(text, /Details/);
   assert.doesNotMatch(text, /Dungeon 60/i);
 });
