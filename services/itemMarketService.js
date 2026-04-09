@@ -15,17 +15,31 @@ function formatCurrency(value, currency) {
   return `${amount} gold`;
 }
 
-function buildItemMarketView({ slackUserId, cart, user }) {
+function summarizeItemCart(cart) {
+  const normalized = (cart?.items || []).map((entry) => {
+    const item = getMarketItem(entry.itemKey);
+    if (!item) return null;
+    const quantity = Math.max(1, Number(entry.quantity || 0));
+    return {
+      itemKey: entry.itemKey,
+      quantity,
+      item,
+      subtotal: Number(item.price || 0) * quantity,
+    };
+  }).filter(Boolean);
+
+  const totals = normalized.reduce((acc, entry) => {
+    acc[entry.item.currency] = (acc[entry.item.currency] || 0) + entry.subtotal;
+    return acc;
+  }, {});
+
+  return { entries: normalized, totals };
+}
+
+function buildItemMarketMainMessage({ slackUserId, user }) {
   const rows = listMarketItems()
     .map((item) => `• *${item.displayName}* — ${formatCurrency(item.price, item.currency)}\n_${item.description}_`)
     .join('\n');
-
-  const cartLines = (cart?.items || []).length
-    ? cart.items.map((entry) => {
-      const item = getMarketItem(entry.itemKey);
-      return `• ${item?.displayName || entry.itemKey} x${entry.quantity}`;
-    }).join('\n')
-    : '• Carrinho vazio';
 
   const blocks = [
     { type: 'header', text: { type: 'plain_text', text: '🛍️ Market de Itens (!mi)', emoji: true } },
@@ -34,10 +48,10 @@ function buildItemMarketView({ slackUserId, cart, user }) {
       text: {
         type: 'mrkdwn',
         text:
-          `Treinador: <@${slackUserId}>\n` +
-          `💰 Gold: *${user?.gold || '0'}*\n` +
-          `🧪 Essência: *${Number(user?.pokemonEssence || 0).toLocaleString('pt-BR')}*\n\n` +
-          `${rows}`,
+          `Treinador: <@${slackUserId}>\n`
+          + `💰 Gold: *${user?.gold || '0'}*\n`
+          + `🧪 Essência: *${Number(user?.pokemonEssence || 0).toLocaleString('pt-BR')}*\n\n`
+          + `${rows}`,
       },
     },
     { type: 'divider' },
@@ -59,27 +73,58 @@ function buildItemMarketView({ slackUserId, cart, user }) {
     });
   }
 
-  blocks.push({ type: 'divider' });
-  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `🛒 *Carrinho atual*\n${cartLines}` } });
-  blocks.push({
-    type: 'actions',
-    elements: [
-      { type: 'button', action_id: ITEM_MARKET_ACTION_BUY, style: 'primary', text: { type: 'plain_text', text: 'Comprar' }, value: JSON.stringify({ ownerSlackUserId: slackUserId }) },
-      { type: 'button', action_id: ITEM_MARKET_ACTION_CANCEL, style: 'danger', text: { type: 'plain_text', text: 'Cancelar' }, value: JSON.stringify({ ownerSlackUserId: slackUserId }) },
-    ],
-  });
-
   return { text: 'Market de itens', blocks };
 }
 
-async function openItemMarket({ slackUserId, channelId }) {
+function buildItemMarketCartMessage({ cart }) {
+  const summary = summarizeItemCart(cart);
+  const cartLines = summary.entries.length
+    ? summary.entries.map((entry) => `• ${entry.item.displayName} x${entry.quantity} — ${formatCurrency(entry.subtotal, entry.item.currency)}`).join('\n')
+    : '• Carrinho vazio';
+
+  const totalLines = Object.keys(summary.totals).length
+    ? Object.entries(summary.totals).map(([currency, amount]) => `• Total ${currency === 'essence' ? 'essência' : 'gold'}: *${formatCurrency(amount, currency)}*`).join('\n')
+    : '• Total: *0*';
+
+  return {
+    text: 'Carrinho do market de itens',
+    blocks: [
+      { type: 'header', text: { type: 'plain_text', text: '🛒 Carrinho (!mi)', emoji: true } },
+      { type: 'section', text: { type: 'mrkdwn', text: `${cartLines}\n\n${totalLines}` } },
+      {
+        type: 'actions',
+        elements: [
+          { type: 'button', action_id: ITEM_MARKET_ACTION_BUY, style: 'primary', text: { type: 'plain_text', text: 'Comprar' } },
+          { type: 'button', action_id: ITEM_MARKET_ACTION_CANCEL, style: 'danger', text: { type: 'plain_text', text: 'Cancelar' } },
+        ],
+      },
+    ],
+  };
+}
+
+async function openItemMarket({ slackUserId }) {
+  await createUserIfMissing(slackUserId);
+  const user = await getUser(slackUserId);
+  return buildItemMarketMainMessage({ slackUserId, user });
+}
+
+async function openItemMarketWithCart({ slackUserId, channelId }) {
   await createUserIfMissing(slackUserId);
   const [user, cart] = await Promise.all([
     getUser(slackUserId),
     Promise.resolve(getCart({ scope: ITEM_MARKET_SCOPE, userId: slackUserId, channelId })),
   ]);
 
-  return buildItemMarketView({ slackUserId, cart, user });
+  return {
+    marketMessage: buildItemMarketMainMessage({ slackUserId, user }),
+    cartMessage: buildItemMarketCartMessage({ cart }),
+    cart,
+  };
+}
+
+function getItemMarketCartMessage({ slackUserId, channelId }) {
+  const cart = getCart({ scope: ITEM_MARKET_SCOPE, userId: slackUserId, channelId });
+  return { cartMessage: buildItemMarketCartMessage({ cart }), cart };
 }
 
 function addItemToMarketCart({ slackUserId, channelId, itemKey, quantity }) {
@@ -158,7 +203,11 @@ module.exports = {
   ITEM_MARKET_ACTION_ADD_PREFIX,
   ITEM_MARKET_ACTION_BUY,
   ITEM_MARKET_ACTION_CANCEL,
+  buildItemMarketMainMessage,
+  buildItemMarketCartMessage,
   openItemMarket,
+  openItemMarketWithCart,
+  getItemMarketCartMessage,
   addItemToMarketCart,
   checkoutItemMarketCart,
   cancelItemMarketCart,

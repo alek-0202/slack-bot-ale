@@ -1,12 +1,12 @@
 const { extractMentionedUser } = require('../../utils/helpers');
 const {
-  buildGlobalMarketHud,
-  listGlobalMarket,
+  openGlobalMarketWithCart,
   addItemListing,
   addPokemonListing,
   removeListing,
+  GLOBAL_MARKET_SCOPE,
 } = require('../../services/globalMarketService');
-const { getCart } = require('../../services/cartService');
+const { upsertMarketSession } = require('../../services/marketSessionService');
 
 function parseAddArgs(rawArgs = '') {
   const normalized = String(rawArgs || '').trim();
@@ -49,8 +49,22 @@ module.exports = {
     }
 
     const sellerFilter = extractMentionedUser(args || '');
-    const listings = await listGlobalMarket({ sellerUserId: sellerFilter || null });
-    const cart = getCart({ scope: 'global_market', userId: event.user, channelId: event.channel });
-    await say(buildGlobalMarketHud({ listings, ownerFilter: sellerFilter, cart }));
+    const payload = await openGlobalMarketWithCart({
+      slackUserId: event.user,
+      channelId: event.channel,
+      ownerFilter: sellerFilter || null,
+    });
+    const marketMessage = await say(payload.marketMessage);
+    const cartMessage = await say(payload.cartMessage);
+
+    upsertMarketSession({
+      scope: GLOBAL_MARKET_SCOPE,
+      context: 'mg',
+      userId: event.user,
+      channelId: event.channel,
+      marketMessageTs: marketMessage?.ts,
+      cartMessageTs: cartMessage?.ts,
+      cart: payload.cart,
+    });
   },
 };
