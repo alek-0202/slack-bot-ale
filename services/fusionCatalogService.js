@@ -13,6 +13,13 @@ const FUSION_ITEMS = Object.freeze({
     useCommand: '!usetomo',
     costs: [{ itemKey: 'legendary_fragment', quantity: 3 }],
   },
+  epic_tome: {
+    itemKey: 'epic_tome',
+    itemName: 'Tomo Épico',
+    description: 'Permite rolar e escolher 1 afixo épico fixo para um Pokémon (use !epictome <id>).',
+    useCommand: '!epictome <id>',
+    costs: [{ itemKey: 'epic_fragment', quantity: 3 }],
+  },
   prism_shiny: {
     itemKey: 'prism_shiny',
     itemName: 'Prisma',

@@ -44,6 +44,7 @@ const {
   rememberLastMagic,
   isEggFormActive,
 } = require('./legendaryPassiveEngine');
+const { applyEpicAffixOutgoingDamage, applyEpicAffixIncomingDamage } = require('./epicAffixBattleResolver');
 
 
 function consumeBattleEnergy({ battle, userId, amount }) {
@@ -265,12 +266,15 @@ function logBattleDebug(event, payload) {
 }
 
 function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDamage, isMagic = false, isSuperEffective = false, attackElement = null }) {
+  const attacker = battle.players?.[attackerId];
+  const defender = battle.players[defenderId];
   const before = applyBeforeDamageHooks({ battle, attackerId, defenderId, damage: initialDamage, isMagic, attackElement });
   const onHit = applyOnHitHooks({ battle, attackerId, defenderId, damage: before.finalDamage });
-  let finalDamage = Math.max(0, Number(onHit.finalDamage || 0));
+  const epicOutgoing = applyEpicAffixOutgoingDamage({ attacker, damage: onHit.finalDamage, logs: [] });
+  const epicIncoming = applyEpicAffixIncomingDamage({ defender, damage: epicOutgoing.damage, logs: [] });
+  let finalDamage = Math.max(0, Number(epicIncoming.damage || 0));
   const initialDamageAfterHooks = finalDamage;
   let shieldAbsorbedDamage = 0;
-  const defender = battle.players[defenderId];
   const defenderEffects = ensureElementalState(defender).effects || [];
   for (const effect of defenderEffects) {
     if (effect?.shieldCurrentHp == null) continue;
@@ -334,7 +338,6 @@ function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDama
   onHit.logs.push(...(legendaryTakenLogs || []));
   const shadowMark = (ensureElementalState(defender).effects || []).find((effect) => effect.id === GHOST_EFFECT_SHADOW_MARK && effect.sourceUserId === attackerId);
   if (shadowMark && finalDamage > 0) {
-    const attacker = battle.players?.[attackerId];
     if (attacker?.battleHp) {
       attacker.battleHp.current = Math.min(Number(attacker?.battleHp?.max || 0), Number(attacker?.battleHp?.current || 0) + Math.max(1, Math.round(finalDamage * 0.02)));
     }

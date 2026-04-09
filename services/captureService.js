@@ -225,6 +225,7 @@ async function capturePokemon(slackUserId, context = {}) {
 
 module.exports = {
   CAPTURE_COOLDOWN_MS,
+  SHINY_CHANCE,
   getCooldownRemainingMs,
   formatRemaining,
   capturePokemon,

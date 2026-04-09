@@ -4,6 +4,7 @@ const { getPokemonStars, formatPokemonStars } = require("../../../services/pokem
 const { normalizeElementList } = require("../../../services/elementType");
 const { onBattleStart } = require("./legendaryPassiveEngine");
 const { ensureDraconicImpetusPassive } = require("./dragonElementRules");
+const { applyEpicAffixToStats, applyEpicAffixBattleStart } = require('./epicAffixBattleResolver');
 
 const BATTLE_STATUS = {
   PENDING: "pending",
@@ -50,6 +51,7 @@ function createPlayerState(userId) {
     skillEnergy: SKILL_ENERGY_MAX,
     skillEnergyMax: SKILL_ENERGY_MAX,
     legendaryRuntime: {},
+    epicCombat: { onHitFlatDamage: 0, damageReductionFlat: 0 },
   };
 }
 
@@ -123,7 +125,7 @@ function getExpectedPickerId(battle) {
 
 function buildTeamMemberFromPokemon(pokemon) {
   const level = Number(pokemon.level) || 1;
-  const stats = {
+  const baseStats = {
     attack: Number(pokemon.attack) || 1,
     magic: Number(pokemon.magic) || Number(pokemon.attack) || 1,
     defense: Number(pokemon.defense) || 0,
@@ -135,7 +137,17 @@ function buildTeamMemberFromPokemon(pokemon) {
     critChance: resolveCritChance(pokemon),
     dodgeChance: getExtraChance(pokemon.dodge_level, 0.018, 0.18),
     elementalChance: getExtraChance(pokemon.elemental_level, 0.03, 0.3),
+    magicEfficiencyBonusPct: 0,
   };
+  const epicAffix = pokemon.epic_affix_type ? {
+    type: pokemon.epic_affix_type,
+    value: pokemon.epic_affix_value,
+    label: pokemon.epic_affix_label,
+    valueType: pokemon.epic_affix_value_type,
+    metadata: pokemon.epic_affix_metadata || {},
+  } : null;
+  const epicApplied = applyEpicAffixToStats({ stats: baseStats, epicAffix });
+  const stats = epicApplied.stats;
 
   const hpMax = calculateBattleHp(stats.hp);
   const rawPersistentCurrentHp = pokemon.current_hp;
@@ -156,6 +168,8 @@ function buildTeamMemberFromPokemon(pokemon) {
     stats,
     magicSlots: Array.isArray(pokemon.magicSlots) ? pokemon.magicSlots.filter((entry) => entry?.kind !== "characteristic") : [],
     characteristicSlots: Array.isArray(pokemon.magicSlots) ? pokemon.magicSlots.filter((entry) => entry?.kind === "characteristic") : [],
+    epicAffix,
+    epicCombat: epicApplied.epicCombat,
     battleHp: {
       base: stats.hp,
       max: hpMax,
@@ -183,10 +197,12 @@ function syncPlayerActiveState(playerState) {
     elementTypes: active.elementTypes,
     baseHp: active.stats.hp,
     legendaryPassive: active.legendaryPassive || null,
+    epicAffix: active.epicAffix || null,
   } : null;
   playerState.stats = active?.stats || null;
   playerState.battleHp = active?.battleHp || null;
   playerState.magicSlots = active?.magicSlots || [];
+  playerState.epicCombat = active?.epicCombat || { onHitFlatDamage: 0, damageReductionFlat: 0 };
   playerState.characteristicSlots = active?.characteristicSlots || [];
   playerState.elementalState = playerState.elementalState || { statuses: [], effects: [], skillCooldowns: {} };
   ensureDraconicImpetusPassive(playerState);
@@ -269,7 +285,11 @@ function startBattle(battle) {
   ensureSkillEnergyState(battle.players[battle.challengedId]);
   ensureDraconicImpetusPassive(battle.players[battle.challengerId]);
   ensureDraconicImpetusPassive(battle.players[battle.challengedId]);
+  battle.metadata.turnLog = Array.isArray(battle.metadata.turnLog) ? battle.metadata.turnLog : [];
   onBattleStart({ battle });
+  for (const userId of [battle.challengerId, battle.challengedId]) {
+    applyEpicAffixBattleStart({ player: battle.players[userId], actorId: userId, logs: battle.metadata.turnLog || [] });
+  }
 
   return {
     battle,
