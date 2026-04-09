@@ -10,7 +10,7 @@ const { PASSIVE_DEFINITIONS } = require("../../../services/legendaryPassiveRegis
 const { getPassiveDetailsText } = require("../../../application/battle/domain/legendaryPassiveEngine");
 const { saveRenderedImage } = require("../../../utils/renderedImageStore");
 const { getLevelBorderStyle } = require("./pokemonVisualTier");
-const { renderStatusBadge } = require("./statusVisualRegistry");
+const { renderStatusBadge, resolveStatusVisual } = require("./statusVisualRegistry");
 
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
 const BATTLE_DECLINE_ACTION_ID = "battle_decline_invite";
@@ -215,11 +215,15 @@ function buildStatusBadgesFromBattleState(player = {}) {
   return collectActiveStatusEntries({
     activeEffects: player?.elementalState?.effects || [],
     activeStatuses: player?.elementalState?.statuses || [],
-  }).map((effect) => renderStatusBadge({
-    effect,
-    stacks: effect?.stacks,
-    remainingRounds: effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null,
-  }).text);
+  }).map((effect) => {
+    const stacks = Math.max(1, Number(effect?.stacks || 1));
+    const rounds = effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null;
+    const visual = resolveStatusVisual(effect);
+    const stackTag = stacks > 1 ? `x${stacks}` : "";
+    const roundsTag = rounds != null ? `${Math.max(0, Number(rounds || 0))}r` : "";
+    const suffix = [stackTag, roundsTag].filter(Boolean).join("·");
+    return `${visual.symbol}${suffix ? `(${suffix})` : ""}`;
+  });
 }
 
 function buildStatusMetadataFromBattleState(player = {}) {
@@ -265,11 +269,24 @@ function normalizeDamageSource(source = "") {
   return cleaned;
 }
 
+function qualifyDamageSource(source = "", line = "") {
+  const normalizedSource = String(source || "").trim() || "Efeito";
+  const normalizedLine = String(line || "").toLowerCase();
+  const lowerSource = normalizedSource.toLowerCase();
+  if (/(passiva lendária|lendária)/i.test(normalizedSource)) return normalizedSource;
+  if (/burn|g[ée]lid|congel|maldi|veneno|dot|cont[ií]nu/.test(normalizedLine)) return `${normalizedSource} (debuff)`;
+  if (/reativa|reativação/.test(normalizedLine)) return `${normalizedSource} (reativação/passiva)`;
+  if (/passiva/.test(normalizedLine) || /passiva/.test(lowerSource)) return `${normalizedSource} (passiva)`;
+  if (/on-hit|ao atingir|acerto/.test(normalizedLine)) return `${normalizedSource} (on-hit)`;
+  if (/skill|habilidade|magia|sopro|rajada|explos[aã]o|golpe|ataque/.test(normalizedLine)) return `${normalizedSource} (ativo)`;
+  return normalizedSource;
+}
+
 function parseExtraDamageSource(line = "") {
   const directCause = line.match(/^[^\w<@]*(.+?)\s+causou\s+\d+/i)?.[1];
-  if (directCause) return normalizeDamageSource(directCause);
+  if (directCause) return qualifyDamageSource(normalizeDamageSource(directCause), line);
   const splitByDivider = line.match(/^[^\w<@]*(.+?)(?:\s*[-—:])/);
-  if (splitByDivider) return normalizeDamageSource(splitByDivider[1]);
+  if (splitByDivider) return qualifyDamageSource(normalizeDamageSource(splitByDivider[1]), line);
   return "Efeito";
 }
 
@@ -480,8 +497,8 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
 function buildExtraDamageEntries(entry = {}) {
   const items = [];
   const statusDamage = Math.max(0, Number(entry.statusDamage || 0));
-  if (statusDamage > 0) items.push({ source: "Dano contínuo", value: statusDamage, type: "contínuo" });
-  if (Number(entry.extraDamage || 0) > 0) items.push({ source: "Bônus adicional", value: Math.max(0, Number(entry.extraDamage || 0)), type: null });
+  if (statusDamage > 0) items.push({ source: "Dano contínuo (debuff)", value: statusDamage, type: "contínuo" });
+  if (Number(entry.extraDamage || 0) > 0) items.push({ source: "Bônus adicional (stat extra)", value: Math.max(0, Number(entry.extraDamage || 0)), type: null });
 
   const notes = Array.isArray(entry.extraNotes) ? entry.extraNotes : [];
   for (const note of notes) {
@@ -535,7 +552,17 @@ function buildStatusBadgesFromSummary(summary = {}) {
       stacks: stackCount,
       remainingRounds: rounds,
     });
-    badges.push(badge.text);
+    const visual = resolveStatusVisual({
+      id: item?.id,
+      name: String(item?.name || "").replace(/\s*\[\d+\]\s*$/, "") || item?.id || "Status",
+      isDebuff: Boolean(item?.isDebuff),
+      type: item?.type,
+      visualCategory: item?.visualCategory,
+    });
+    const stackTag = stackCount > 1 ? `x${stackCount}` : "";
+    const roundsTag = rounds != null ? `${rounds}r` : "";
+    const suffix = [stackTag, roundsTag].filter(Boolean).join("·");
+    badges.push(`${visual.symbol}${suffix ? `(${suffix})` : ""}`);
   }
   return badges;
 }

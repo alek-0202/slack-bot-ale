@@ -30,7 +30,7 @@ const { applyGelidStacks } = require("./iceStatusRules");
 const { FIGHTING_EFFECT_RHYTHM, FIGHTING_EFFECT_FINISHER, FIGHTING_EFFECT_UNYIELDING, FIGHTING_EFFECT_STANCE_RELEASE } = require("./fightingElementRules");
 const { PSYCHIC_SKILLS, PSYCHIC_EFFECT_BARRIER, PSYCHIC_EFFECT_BARRIER_BREAK_BUFF, getReadState, clearReadState } = require("./psychicElementRules");
 const { GHOST_SKILLS, GHOST_EFFECT_ETHEREAL, GHOST_EFFECT_CURSE, GHOST_EFFECT_SHADOW_MARK } = require("./ghostElementRules");
-const { gainImpetusStack, clearImpetusByControl } = require("./dragonElementRules");
+const { gainImpetusStack, clearImpetusByControl, hasDraconicImpetusEquipped, ensureDraconicImpetusPassive } = require("./dragonElementRules");
 const { consumeSkillEnergy, restoreSkillEnergy, ensureSkillEnergyState } = require("./skillEnergy");
 const { validateSkillActionRequest } = require("./skillActionValidator");
 const { tickOwnerTurnTimers, processOwnerTurnEffects, EFFECT_TIMING } = require("./elementalRules");
@@ -78,8 +78,9 @@ function clearImpetusIfControlled({ battle, userId }) {
 
 function gainImpetusOnHit({ actor, actorId, dodged = false }) {
   if (!actor || dodged) return [];
-  const enabled = (ensureElementalState(actor).effects || []).some((effect) => effect.id === "dragon_impetus_unlock" && Number(effect?.remainingRounds ?? 1) > 0);
+  const enabled = hasDraconicImpetusEquipped(actor);
   if (!enabled) return [];
+  ensureDraconicImpetusPassive(actor);
   const logs = [];
   gainImpetusStack({ actor, actorId, logs });
   return logs;

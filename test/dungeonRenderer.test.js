@@ -100,6 +100,6 @@ test('renderDungeonBattleState usa o mesmo render de ícones do PvP quando base 
 
   assert.ok(contextBlock);
   assert.equal(contextBlock.elements.some((entry) => entry.type === 'image'), true);
-  assert.match(contextBlock.elements[0].image_url, /^https:\/\/cdn\.example\.com\/assets\/status-icons\//);
+  assert.match(contextBlock.elements[0].image_url, /^https:\/\/cdn\.example\.com\/(?:assets\/status-icons|rendered-images)\//);
   process.env.RENDERED_IMAGE_PUBLIC_BASE_URL = originalBaseUrl;
 });

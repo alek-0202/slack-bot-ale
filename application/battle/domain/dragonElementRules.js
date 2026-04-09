@@ -27,6 +27,7 @@ const DRAGON_ANCESTRAL_BREATH_RECAST_EFFECT_ID = "dragon_ancestral_breath_recast
 
 const IMPETUS_MAX_STACKS = 3;
 const IMPETUS_ROUNDS = 2;
+const DRAGON_IMPETUS_UNLOCK_EFFECT_ID = "dragon_impetus_unlock";
 
 function getImpetusStatus(actor) {
   return getStatus(actor, DRAGON_IMPETUS_STATUS_ID);
@@ -117,6 +118,23 @@ function canUseAncestralBreathRecast(actor) {
   return Boolean(recast && getImpetusStacks(actor) > 0);
 }
 
+function hasDraconicImpetusEquipped(actor = {}) {
+  const slots = Array.isArray(actor?.characteristicSlots) ? actor.characteristicSlots : [];
+  return slots.some((entry) => String(entry?.id || "") === DRAGON_SKILLS.DRACONIC_IMPETUS);
+}
+
+function ensureDraconicImpetusPassive(actor = {}) {
+  if (!hasDraconicImpetusEquipped(actor)) return null;
+  return addOrRefreshEffect(actor, {
+    id: DRAGON_IMPETUS_UNLOCK_EFFECT_ID,
+    name: "Ímpeto Dracônico (Passiva)",
+    element: "dragon",
+    remainingRounds: null,
+    passiveEnabled: true,
+    gameplayDescription: "passiva equipada: acertos válidos acumulam stacks de Ímpeto automaticamente",
+  });
+}
+
 const dragonRules = {
   element: "dragon",
   activeSkillSlots: 3,
@@ -126,19 +144,17 @@ const dragonRules = {
       name: "Ímpeto Dracônico",
       description: "Passiva: acertos acumulam stacks (até 3).",
       icon: "🐉",
+      isPassive: true,
+      activationType: "passive",
+      hiddenFromActionMenu: true,
+      autoActivateOnBattleStart: true,
       hooks: [BATTLE_HOOK.ON_CAST],
       cast({ actor, actorId }) {
-        addOrRefreshEffect(actor, {
-          id: "dragon_impetus_unlock",
-          name: "Ímpeto Dracônico (Passiva)",
-          element: "dragon",
-          remainingRounds: null,
-          passiveEnabled: true,
-        });
+        ensureDraconicImpetusPassive(actor);
         return {
           ok: true,
-          consumedTurn: true,
-          battleLog: `🐉 <@${actorId}> habilitou *Ímpeto Dracônico* (passiva ativa).`,
+          consumedTurn: false,
+          battleLog: `🐉 <@${actorId}> mantém *Ímpeto Dracônico* ativo (passiva automática).`,
         };
       },
     },
@@ -323,5 +339,7 @@ module.exports = {
   clearImpetusByControl,
   consumeImpetusStacks,
   canUseAncestralBreathRecast,
+  hasDraconicImpetusEquipped,
+  ensureDraconicImpetusPassive,
   dragonRules,
 };

@@ -175,9 +175,9 @@ test("formatBattleLogForSlack usa critBonusDamage e resolvedAction como fonte ú
     }],
   });
 
-  assert.match(text, /Dano extra: Dano contínuo 5 contínuo/);
+  assert.match(text, /Dano extra: Dano contínuo \(debuff\) 5 contínuo/);
   assert.match(text, /Dano total: 48 \(\+crit 18\)/);
-  assert.match(text, /❤️ 111\/150 \| 🛡️ 30 \| Foco: \+15% chance crítica/);
+  assert.match(text, /❤️ 111\/150 \| 🛡️ 30 \| ⬜/);
   assert.doesNotMatch(text, /• Status:/);
 });
 
@@ -213,8 +213,8 @@ test("formatBattleLogForSlack exibe absorção de barreira e duração restante 
   });
 
   assert.match(text, /Dano total: 0 \(🛡️ 40 absorvido\)/);
-  assert.match(text, /Controle Mental \(2r\) Barreira Psíquica \(1r\)/);
-  assert.match(text, /Burn \(3r\)/);
+  assert.match(text, /⬜\(2r\) ⬜\(1r\)/);
+  assert.match(text, /🔥\(3r\)/);
 });
 
 test("formatBattleLogForSlack usa fallback textual quando não há action_summary", () => {
@@ -265,7 +265,7 @@ test("formatBattleLogForSlack agrega múltiplas fontes em Dano extra acima do Da
   const extraIndex = text.indexOf("• Dano extra:");
   const totalIndex = text.indexOf("• Dano total:");
   assert.ok(extraIndex >= 0 && totalIndex > extraIndex);
-  assert.match(text, /Dano extra: Dano contínuo 12 contínuo \| Burn 12 fogo \| Passiva Lendária — Eco 23 físico/);
+  assert.match(text, /Dano extra: Dano contínuo \(debuff\) 12 contínuo \| Burn \(debuff\) 12 fogo \| Passiva Lendária — Eco 23 físico/);
 });
 
 function createBattleStub({ withReserves = false } = {}) {
