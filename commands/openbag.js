@@ -7,6 +7,7 @@ function buildOpenBagMessage(slackUserId, result) {
   const books = Number(reward?.rewardSnapshot?.ancientBookQty || 0);
   const pokeballs = Number(reward?.rewardSnapshot?.pokeballCQty || 0);
   const pokemonName = result?.rewards?.capturedSpecies?.name || reward?.captured?.pokemon_species?.name || reward?.captured?.name || 'Pokémon';
+  const pokemonId = reward?.captured?.id;
 
   return (
     `🎒 <@${slackUserId}> abriu 1 *Bag de Suprimentos (Dungeon 60)*!\n` +
@@ -14,7 +15,7 @@ function buildOpenBagMessage(slackUserId, result) {
     `💰 Gold: +${gold}\n` +
     `📚 Livro Ancião: +${books}\n` +
     `🧿 Pokebola (!c): +${pokeballs}\n` +
-    `🐾 Pokémon recebido: *${pokemonName}*`
+    `🐾 Pokémon recebido: *${pokemonName}*${pokemonId ? ` (PokeID: *${pokemonId}*)` : ''}`
   );
 }
 

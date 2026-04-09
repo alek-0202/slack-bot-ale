@@ -147,9 +147,19 @@ function registerMarketActions(app) {
     try { payload = JSON.parse(action?.value || "{}"); } catch (_error) { payload = {}; }
     const listingId = Number(payload.listingId);
     const qty = Math.max(1, Number(payload.quantity) || 1);
-    addToGlobalCart({ slackUserId: body.user?.id, channelId: body.channel?.id, listingId, quantity: qty });
+    const addResult = await addToGlobalCart({ slackUserId: body.user?.id, channelId: body.channel?.id, listingId, quantity: qty });
+    if (!addResult.ok) {
+      const reasonMap = {
+        invalid_listing: "❌ Anúncio inválido.",
+        listing_unavailable: "❌ Esse anúncio não está mais disponível.",
+        duplicate_unique_listing: "⚠️ Esse Pokémon já está no seu carrinho.",
+        listing_quantity_limit: "⚠️ Você já adicionou o máximo disponível desse anúncio.",
+      };
+      await sendEphemeral(respond, { text: reasonMap[addResult.reason] || "❌ Não foi possível adicionar esse anúncio ao carrinho." });
+      return;
+    }
     await updateCartMessage({ client, scope: GLOBAL_MARKET_SCOPE, slackUserId: body.user?.id, channelId: body.channel?.id });
-    await sendEphemeral(respond, { text: `✅ Anúncio #${listingId} x${qty} adicionado ao carrinho.` });
+    await sendEphemeral(respond, { text: `✅ Anúncio #${listingId} x${addResult.quantityAdded || qty} adicionado ao carrinho.` });
   });
 
   app.action(GLOBAL_MARKET_ACTION_BUY, async ({ ack, body, client, respond }) => {
@@ -160,7 +170,18 @@ function registerMarketActions(app) {
       return;
     }
     await updateCartMessage({ client, scope: GLOBAL_MARKET_SCOPE, slackUserId: body.user?.id, channelId: body.channel?.id });
-    await sendEphemeral(respond, { text: "✅ Compra do !mg concluída." });
+    const acquired = (result.purchasedEntries || []).length
+      ? result.purchasedEntries.map((entry) => {
+        if (entry.type === 'pokemon') return `• ${entry.name} (PokeID ${entry.pokemonId}) — disponível no !pokedex / !pokeid ${entry.pokemonId}`;
+        return `• ${entry.name} x${entry.quantity} — disponível na !mochila`;
+      }).join('\n')
+      : '• Nenhum item adquirido.';
+    await sendEphemeral(respond, {
+      text:
+        `✅ Compra do !mg concluída.\n` +
+        `💰 Total pago: ${Number(result.totalSpent || 0).toLocaleString('pt-BR')}\n` +
+        `📦 Adquirido:\n${acquired}`,
+    });
   });
 
   app.action(GLOBAL_MARKET_ACTION_CANCEL, async ({ ack, body, client, respond }) => {

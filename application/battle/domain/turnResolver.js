@@ -433,8 +433,24 @@ function advanceTurnForActor(battle, actorUserId, options = {}) {
 }
 
 function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {} }) {
+  const actorPlayer = battle?.players?.[actorUserId];
+  if (!actorPlayer) {
+    return {
+      battle,
+      actionType,
+      outcome: {
+        ok: false,
+        reason: 'invalid_actor',
+        type: actionType,
+        actorUserId,
+      },
+      finished: false,
+      shouldPassTurn: false,
+    };
+  }
+
   const ownerStartLogs = processOwnerTurnEffects({
-    playerState: battle.players?.[actorUserId],
+    playerState: actorPlayer,
     ownerUserId: actorUserId,
     timing: EFFECT_TIMING.ON_OWNER_TURN_START,
   });
@@ -445,8 +461,8 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
   if (actorControlLogs.length) mergeRoundLogs(battle, actorControlLogs);
 
   const actionStart = evaluateActionStartModifiers({ battle, actorId: actorUserId, actionType });
-  const actorRhythm = ensureElementalState(battle.players?.[actorUserId]).effects?.find((effect) => effect.id === FIGHTING_EFFECT_RHYTHM);
-  const hasGroupControl = (ensureElementalState(battle.players?.[actorUserId]).effects || [])
+  const actorRhythm = ensureElementalState(actorPlayer).effects?.find((effect) => effect.id === FIGHTING_EFFECT_RHYTHM);
+  const hasGroupControl = (ensureElementalState(actorPlayer).effects || [])
     .some((effect) => isGroupControlEffect(effect));
   if (actorRhythm && hasGroupControl) {
     actorRhythm.stacks = 0;
@@ -471,8 +487,8 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     };
   }
 
-  const forcedAction = getForcedAction(battle.players?.[actorUserId]);
-  if (isEggFormActive(battle.players?.[actorUserId])) {
+  const forcedAction = getForcedAction(actorPlayer);
+  if (isEggFormActive(actorPlayer)) {
     mergeRoundLogs(battle, `🥚 <@${actorUserId}> está em forma de ovo e não pode executar ações neste turno.`);
     const turnFlow = advanceTurnForActor(battle, actorUserId);
     return {
@@ -504,7 +520,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     };
   }
 
-  const ghostEthereal = ensureElementalState(battle.players?.[actorUserId]).effects?.find((effect) => effect.id === GHOST_EFFECT_ETHEREAL);
+  const ghostEthereal = ensureElementalState(actorPlayer).effects?.find((effect) => effect.id === GHOST_EFFECT_ETHEREAL);
   const isManualEtherealExit = actionType === BATTLE_ACTION.MAGIC && String(actionPayload?.magicSlot || "").includes(GHOST_SKILLS.ETHEREAL_FORM);
   if (ghostEthereal && actionType === BATTLE_ACTION.ATTACK) {
     return {
@@ -1139,9 +1155,23 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     };
   }
 
-  const player = battle.players[actorUserId];
+  if (actionType !== BATTLE_ACTION.POTION) {
+    return {
+      battle,
+      actionType,
+      outcome: {
+        ok: false,
+        reason: "unsupported_action",
+        type: actionType,
+        actorUserId,
+      },
+      finished: false,
+      shouldPassTurn: false,
+    };
+  }
+
   const potionType = actionPayload?.potionType || 'small';
-  const result = resolvePotionTurn(player, { potionType });
+  const result = resolvePotionTurn(actorPlayer, { potionType });
 
   if (!result.ok) {
     return {

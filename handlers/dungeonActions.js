@@ -222,7 +222,8 @@ async function handleDungeonStartDailyAction({ body, action, client, respond }) 
 async function handleDungeonBattleTurnAction({ body, action, client, respond }) {
   const payload = parsePokemonActionValue(action?.value) || {};
   const actorUserId = body.user?.id;
-  const actionName = String(payload.action || '').toLowerCase();
+  const fallbackActionName = String(action?.action_id || '').replace(`${DUNGEON_BATTLE_TURN_ACTION_ID}_`, '');
+  const actionName = String(payload.action || fallbackActionName || '').toLowerCase();
   const channelId = payload.channelId;
   const payloadOwnerUserId = payload.slackUserId;
 
@@ -285,7 +286,12 @@ async function handleDungeonBattleTurnAction({ body, action, client, respond }) 
     }));
   }
 
-  const result = await processDungeonTurn({ channelId, actorUserId, actionType: DUNGEON_ACTION_MAP[actionName] });
+  const result = await processDungeonTurn({
+    channelId,
+    actorUserId,
+    actionType: DUNGEON_ACTION_MAP[actionName],
+    actionPayload: actionName === 'potion' ? { potionType: payload.potionType || 'small' } : {},
+  });
 
   if (!result.ok) {
     if (result.reason === 'not_dungeon_owner') {
