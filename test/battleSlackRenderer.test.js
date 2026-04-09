@@ -177,7 +177,7 @@ test("formatBattleLogForSlack usa critBonusDamage e resolvedAction como fonte ú
 
   assert.match(text, /Dano extra: Dano contínuo \(debuff\) 5 contínuo/);
   assert.match(text, /Dano total: 48 \(\+crit 18\)/);
-  assert.match(text, /❤️ 111\/150 \| 🛡️ 30 \| ⬜/);
+  assert.match(text, /❤️ 111\/150 \| 🛡️ 30 \| Foco: \+15% chance crítica/);
   assert.doesNotMatch(text, /• Status:/);
 });
 
@@ -213,8 +213,8 @@ test("formatBattleLogForSlack exibe absorção de barreira e duração restante 
   });
 
   assert.match(text, /Dano total: 0 \(🛡️ 40 absorvido\)/);
-  assert.match(text, /⬜\(2r\) ⬜\(1r\)/);
-  assert.match(text, /🔥\(3r\)/);
+  assert.match(text, /Controle Mental \(2r\) Barreira Psíquica \(1r\)/);
+  assert.match(text, /Burn \(3r\)/);
 });
 
 test("formatBattleLogForSlack usa fallback textual quando não há action_summary", () => {

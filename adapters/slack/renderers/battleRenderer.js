@@ -10,7 +10,7 @@ const { PASSIVE_DEFINITIONS } = require("../../../services/legendaryPassiveRegis
 const { getPassiveDetailsText } = require("../../../application/battle/domain/legendaryPassiveEngine");
 const { saveRenderedImage } = require("../../../utils/renderedImageStore");
 const { getLevelBorderStyle } = require("./pokemonVisualTier");
-const { renderStatusBadge, resolveStatusVisual } = require("./statusVisualRegistry");
+const { renderStatusBadge } = require("./statusVisualRegistry");
 
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
 const BATTLE_DECLINE_ACTION_ID = "battle_decline_invite";
@@ -215,15 +215,11 @@ function buildStatusBadgesFromBattleState(player = {}) {
   return collectActiveStatusEntries({
     activeEffects: player?.elementalState?.effects || [],
     activeStatuses: player?.elementalState?.statuses || [],
-  }).map((effect) => {
-    const stacks = Math.max(1, Number(effect?.stacks || 1));
-    const rounds = effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null;
-    const visual = resolveStatusVisual(effect);
-    const stackTag = stacks > 1 ? `x${stacks}` : "";
-    const roundsTag = rounds != null ? `${Math.max(0, Number(rounds || 0))}r` : "";
-    const suffix = [stackTag, roundsTag].filter(Boolean).join("·");
-    return `${visual.symbol}${suffix ? `(${suffix})` : ""}`;
-  });
+  }).map((effect) => renderStatusBadge({
+    effect,
+    stacks: effect?.stacks,
+    remainingRounds: effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null,
+  }).text);
 }
 
 function buildStatusMetadataFromBattleState(player = {}) {
@@ -552,17 +548,7 @@ function buildStatusBadgesFromSummary(summary = {}) {
       stacks: stackCount,
       remainingRounds: rounds,
     });
-    const visual = resolveStatusVisual({
-      id: item?.id,
-      name: String(item?.name || "").replace(/\s*\[\d+\]\s*$/, "") || item?.id || "Status",
-      isDebuff: Boolean(item?.isDebuff),
-      type: item?.type,
-      visualCategory: item?.visualCategory,
-    });
-    const stackTag = stackCount > 1 ? `x${stackCount}` : "";
-    const roundsTag = rounds != null ? `${rounds}r` : "";
-    const suffix = [stackTag, roundsTag].filter(Boolean).join("·");
-    badges.push(`${visual.symbol}${suffix ? `(${suffix})` : ""}`);
+    badges.push(badge?.text || "Status");
   }
   return badges;
 }
