@@ -1,35 +1,36 @@
 const CURRENT_UPDATE = {
-  versionLabel: 'Atualização de Produção — Fusão, Fragmentos e Novos Itens',
+  versionLabel: 'Atualização de Produção — Passivas Lendárias, Codex e Combate 2.0',
   sections: {
     combate: [
-      'Logs de batalha mais claros para acompanhar cada turno sem confusão.',
-      'Efeitos e ações de combate com leitura mais limpa durante as lutas.',
+      'Resumo da rodada reformulado: leitura mais limpa, melhor destaque de dano e sequência das ações.',
+      'Status de batalha agora aparecem com ícones visuais consistentes no PvP e na Dungeon.',
+      'Nova área de *Details* na batalha mostrando passivas lendárias e efeitos ativos de forma clara.',
+      'Logs de dano, buffs e debuffs ficaram mais claros para reduzir dúvidas durante a luta.',
+      'Correções importantes em interações de skills características e passivas para evitar comportamentos inconsistentes.',
     ],
-    magias: [
-      'O `!magicregister` agora registra somente as magias corretas, sem incluir magias características.',
-      'O `!mrskill` foi ajustado e está funcionando corretamente na seleção de magias.',
-      'As habilidades agora exibem descrição para facilitar decisões no time.',
+    caracteristicasPassivas: [
+      'Sistema de passivas lendárias entrou em produção com efeitos exclusivos para lendários.',
+      'Novo `!codex`: agora você acompanha melhor suas passivas e os efeitos de cada uma.',
+      'Novo `!applycodex`: permite aplicar passivas do seu códex em Pokémon lendário.',
+      'Novo *Tomo Lendário* (`!usetomo`): ao abrir, você recebe uma passiva lendária com roll próprio de eficiência.',
+      'Passivas lendárias ficaram mais visíveis no combate, no `!codex` e no `!pokeid`.',
     ],
-    sistemaMochila: [
-      'Compras por quantidade disponíveis na mochila: x1, x10, x50 e x100.',
-      'Novo item *Roleta Mágica*: permite reroll de IV no Pokémon escolhido.',
-      'Novo item *Prisma*: transforma o Pokémon em shiny.',
-      'Novo item *Prisma PRIME*: transforma o Pokémon em shiny prime.',
-      'IV agora aparece no `!pa` e no `!pokeid`, com visual mais direto.',
+    magiasCaracteristicas: [
+      'Skills características ganharam ajustes gerais de funcionamento e estabilidade em batalha.',
+      '`!mrskill` ficou mais estável e o loadout salvo passou a persistir corretamente por Pokémon.',
+      'Melhorias nas descrições e na apresentação dos efeitos para facilitar a escolha das skills.',
+      'Elemento dracônico recebeu melhorias e centralização das regras de skills características no combate.',
     ],
-    fusao: [
-      'Novo sistema `!fusão` já disponível no jogo.',
-      'Fluxo de fusão mais estável, sem fechar no meio da ação.',
-      'Feedback da fusão mais claro em cada etapa para evitar dúvidas.',
-    ],
-    fragmentos: [
-      'Novo *Fragmento Épico*: obtido ao vender Pokémon épico no nível 50.',
-      'Novo *Fragmento Prismático*: obtido ao vender Pokémon shiny.',
-      'Fragmentos entram como recurso importante para evolução da conta.',
+    sistemaItens: [
+      'A economia de fragmentos foi rebalanceada para deixar progressão e craft mais coerentes.',
+      'Venda de Pokémon passou por ajustes relevantes de recompensa em fragmentos (incluindo casos shiny/prime).',
+      'Correções garantem distribuição correta de fragmentos comuns, épicos, lendários, míticos e prismáticos.',
+      'Fluxos de fusão e recompensas foram refinados para evitar perda de valor em conversões e craft.',
     ],
     qualidadeDeVida: [
-      'Leitura geral das telas e comandos melhorada para reduzir cliques e retrabalho.',
-      'Ajustes de usabilidade em menus e respostas para deixar a progressão mais fluida.',
+      'Visual dos status no Slack foi padronizado e ficou mais fácil de interpretar durante a luta.',
+      'Correções de renderização evitaram sumiço/quebra de ícones em diferentes modos de batalha.',
+      'Ajustes de persistência e estabilidade reduziram problemas de comportamento em combate contínuo.',
     ],
   },
 };
@@ -43,17 +44,14 @@ function buildUpdateMessage() {
     '*⚔️ Combate*',
     sections.combate.map((item) => `• ${item}`).join('\n'),
     '',
-    '*🧠 Magias*',
-    sections.magias.map((item) => `• ${item}`).join('\n'),
+    '*🐉 Características e Passivas*',
+    sections.caracteristicasPassivas.map((item) => `• ${item}`).join('\n'),
     '',
-    '*🎒 Sistema / Mochila*',
-    sections.sistemaMochila.map((item) => `• ${item}`).join('\n'),
+    '*🧩 Magias Características*',
+    sections.magiasCaracteristicas.map((item) => `• ${item}`).join('\n'),
     '',
-    '*🧪 Fusão*',
-    sections.fusao.map((item) => `• ${item}`).join('\n'),
-    '',
-    '*💎 Fragmentos*',
-    sections.fragmentos.map((item) => `• ${item}`).join('\n'),
+    '*🎒 Sistema / Itens / Fragmentos*',
+    sections.sistemaItens.map((item) => `• ${item}`).join('\n'),
     '',
     '*📊 Qualidade de vida*',
     sections.qualidadeDeVida.map((item) => `• ${item}`).join('\n'),
@@ -74,7 +72,7 @@ function buildUpdateMessage() {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*${versionLabel}*\nConfira tudo que já entrou no jogo nesta rodada de melhorias.`,
+          text: `*${versionLabel}*\nConfira o pacote mais recente de melhorias que já entrou no jogo.`,
         },
       },
       { type: 'divider' },
@@ -89,28 +87,21 @@ function buildUpdateMessage() {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*🧠 Magias*\n${sections.magias.map((item) => `• ${item}`).join('\n')}`,
+          text: `*🐉 Características e Passivas*\n${sections.caracteristicasPassivas.map((item) => `• ${item}`).join('\n')}`,
         },
       },
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*🎒 Sistema / Mochila*\n${sections.sistemaMochila.map((item) => `• ${item}`).join('\n')}`,
+          text: `*🧩 Magias Características*\n${sections.magiasCaracteristicas.map((item) => `• ${item}`).join('\n')}`,
         },
       },
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*🧪 Fusão*\n${sections.fusao.map((item) => `• ${item}`).join('\n')}`,
-        },
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*💎 Fragmentos*\n${sections.fragmentos.map((item) => `• ${item}`).join('\n')}`,
+          text: `*🎒 Sistema / Itens / Fragmentos*\n${sections.sistemaItens.map((item) => `• ${item}`).join('\n')}`,
         },
       },
       {
