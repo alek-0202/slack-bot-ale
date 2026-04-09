@@ -12,13 +12,10 @@ function parseJson(value) {
   try { return JSON.parse(value || '{}'); } catch (_) { return {}; }
 }
 
-function buildGlobalMarketHud({ listings = [], ownerFilter = null, cart = null }) {
+function buildGlobalMarketMainHud({ listings = [], ownerFilter = null }) {
   const rows = listings.length
     ? listings.map((entry) => `#${entry.id} • *${entry.title}* • x${entry.quantity} • 💰 ${Number(entry.price).toLocaleString('pt-BR')} • vendedor <@${entry.seller_slack_user_id}>`).join('\n')
     : 'Sem anúncios ativos.';
-  const cartRows = cart?.items?.length
-    ? cart.items.map((entry) => `• anúncio #${entry.itemKey} x${entry.quantity}`).join('\n')
-    : '• Carrinho vazio';
 
   return {
     text: 'Market global',
@@ -35,8 +32,38 @@ function buildGlobalMarketHud({ listings = [], ownerFilter = null, cart = null }
           value: JSON.stringify({ listingId: entry.id, quantity: qty }),
         })),
       })),
-      { type: 'divider' },
-      { type: 'section', text: { type: 'mrkdwn', text: `🛒 *Carrinho do global*\n${cartRows}` } },
+    ],
+  };
+}
+
+function buildGlobalMarketCartHud({ cart = null, listings = [] }) {
+  const listingById = new Map((listings || []).map((entry) => [String(entry.id), entry]));
+  const normalized = (cart?.items || []).map((entry) => {
+    const quantity = Math.max(1, Number(entry.quantity || 0));
+    const listing = listingById.get(String(entry.itemKey));
+    const unitPrice = Number(listing?.price || 0);
+    return {
+      ...entry,
+      quantity,
+      listing,
+      subtotal: unitPrice * quantity,
+    };
+  });
+
+  const cartRows = normalized.length
+    ? normalized.map((entry) => {
+      const label = entry.listing ? `${entry.listing.title} (#${entry.itemKey})` : `anúncio #${entry.itemKey}`;
+      return `• ${label} x${entry.quantity}${entry.listing ? ` — 💰 ${Number(entry.subtotal).toLocaleString('pt-BR')}` : ''}`;
+    }).join('\n')
+    : '• Carrinho vazio';
+
+  const total = normalized.reduce((acc, entry) => acc + Number(entry.subtotal || 0), 0);
+
+  return {
+    text: 'Carrinho do market global',
+    blocks: [
+      { type: 'header', text: { type: 'plain_text', text: '🛒 Carrinho (!mg)', emoji: true } },
+      { type: 'section', text: { type: 'mrkdwn', text: `${cartRows}\n\n• Total final: *💰 ${Number(total).toLocaleString('pt-BR')}*` } },
       {
         type: 'actions',
         elements: [
@@ -45,6 +72,15 @@ function buildGlobalMarketHud({ listings = [], ownerFilter = null, cart = null }
         ],
       },
     ],
+  };
+}
+
+function buildGlobalMarketHud({ listings = [], ownerFilter = null, cart = null }) {
+  const main = buildGlobalMarketMainHud({ listings, ownerFilter });
+  const cartHud = buildGlobalMarketCartHud({ cart, listings });
+  return {
+    ...main,
+    blocks: [...main.blocks, { type: 'divider' }, ...cartHud.blocks.slice(1)],
   };
 }
 
@@ -68,6 +104,25 @@ async function listGlobalMarket({ sellerUserId = null, filters = {} } = {}) {
   const { data, error } = await query;
   if (error) throw error;
   return data || [];
+}
+
+async function openGlobalMarketWithCart({ slackUserId, channelId, ownerFilter = null }) {
+  const listings = await listGlobalMarket({ sellerUserId: ownerFilter || null });
+  const cart = getCart({ scope: GLOBAL_MARKET_SCOPE, userId: slackUserId, channelId });
+  return {
+    marketMessage: buildGlobalMarketMainHud({ listings, ownerFilter }),
+    cartMessage: buildGlobalMarketCartHud({ cart, listings }),
+    listings,
+    cart,
+  };
+}
+
+async function getGlobalCartMessage({ slackUserId, channelId }) {
+  const [listings, cart] = await Promise.all([
+    listGlobalMarket(),
+    Promise.resolve(getCart({ scope: GLOBAL_MARKET_SCOPE, userId: slackUserId, channelId })),
+  ]);
+  return { cartMessage: buildGlobalMarketCartHud({ cart, listings }), cart, listings };
 }
 
 async function addItemListing({ slackUserId, itemKey, quantity, price }) {
@@ -202,7 +257,11 @@ module.exports = {
   GLOBAL_MARKET_ACTION_BUY,
   GLOBAL_MARKET_ACTION_CANCEL,
   buildGlobalMarketHud,
+  buildGlobalMarketMainHud,
+  buildGlobalMarketCartHud,
   listGlobalMarket,
+  openGlobalMarketWithCart,
+  getGlobalCartMessage,
   addItemListing,
   addPokemonListing,
   removeListing,
