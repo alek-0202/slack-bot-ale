@@ -53,14 +53,25 @@ function mapDungeonFailureReason(reason) {
     not_actor_turn: 'Ainda não é o seu turno na dungeon.',
     unsupported_action: 'Ação de dungeon inválida.',
     magic_not_found: 'Não encontrei essa magia no loadout atual.',
+    elemental_skill_not_found: 'Não encontrei essa habilidade característica no loadout atual.',
     magic_on_cooldown: 'Sua magia ainda está em cooldown.',
     elemental_skill_on_cooldown: 'Sua habilidade elemental ainda está em cooldown.',
     insufficient_skill_energy: 'Energia insuficiente para usar essa habilidade.',
     target_not_water_nature: 'Essa habilidade só pode ser aplicada em alvo de natureza Água.',
     invalid_target: 'Alvo inválido para essa habilidade.',
     characteristic_skill_requires_level_50: 'Magia característica exige Pokémon nível 50.',
+    action_execution_failed: 'Não foi possível usar essa habilidade agora.',
+    limit: 'Você já usou o limite de poções nesta batalha.',
+    full_hp: 'Seu Pokémon já está com HP cheio.',
     defeat: 'Seu Pokémon foi derrotado na dungeon.',
   }[reason] || 'Não foi possível iniciar a dungeon agora.';
+}
+
+function normalizeDungeonMagicSlot(rawMagicSlot) {
+  const value = String(rawMagicSlot || '').trim();
+  if (!value) return value;
+  if (value.startsWith('characteristic:')) return `elemental:${value.slice('characteristic:'.length)}`;
+  return value;
 }
 
 async function validateDungeonPokemonSelection({ slackUserId, pokemonId }) {
@@ -1060,6 +1071,10 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
     const validation = validateTurnAction({ battle: lockedBattle, actorUserId, actionType });
     if (!validation.ok) return { ok: false, reason: validation.reason, battle: lockedBattle, validation };
 
+    const normalizedActionPayload = actionType === BATTLE_ACTION.MAGIC
+      ? { ...actionPayload, magicSlot: normalizeDungeonMagicSlot(actionPayload?.magicSlot) }
+      : actionPayload;
+
     logger.info('Ação recebida do player na dungeon', {
       file: 'services/dungeonService.js',
       method: 'processDungeonTurn',
@@ -1070,7 +1085,7 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
       dungeonMode: lockedBattle.metadata?.dungeonType,
       dailyMode: lockedBattle.metadata?.dailyMode || null,
       actionType,
-      actionPayload,
+      actionPayload: normalizedActionPayload,
       enemyPokemon: lockedBattle.players[DUNGEON_ENEMY_USER_ID]?.selectedPokemon?.name,
     });
 
@@ -1080,11 +1095,27 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
       battleId: lockedBattle.id,
       actorUserId,
       actionType,
-      actionPayload,
+      actionPayload: normalizedActionPayload,
       actorPokemon: lockedBattle.players?.[actorUserId]?.selectedPokemon?.name,
       targetPokemon: lockedBattle.players?.[DUNGEON_ENEMY_USER_ID]?.selectedPokemon?.name,
     });
-    const playerResolution = resolveBattleTurn({ battle: lockedBattle, actorUserId, actionType, actionPayload });
+    let playerResolution;
+    try {
+      playerResolution = resolveBattleTurn({ battle: lockedBattle, actorUserId, actionType, actionPayload: normalizedActionPayload });
+    } catch (error) {
+      logger.warn('Falha controlada ao resolver ação na dungeon', {
+        file: 'services/dungeonService.js',
+        method: 'processDungeonTurn',
+        battleId: lockedBattle.id,
+        sessionId: lockedBattle.channelId,
+        slackUserId: actorUserId,
+        actionType,
+        actionPayload: normalizedActionPayload,
+        errorMessage: error?.message,
+      });
+      const reason = actionType === BATTLE_ACTION.MAGIC ? 'action_execution_failed' : 'unsupported_action';
+      return { ok: false, reason, battle: lockedBattle };
+    }
     if (!playerResolution?.outcome?.ok) {
       return { ok: false, reason: playerResolution.outcome.reason || 'unsupported_action', battle: lockedBattle };
     }
@@ -1203,6 +1234,21 @@ async function processDungeonTurn({ channelId, actorUserId, actionType, actionPa
       enemyTurn,
       completion,
       turnLog,
+    };
+  } catch (error) {
+    logger.error('Erro inesperado ao processar ação da dungeon', {
+      file: 'services/dungeonService.js',
+      method: 'processDungeonTurn',
+      sessionId: channelId,
+      slackUserId: actorUserId,
+      actionType,
+      actionPayload,
+      errorMessage: error?.message,
+    });
+    return {
+      ok: false,
+      reason: 'action_execution_failed',
+      battle: getDungeonBattle(channelId) || battle,
     };
   } finally {
     releaseDungeonLock(channelId);

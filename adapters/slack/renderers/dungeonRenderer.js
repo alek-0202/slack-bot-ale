@@ -155,6 +155,7 @@ function renderDungeonBattleState(battle) {
     stateTextPrefix: '🏰 Dungeon em andamento',
     logTitle: '📜 Log da dungeon',
     battleContextText: buildDungeonBattleContextText(battle),
+    statusTooltipMode: 'auto',
     turnActionIdBuilder: buildDungeonTurnActionId,
     shouldShowActions: ({ battle: currentBattle }) => currentBattle.status === 'active' && currentBattle.currentTurnUserId === playerUserId,
     waitingTextBuilder: ({ battle: currentBattle }) => currentBattle.status === 'active' && currentBattle.currentTurnUserId !== playerUserId

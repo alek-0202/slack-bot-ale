@@ -1,5 +1,6 @@
 const { MAGIC_ENERGY_COST } = require("./battleEngine");
 const { resolveMagicActionEntry, getElementalSkillCooldown } = require("./elementalEngine");
+const { DRAGON_SKILLS, canUseAncestralBreathRecast } = require("./dragonElementRules");
 
 function canUseSkillAction(combat, actor, skill, target) {
   if (!combat || !actor) return { ok: false, reason: "INVALID_CONTEXT", consumeTurn: false, consumeEnergy: false };
@@ -14,7 +15,8 @@ function canUseSkillAction(combat, actor, skill, target) {
 
   if (skill.kind === "elemental") {
     const cooldown = getElementalSkillCooldown(actor, skill.id);
-    if (cooldown > 0) {
+    const canBypassCooldown = skill.id === DRAGON_SKILLS.ANCESTRAL_BREATH && canUseAncestralBreathRecast(actor);
+    if (cooldown > 0 && !canBypassCooldown) {
       return { ok: false, reason: "COOLDOWN", consumeTurn: false, consumeEnergy: false };
     }
   }

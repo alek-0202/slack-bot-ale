@@ -61,7 +61,14 @@ function getRegisteredElementalRules() {
 
 function getElementalEfficiencyMultiplier(playerState) {
   const efficiency = Math.max(0, Number(playerState?.stats?.elementalChance || 0));
-  return 1 + efficiency;
+  const state = ensureElementalState(playerState || {});
+  const effectBonusPct = (state.effects || [])
+    .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0)
+    .reduce((acc, effect) => acc + Math.max(0, Number(effect.elementalEfficiencyBonusPct || 0)), 0);
+  const statusBonusPct = (state.statuses || [])
+    .filter((status) => Number(status?.remainingRounds ?? 1) > 0)
+    .reduce((acc, status) => acc + Math.max(0, Number(status.elementalEfficiencyBonusPct || 0)), 0);
+  return 1 + efficiency + ((effectBonusPct + statusBonusPct) / 100);
 }
 
 function resolveElementalDamageRule({ attackElement, defenderElements = [] }) {
@@ -132,7 +139,7 @@ function getAvailableElementalSkills(playerState) {
       ...entry,
       kind: "elemental",
       slot: `elemental:${entry.id}`,
-    }));
+    })).filter((entry) => !entry?.isPassive && !entry?.hiddenFromActionMenu && entry?.activationType !== "passive");
   }
 
   const level = Number(playerState?.selectedPokemon?.level || 0);
@@ -154,7 +161,7 @@ function getAvailableElementalSkills(playerState) {
     ...entry,
     kind: "elemental",
     slot: `elemental:${entry.id}`,
-  }));
+  })).filter((entry) => !entry?.isPassive && !entry?.hiddenFromActionMenu && entry?.activationType !== "passive");
 }
 
 function getAvailableMagicActions(playerState) {
@@ -264,6 +271,20 @@ function processOwnerTurnEffects({ playerState, ownerUserId, timing }) {
   return logs;
 }
 
+function isGroupControlEffect(effect = {}) {
+  const tags = Array.isArray(effect?.tags) ? effect.tags.map((entry) => String(entry).toLowerCase()) : [];
+  return Boolean(
+    effect.controlLight
+    || effect.forcedSkipAction
+    || effect.forcedAction
+    || effect.cannotAct
+    || effect.skipTurn
+    || effect.blockAction
+    || effect.taunt
+    || tags.some((tag) => tag.includes('control') || tag.includes('taunt') || tag.includes('displacement'))
+  );
+}
+
 module.exports = {
   ENABLE_ELEMENTAL_SKILLS,
   ENABLE_ELEMENTAL_SKILLS_IN_DEV,
@@ -291,4 +312,5 @@ module.exports = {
   tickRoundTimers,
   tickOwnerTurnTimers,
   processOwnerTurnEffects,
+  isGroupControlEffect,
 };

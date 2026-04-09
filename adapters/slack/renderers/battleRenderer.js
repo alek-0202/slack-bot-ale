@@ -1,3 +1,5 @@
+const fs = require("fs");
+const path = require("path");
 const { buildBattleViewModel } = require("../../../application/battle/renderers/battlePresenter");
 const { buildPokemonTypesLabel } = require("../../../services/pokemonTypeService");
 const { getAvailableElementalSkills } = require("../../../application/battle/domain/elementalRules");
@@ -6,7 +8,9 @@ const { sanitizeResolvedAction } = require("../../../application/battle/domain/r
 const { describeEffectGameplayImpact, normalizeEffectKey } = require("../../../application/battle/domain/effectDetailsRegistry");
 const { PASSIVE_DEFINITIONS } = require("../../../services/legendaryPassiveRegistry");
 const { getPassiveDetailsText } = require("../../../application/battle/domain/legendaryPassiveEngine");
+const { saveRenderedImage } = require("../../../utils/renderedImageStore");
 const { getLevelBorderStyle } = require("./pokemonVisualTier");
+const { renderStatusBadge } = require("./statusVisualRegistry");
 
 const BATTLE_ACCEPT_ACTION_ID = "battle_accept_invite";
 const BATTLE_DECLINE_ACTION_ID = "battle_decline_invite";
@@ -14,6 +18,7 @@ const BATTLE_TURN_ACTION_ID = "battle_turn_action";
 const BATTLE_MAGIC_ACTION_ID = "battle_magic_action";
 const BATTLE_SWITCH_ACTION_ID = "battle_switch_action";
 const MAGIC_REGISTER_REMOVE_ACTION_ID = "magic_register_remove_element";
+const RENDERED_IMAGE_PATH_PREFIX = "/rendered-images/";
 const BATTLE_ACTION_BUTTONS = {
   attack: { label: "Ataque", emoji: "⚔️", style: "primary" },
   magic: { label: "Magia", emoji: "✨" },
@@ -89,7 +94,12 @@ function renderSelectionPrompt({ challengerId, challengedId }) {
 
 function renderBattleState(battle, options = {}) {
   const view = buildBattleViewModel(battle);
-  const [challenger, challenged] = view.players;
+  const playersWithStatusFallback = view.players.map((player) => ({
+    ...player,
+    activeEffects: player.activeEffects?.length ? player.activeEffects : (battle?.players?.[player.userId]?.elementalState?.effects || []),
+    activeStatuses: player.activeStatuses?.length ? player.activeStatuses : (battle?.players?.[player.userId]?.elementalState?.statuses || []),
+  }));
+  const [challenger, challenged] = playersWithStatusFallback;
   const title = options.title || "⚔️ *Batalha Pokémon PvP*";
   const stateTextPrefix = options.stateTextPrefix || "⚔️ Batalha em andamento";
   const shouldShowActions = options.shouldShowActions
@@ -98,7 +108,8 @@ function renderBattleState(battle, options = {}) {
   const waitingText = options.waitingTextBuilder
     ? options.waitingTextBuilder({ battle, view })
     : null;
-  const logBlock = buildBattleLogBlock(battle, options);
+  const logBlocks = buildBattleLogBlocks(battle, options);
+  const detailsBlock = buildBattleDetailsBlock({ battle, challenger, challenged });
 
   return {
     text:
@@ -138,6 +149,7 @@ function renderBattleState(battle, options = {}) {
         },
         ...(buildPokemonAccessory(challenger) ? { accessory: buildPokemonAccessory(challenger) } : {}),
       },
+      buildStatusTooltipContextBlock(challenger, options),
       {
         type: "section",
         text: {
@@ -146,6 +158,7 @@ function renderBattleState(battle, options = {}) {
         },
         ...(buildPokemonAccessory(challenged) ? { accessory: buildPokemonAccessory(challenged) } : {}),
       },
+      buildStatusTooltipContextBlock(challenged, options),
       {
         type: "context",
         elements: [
@@ -155,7 +168,8 @@ function renderBattleState(battle, options = {}) {
           },
         ],
       },
-      logBlock,
+      detailsBlock,
+      ...logBlocks,
       !shouldShowActions && waitingText ? {
         type: "context",
         elements: [{ type: "mrkdwn", text: waitingText }],
@@ -165,30 +179,217 @@ function renderBattleState(battle, options = {}) {
   };
 }
 
-function buildBattleLogBlock(battle, options = {}) {
+function resolveStatusIconPublicUrl(iconPath) {
+  if (!iconPath || typeof iconPath !== "string") return null;
+  if (/^https?:\/\//i.test(iconPath)) return iconPath;
+  const publicBaseUrl = String(process.env.RENDERED_IMAGE_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL || "")
+    .trim()
+    .replace(/\/+$/g, "");
+  if (!publicBaseUrl) return null;
+  const normalizedAssetPath = iconPath.replace(/^\/+/, "");
+  if (normalizedAssetPath.startsWith("assets/")) {
+    const absoluteAssetPath = path.resolve(__dirname, "../../..", normalizedAssetPath);
+    try {
+      const iconBuffer = fs.readFileSync(absoluteAssetPath);
+      const imageId = saveRenderedImage({ buffer: iconBuffer, mimeType: "image/png" });
+      if (imageId) return `${publicBaseUrl}${RENDERED_IMAGE_PATH_PREFIX}${imageId}`;
+    } catch (_) {
+      return null;
+    }
+  }
+  const normalizedPath = iconPath.startsWith("/") ? iconPath : `/${iconPath}`;
+  return `${publicBaseUrl}${normalizedPath}`;
+}
+
+function collectActiveStatusEntries(player = {}) {
+  const activeEffects = Array.isArray(player?.activeEffects) ? player.activeEffects : [];
+  const activeStatuses = Array.isArray(player?.activeStatuses) ? player.activeStatuses : [];
+  return [...activeEffects, ...activeStatuses].filter((effect) => {
+    const rounds = Number(effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? 1);
+    const stacks = Number(effect?.stacks ?? 1);
+    return rounds > 0 && stacks > 0;
+  });
+}
+
+function buildStatusBadgesFromBattleState(player = {}) {
+  return collectActiveStatusEntries({
+    activeEffects: player?.elementalState?.effects || [],
+    activeStatuses: player?.elementalState?.statuses || [],
+  }).map((effect) => renderStatusBadge({
+    effect,
+    stacks: effect?.stacks,
+    remainingRounds: effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null,
+  }).text);
+}
+
+function buildStatusMetadataFromBattleState(player = {}) {
+  return collectActiveStatusEntries({
+    activeEffects: player?.elementalState?.effects || [],
+    activeStatuses: player?.elementalState?.statuses || [],
+  }).map((effect) => ({
+    id: effect?.id || null,
+    name: effect?.name || effect?.id || "Status",
+    description: describeEffectGameplayImpact(effect),
+    isDebuff: Boolean(effect?.isDebuff || effect?.type === "debuff" || effect?.type === "debuff_status"),
+    type: effect?.type,
+    visualCategory: effect?.visualCategory,
+    charges: effect?.charges,
+    remainingRounds: effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null,
+    stacks: effect?.stacks ?? 1,
+  }));
+}
+
+function resolveDamageTypeFromText(line = "") {
+  const normalized = String(line || "").toLowerCase();
+  if (!normalized) return null;
+  if (/\btrue\b|verdadeir/.test(normalized)) return "true damage";
+  if (/físic/.test(normalized)) return "físico";
+  if (/fogo|burn|queim/.test(normalized)) return "fogo";
+  if (/gelo|gelid|congel/.test(normalized)) return "gelo";
+  if (/elétr|choque|raio/.test(normalized)) return "elétrico";
+  if (/ps[ií]quic|mental/.test(normalized)) return "psíquico";
+  if (/água|water/.test(normalized)) return "água";
+  if (/grama|grass|ra[ií]z/.test(normalized)) return "grama";
+  return null;
+}
+
+function normalizeDamageSource(source = "") {
+  const cleaned = String(source || "")
+    .replace(/^passiva\/caracter[íi]stica:\s*/i, "")
+    .replace(/^caracter[íi]stica:\s*/i, "")
+    .replace(/^passiva lend[áa]ria:\s*/i, "Passiva Lendária — ")
+    .replace(/^passiva lend[áa]ria\s*[-—:]\s*/i, "Passiva Lendária — ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "Efeito";
+  return cleaned;
+}
+
+function qualifyDamageSource(source = "", line = "") {
+  const normalizedSource = String(source || "").trim() || "Efeito";
+  const normalizedLine = String(line || "").toLowerCase();
+  const lowerSource = normalizedSource.toLowerCase();
+  if (/(passiva lendária|lendária)/i.test(normalizedSource)) return normalizedSource;
+  if (/burn|g[ée]lid|congel|maldi|veneno|dot|cont[ií]nu/.test(normalizedLine)) return `${normalizedSource} (debuff)`;
+  if (/reativa|reativação/.test(normalizedLine)) return `${normalizedSource} (reativação/passiva)`;
+  if (/passiva/.test(normalizedLine) || /passiva/.test(lowerSource)) return `${normalizedSource} (passiva)`;
+  if (/on-hit|ao atingir|acerto/.test(normalizedLine)) return `${normalizedSource} (on-hit)`;
+  if (/skill|habilidade|magia|sopro|rajada|explos[aã]o|golpe|ataque/.test(normalizedLine)) return `${normalizedSource} (ativo)`;
+  return normalizedSource;
+}
+
+function parseExtraDamageSource(line = "") {
+  const directCause = line.match(/^[^\w<@]*(.+?)\s+causou\s+\d+/i)?.[1];
+  if (directCause) return qualifyDamageSource(normalizeDamageSource(directCause), line);
+  const splitByDivider = line.match(/^[^\w<@]*(.+?)(?:\s*[-—:])/);
+  if (splitByDivider) return qualifyDamageSource(normalizeDamageSource(splitByDivider[1]), line);
+  return "Efeito";
+}
+
+function buildStatusTooltipContextBlock(player, options = {}) {
+  const effects = collectActiveStatusEntries(player);
+  if (!effects.length) return null;
+  const statusTooltipMode = String(options.statusTooltipMode || "auto").toLowerCase();
+  const forceEmoji = statusTooltipMode === "emoji";
+  const elements = [];
+  for (const effect of effects.slice(0, 8)) {
+    const badge = renderStatusBadge({
+      effect,
+      stacks: effect?.stacks,
+      remainingRounds: effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null,
+    });
+    const iconUrl = forceEmoji ? null : resolveStatusIconPublicUrl(badge?.metadata?.iconPath);
+    if (iconUrl) {
+      elements.push({
+        type: "image",
+        image_url: iconUrl,
+        alt_text: badge.metadata.tooltip,
+      });
+      continue;
+    }
+    elements.push({
+      type: "mrkdwn",
+      text: `${badge.text} ${badge.metadata.tooltip}`,
+    });
+  }
+  if (!elements.length) return null;
+  return { type: "context", elements };
+}
+
+function buildBattleLogBlocks(battle, options = {}) {
   const lines = Array.isArray(options.logLinesBuilder ? options.logLinesBuilder(battle) : battle?.metadata?.turnLog)
     ? (options.logLinesBuilder ? options.logLinesBuilder(battle) : battle?.metadata?.turnLog)
     : [];
 
-  if (!lines.length) return null;
+  if (!lines.length) return [];
   const formatted = formatBattleLogForSlack({
     battle,
     lines,
     title: options.logTitle || "📜 RESUMO DA RODADA",
     rawMode: Boolean(options.debugRawLog || battle?.metadata?.debugRawLog),
+    showStatusBadgesInText: false,
   });
 
-  return {
+  const blocks = [{
     type: "section",
     text: {
       type: "mrkdwn",
       text: formatted.slice(0, 2900),
     },
+  }];
+  const playerStatusBlock = buildBattleLogStatusIconContextBlock({
+    player: battle?.players?.[battle?.metadata?.slackUserId || battle?.challengerId],
+    label: "Status (seu Pokémon ativo)",
+    options,
+  });
+  const enemyStatusBlock = buildBattleLogStatusIconContextBlock({
+    player: battle?.players?.[resolveBattleLogLanes(battle).enemyId],
+    label: "Status (pokémon inimigo)",
+    options,
+  });
+  if (playerStatusBlock) blocks.push(playerStatusBlock);
+  if (enemyStatusBlock) blocks.push(enemyStatusBlock);
+  return blocks;
+}
+
+function buildBattleLogStatusIconContextBlock({ player, label, options = {} }) {
+  const effects = collectActiveStatusEntries({
+    activeEffects: player?.elementalState?.effects || [],
+    activeStatuses: player?.elementalState?.statuses || [],
+  });
+  if (!effects.length) return null;
+  const statusTooltipMode = String(options.statusTooltipMode || "auto").toLowerCase();
+  const forceEmoji = statusTooltipMode === "emoji";
+  const imageElements = effects
+    .slice(0, 8)
+    .map((effect) => renderStatusBadge({
+      effect,
+      stacks: effect?.stacks,
+      remainingRounds: effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null,
+    }))
+    .map((badge) => {
+      const iconUrl = forceEmoji ? null : resolveStatusIconPublicUrl(badge?.metadata?.iconPath);
+      if (!iconUrl) return null;
+      return {
+        type: "image",
+        image_url: iconUrl,
+        alt_text: badge.metadata.tooltip,
+      };
+    })
+    .filter(Boolean);
+  if (!imageElements.length) return null;
+  return {
+    type: "context",
+    elements: [
+      { type: "mrkdwn", text: `${label}:` },
+      ...imageElements,
+    ],
   };
 }
 
 function buildCombatantSummary({ battle, userId, ownerLabel }) {
   const player = battle?.players?.[userId];
+  const seededStatusDetails = buildStatusMetadataFromBattleState(player);
   return {
     actorId: userId,
     actorName: player?.selectedPokemon?.name || "Pokémon",
@@ -210,22 +411,32 @@ function buildCombatantSummary({ battle, userId, ownerLabel }) {
     currentShield: Number(player?.elementalState?.effects
       ?.filter((effect) => Number(effect?.remainingRounds ?? 1) > 0 && effect?.shieldCurrentHp != null)
       ?.reduce((total, effect) => total + Math.max(0, Number(effect.shieldCurrentHp || 0)), 0) || 0),
-    buffDetails: [],
-    debuffDetails: [],
+    buffDetails: seededStatusDetails.filter((entry) => !entry.isDebuff),
+    debuffDetails: seededStatusDetails.filter((entry) => entry.isDebuff),
+    statusBadges: buildStatusBadgesFromBattleState(player),
+    appliedEffects: [],
+    passiveEvents: [],
+    extraDamageEntries: [],
+    elementalDamageLabel: null,
+    round: Number(battle?.round || 1),
   };
 }
 
-function formatCombatantSummaryLines(summary) {
-  return [
-    `• Ação: ${summary.actionLabel ? `*${summary.actorName}* usou ${summary.actionLabel}` : "—"}`,
-    `• DOT/Contínuo: ${summary.continuousEffects.length ? summary.continuousEffects.join(", ") : "—"}`,
-    `• Dano status: ${summary.statusDamage.length ? summary.statusDamage.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
-    `• Dano: ${summary.directDamage || 0}${summary.absorbedDamage ? ` (barreira absorveu ${summary.absorbedDamage})` : ""}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}${summary.dodged ? " (esquivado)" : ""}${summary.elementalTag ? ` (${summary.elementalTag})` : ""}`,
-    `• Cura recebida: ${summary.healingReceived.length ? summary.healingReceived.map((entry) => `${entry.label} ${entry.value}`).join(", ") : "—"}`,
-    `• Vida: ${summary.currentHp}/${summary.maxHp}${summary.currentShield > 0 ? ` | Barreira: ${summary.currentShield}` : ""}`,
-    `• Buffs: ${summary.buffs.length ? summary.buffs.join(" | ") : "—"}`,
-    `• Debuffs: ${summary.debuffs.length ? summary.debuffs.join(" | ") : "—"}`,
-  ];
+function formatCombatantSummaryLines(summary, options = {}) {
+  const badgeLine = summary.statusBadges.length ? summary.statusBadges.join(" ") : null;
+  const shouldShowStatusBadgesInText = options.showStatusBadgesInText !== false;
+  const details = [];
+  if (summary.actionLabel) details.push(`• Ação: ${summary.actionLabel}`);
+  if (summary.extraDamageEntries.length) details.push(`• Dano extra: ${summary.extraDamageEntries.map((entry) => `${entry.source} ${entry.value}${entry.type ? ` ${entry.type}` : ""}`).join(" | ")}`);
+  const shouldShowTotalDamage = Number(summary.directDamage || 0) > 0 || Number(summary.absorbedDamage || 0) > 0;
+  if (shouldShowTotalDamage) details.push(`• Dano total: ${summary.directDamage || 0}${summary.absorbedDamage ? ` (🛡️ ${summary.absorbedDamage} absorvido)` : ""}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}${summary.dodged ? " (esquivado)" : ""}`);
+  if (summary.appliedEffects.length) details.push(`• Stat: ${summary.appliedEffects.join(" | ")}`);
+  if (summary.healingReceived.length) details.push(`• Cura: ${summary.healingReceived.map((entry) => `${entry.label} ${entry.value}`).join(", ")}`);
+  if (summary.passiveEvents.length) details.push(`• Passiva: ${summary.passiveEvents.join(" | ")}`);
+  const headerParts = [`• <@${summary.actorId}> — *${summary.actorName}*`, `❤️ ${summary.currentHp}/${summary.maxHp}`];
+  if (summary.currentShield > 0) headerParts.push(`🛡️ ${summary.currentShield}`);
+  if (shouldShowStatusBadgesInText && badgeLine) headerParts.push(badgeLine);
+  return [`${headerParts.join(" | ")}`, ...details];
 }
 
 function resolveBattleLogLanes(battle) {
@@ -240,7 +451,7 @@ function resolveBattleLogLanes(battle) {
   };
 }
 
-function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
+function formatBattleLogForSlack({ battle, lines, title, rawMode = false, showStatusBadgesInText = true }) {
   if (rawMode) {
     return [`*${title}*`, ...lines.map((line) => `• ${typeof line === "string" ? line : JSON.stringify(line)}`)].join("\n");
   }
@@ -252,16 +463,17 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
   };
   const hasStructuredSummaries = lines.some((entry) => entry && typeof entry === "object" && entry.kind === "action_summary");
 
-  const extras = [];
   for (const rawEntry of lines) {
     const normalized = normalizeLogEntry(rawEntry);
     if (!normalized) continue;
     if (normalized.kind !== 'action_summary') {
+      if (normalized.kind === 'legendary_passive') {
+        summaries.player.passiveEvents.push([normalized.label, normalized.detail].filter(Boolean).join(" — "));
+      }
       if (!hasStructuredSummaries) {
         const textLane = classifyTextLane(normalized.text, laneIds);
         applyTextMetricsToSummary(summaries[textLane], normalized.text);
       }
-      extras.push(compactCombatLogLine(normalized.text));
       continue;
     }
     const lane = classifySummaryLane(normalized, laneIds);
@@ -275,6 +487,9 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
       : normalized.elementalRelation === "disadvantage"
         ? "resistido"
         : null;
+    summary.elementalDamageLabel = summary.elementalTag
+      ? `${summary.directDamage} (${summary.elementalTag})`
+      : null;
     if (Number(normalized.statusDamage || 0) > 0) {
       summary.statusDamage = [{ label: 'Status', value: Number(normalized.statusDamage || 0) }];
     } else {
@@ -297,19 +512,17 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
     summary.debuffs = Array.isArray(normalized.activeDebuffs) ? normalized.activeDebuffs : [];
     summary.buffDetails = Array.isArray(normalized.activeBuffDetails) ? normalized.activeBuffDetails : [];
     summary.debuffDetails = Array.isArray(normalized.activeDebuffDetails) ? normalized.activeDebuffDetails : [];
+    summary.statusBadges = buildStatusBadgesFromSummary(summary);
+    summary.appliedEffects = (Array.isArray(normalized.appliedEffects) ? normalized.appliedEffects : [])
+      .map((effect) => compactCombatLogLine(effect).replace(/^Status:\s*/i, "").replace(/^Extra:\s*/i, ""));
     for (const effect of (Array.isArray(normalized.appliedEffects) ? normalized.appliedEffects : [])) {
       if (effect && !summary.continuousEffects.includes(effect)) summary.continuousEffects.push(effect);
     }
-    if (normalized.blockedReason) {
-      extras.push(`Falha: ${summary.actorName} bloqueado (${normalized.blockedReason})`);
-    }
+    summary.extraDamageEntries = buildExtraDamageEntries(normalized);
     for (const note of (Array.isArray(normalized.extraNotes) ? normalized.extraNotes : [])) {
-      extras.push(compactCombatLogLine(note));
+      if (/passiva lendária/i.test(String(note || ""))) summary.passiveEvents.push(String(note));
     }
   }
-
-  if (!summaries.player.actionLabel && extras.length) summaries.player.actionLabel = "📜 Eventos da rodada";
-  if (!summaries.enemy.actionLabel && extras.length) summaries.enemy.actionLabel = "📜 Eventos da rodada";
 
   const nextTurnName = getNextTurnLabel(battle);
   const playerLabel = laneIds.playerName || "Jogador";
@@ -317,20 +530,77 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false }) {
   return [
     `*${title}*`,
     "──────────────",
-    `*Rodada:* ${battle?.round || 1}`,
-    `*Próximo turno:* ${nextTurnName}`,
+    `🧾 *Rodada ${battle?.round || 1}* • Próximo turno: ${nextTurnName}`,
     "",
-    `*[${playerLabel}]*`,
-    ...formatCombatantSummaryLines(summaries.player),
+    `*${playerLabel}*`,
+    ...formatCombatantSummaryLines(summaries.player, { showStatusBadgesInText }),
     "",
-    `*[${enemyLabel}]*`,
-    ...formatCombatantSummaryLines(summaries.enemy),
-    "",
-    ...formatDetailsSection(battle, laneIds),
-    extras.length ? "" : null,
-    extras.length ? '*Eventos:*' : null,
-    ...extras.slice(-6).map((line) => `• ${line}`),
+    `*${enemyLabel}*`,
+    ...formatCombatantSummaryLines(summaries.enemy, { showStatusBadgesInText }),
   ].filter(Boolean).join("\n");
+}
+
+function buildExtraDamageEntries(entry = {}) {
+  const items = [];
+  const statusDamage = Math.max(0, Number(entry.statusDamage || 0));
+  if (statusDamage > 0) items.push({ source: "Dano contínuo (debuff)", value: statusDamage, type: "contínuo" });
+  if (Number(entry.extraDamage || 0) > 0) items.push({ source: "Bônus adicional (stat extra)", value: Math.max(0, Number(entry.extraDamage || 0)), type: null });
+
+  const notes = Array.isArray(entry.extraNotes) ? entry.extraNotes : [];
+  for (const note of notes) {
+    const parsed = parseExtraDamageNote(note);
+    if (parsed) items.push(parsed);
+  }
+  const unique = new Set();
+  return items.filter((item) => {
+    if (Number(item?.value || 0) <= 0) return false;
+    const key = `${item.source}|${item.value}|${item.type || ""}`;
+    if (unique.has(key)) return false;
+    unique.add(key);
+    return true;
+  });
+}
+
+function parseExtraDamageNote(note) {
+  const line = String(note || "").replace(/\s+/g, " ").trim();
+  if (!line) return null;
+  const value = Number(line.match(/\b(\d+)\b/)?.[1] || 0);
+  if (value <= 0) return null;
+  const source = parseExtraDamageSource(line);
+  const type = resolveDamageTypeFromText(line);
+  return { source, value, type };
+}
+
+function buildStatusBadgesFromSummary(summary = {}) {
+  const badges = [];
+  const explicitItems = [
+    ...(Array.isArray(summary.buffDetails) ? summary.buffDetails.map((entry) => ({ ...entry, isDebuff: false })) : []),
+    ...(Array.isArray(summary.debuffDetails) ? summary.debuffDetails.map((entry) => ({ ...entry, isDebuff: true })) : []),
+  ];
+  const textFallbackItems = [
+    ...(Array.isArray(summary.buffs) ? summary.buffs.map((name) => ({ id: null, name, isDebuff: false })) : []),
+    ...(Array.isArray(summary.debuffs) ? summary.debuffs.map((name) => ({ id: null, name, isDebuff: true })) : []),
+  ];
+  const items = explicitItems.length ? explicitItems : textFallbackItems;
+  for (const item of items) {
+    const rounds = Number(String(item?.name || "").match(/\[(\d+)\]/)?.[1] || item?.remainingRounds || 0) || null;
+    const stackCount = Number(item?.stacks || 1);
+    const badge = renderStatusBadge({
+      effect: {
+        id: item?.id,
+        name: String(item?.name || "").replace(/\s*\[\d+\]\s*$/, "") || item?.id || "Status",
+        description: item?.description,
+        isDebuff: Boolean(item?.isDebuff),
+        type: item?.type,
+        visualCategory: item?.visualCategory,
+        charges: item?.charges,
+      },
+      stacks: stackCount,
+      remainingRounds: rounds,
+    });
+    badges.push(badge?.text || "Status");
+  }
+  return badges;
 }
 
 function formatDetailsSection(battle, laneIds) {
@@ -341,6 +611,30 @@ function formatDetailsSection(battle, laneIds) {
     lines.push(`• ${item.name} -> ${item.description}`);
   }
   return lines;
+}
+
+function buildBattleDetailsBlock({ battle, challenger, challenged }) {
+  const lines = [
+    "*Details*",
+    `• Seu Pokémon ativo: ${formatLegendaryPassiveDetails(challenger, battle?.players?.[challenger?.userId])}`,
+    `• Pokémon inimigo ativo: ${formatLegendaryPassiveDetails(challenged, battle?.players?.[challenged?.userId])}`,
+  ];
+  return {
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: lines.join("\n"),
+    },
+  };
+}
+
+function formatLegendaryPassiveDetails(viewPlayer, battlePlayer) {
+  const passive = battlePlayer?.selectedPokemon?.legendaryPassive;
+  if (!passive?.passiveId) return "Sem passiva lendária";
+  const passiveName = PASSIVE_DEFINITIONS[passive.passiveId]?.name || passive.passiveId;
+  const shortDescription = getPassiveDetailsText(battlePlayer) || "passiva lendária ativa.";
+  const pokemonName = viewPlayer?.selectedPokemonName || battlePlayer?.selectedPokemon?.name || "Pokémon";
+  return `*${pokemonName}* — *${passiveName}*: ${shortDescription}`;
 }
 
 function collectBattleActiveEffectDetails(battle = {}, laneIds = {}) {
@@ -419,6 +713,14 @@ function normalizeLogEntry(entry) {
       }
     }
     return normalized;
+  }
+  if (typeof entry === 'object' && entry.kind === 'legendary_passive') {
+    return {
+      kind: 'legendary_passive',
+      label: entry.label || 'Passiva Lendária',
+      detail: entry.detail || null,
+      text: [entry.label, entry.detail].filter(Boolean).join(' — '),
+    };
   }
   if (typeof entry === 'string') return { kind: 'text', text: entry.trim() };
   if (typeof entry === 'object') return { kind: 'text', text: String(entry.message || entry.text || entry.summary || JSON.stringify(entry)).trim() };
@@ -641,16 +943,31 @@ function renderMagicRegisterElementPrompt({ pokemon, elements, maxSlots }) {
 }
 
 function renderPokemonBlock(player) {
+  const headerBadges = renderPlayerStatusBadges(player);
   return (
     `*<@${player.userId}>*\n` +
     `*${player.selectedPokemonName}* (Nv. ${player.level})${player.starText !== "-" ? ` | ${player.starText}` : ""}\n` +
     `${buildPokemonTypesLabel(player.selectedPokemonTypes) ? `🧪 ${buildPokemonTypesLabel(player.selectedPokemonTypes)}\n` : ""}` +
     `❤️ ${player.hpCurrent}/${player.hpMax}${Number(player?.shieldCurrent || 0) > 0 ? ` | 🛡️ ${Number(player.shieldCurrent || 0)}` : ""}\n` +
+    `${headerBadges ? `🧩 ${headerBadges}\n` : ""}` +
     `⚔️ ATK ${player.attack} | ✨ MAG ${player.magic}\n` +
     `🛡️ DEF ${player.defense} | 💨 SPD ${player.speed}\n` +
     `⚡ Iniciativa ${player.initiativeGauge}/${player.initiativeThreshold}` +
     `${renderReserveLines(player)}`
   );
+}
+
+function renderPlayerStatusBadges(player) {
+  const effects = collectActiveStatusEntries(player);
+  if (!effects.length) return "";
+  return effects
+    .slice(0, 6)
+    .map((effect) => renderStatusBadge({
+      effect,
+      stacks: effect?.stacks,
+      remainingRounds: effect?.remainingRounds ?? effect?.durationTurnsRemaining ?? null,
+    }).text)
+    .join(" ");
 }
 
 function renderReserveLines(player) {

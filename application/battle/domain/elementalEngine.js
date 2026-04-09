@@ -6,6 +6,7 @@ require("./iceElementRules");
 require("./fightingElementRules");
 require("./psychicElementRules");
 require("./ghostElementRules");
+require("./dragonElementRules");
 
 const {
   ENABLE_ELEMENTAL_SKILLS_BATTLE,
@@ -20,6 +21,7 @@ const {
 const { GRASS_EFFECT_SUFFOCATING_ROOTS } = require("./grassElementRules");
 const { ELECTRIC_EFFECT_SHOCK, ELECTRIC_EFFECT_OVERLOAD, ELECTRIC_EFFECT_FIELD_DEBUFF, ELECTRIC_EFFECT_FIELD } = require("./electricElementRules");
 const { normalizeElementList, matchesElement } = require("../../../services/elementType");
+const { GLOBAL_EFFECT_IDS } = require("./globalEffectRegistry");
 
 function parseMagicActionSlot(rawMagicSlot) {
   const value = String(rawMagicSlot || "");
@@ -42,7 +44,7 @@ function resolveMagicActionEntry(playerState, rawMagicSlot) {
   return actions.find((entry) => entry.kind === "elemental" && entry.id === parsed.skillId) || null;
 }
 
-function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage }) {
+function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage, isMagic = false, attackElement = null }) {
   if (!ENABLE_ELEMENTAL_SKILLS_BATTLE) {
     return {
       finalDamage: Math.max(0, Number(damage || 0)),
@@ -52,18 +54,54 @@ function applyBeforeDamageHooks({ battle, attackerId, defenderId, damage }) {
   let modifiedDamage = Math.max(0, Number(damage || 0));
   const logs = [];
 
-
   const attackerEffects = ensureElementalState(battle.players[attackerId]).effects || [];
   for (const effect of attackerEffects) {
     if (effect?.outgoingDamageMultiplier != null) {
+      const previous = modifiedDamage;
       modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.outgoingDamageMultiplier || 1)));
+      if (modifiedDamage !== previous) {
+        logs.push(`📈 ${effect.name || effect.id || "Buff"} (dano causado) ${previous}→${modifiedDamage}.`);
+      }
+    }
+    if (isMagic && effect?.outgoingMagicDamageMultiplier != null) {
+      const previous = modifiedDamage;
+      modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.outgoingMagicDamageMultiplier || 1)));
+      if (modifiedDamage !== previous) {
+        logs.push(`✨ ${effect.name || effect.id || "Buff"} (magia) ${previous}→${modifiedDamage}.`);
+      }
+    }
+    if (!isMagic && effect?.outgoingAttackDamageMultiplier != null) {
+      const previous = modifiedDamage;
+      modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.outgoingAttackDamageMultiplier || 1)));
+      if (modifiedDamage !== previous) {
+        logs.push(`⚔️ ${effect.name || effect.id || "Buff"} (ataque) ${previous}→${modifiedDamage}.`);
+      }
     }
   }
 
   const defenderEffects = ensureElementalState(battle.players[defenderId]).effects || [];
   for (const effect of defenderEffects) {
     if (effect?.incomingDamageTakenMultiplier != null) {
+      const previous = modifiedDamage;
       modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.incomingDamageTakenMultiplier || 1)));
+      if (modifiedDamage !== previous) {
+        logs.push(`🛡️ ${effect.name || effect.id || "Debuff"} (dano recebido) ${previous}→${modifiedDamage}.`);
+      }
+    }
+    if (isMagic && effect?.incomingSkillDamageTakenMultiplier != null) {
+      const previous = modifiedDamage;
+      modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(effect.incomingSkillDamageTakenMultiplier || 1)));
+      if (modifiedDamage !== previous) {
+        logs.push(`💥 ${effect.name || effect.id || "Debuff"} (dano de habilidade recebido) ${previous}→${modifiedDamage}.`);
+      }
+    }
+  }
+
+  if (matchesElement(attackElement, 'ice')) {
+    const frozen = defenderEffects.find((effect) => effect.id === GLOBAL_EFFECT_IDS.FREEZE && Number(effect?.durationTurnsRemaining ?? effect?.remainingRounds ?? 0) > 0);
+    if (frozen) {
+      modifiedDamage = Math.max(0, Math.round(modifiedDamage * Number(frozen.incomingIceDamageMultiplier || 1.15)));
+      logs.push('🧊 Congelamento ampliou o dano de gelo em 15%.');
     }
   }
 
@@ -223,6 +261,10 @@ function evaluateActionStartModifiers({ battle, actorId, actionType }) {
     if (effect.forcedSkipAction) {
       cancelTurn = true;
       logs.push(`❄️ ${effect.name || "Congelado"} impediu a ação.`);
+      if (effect.decrementOnPlayableTurn) {
+        effect.durationTurnsRemaining = Math.max(0, Number(effect.durationTurnsRemaining || 0) - 1);
+        if (Number(effect.durationTurnsRemaining || 0) <= 0) effect.remainingRounds = 0;
+      }
       if (effect.consumeOnActionStart) effect.remainingRounds = 0;
     }
     if (effect.id === ELECTRIC_EFFECT_OVERLOAD && Math.random() < Number(effect.loseTurnChance || 0)) {

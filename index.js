@@ -33,6 +33,7 @@ const paCommand = require("./commands/pokemon/pa");
 const prarityCommand = require("./commands/pokemon/prarity");
 const pelementCommand = require("./commands/pokemon/pelement");
 const battleonCommand = require("./commands/pokemon/battleon");
+const battleoffCommand = require("./commands/pokemon/battleoff");
 const favpokeCommand = require("./commands/pokemon/favpoke");
 const upgradeCommand = require("./commands/pokemon/upgrade");
 const marketCommand = require("./commands/pokemon/market");
@@ -142,6 +143,7 @@ for (const commandModule of [
   prarityCommand,
   pelementCommand,
   battleonCommand,
+  battleoffCommand,
   favpokeCommand,
   upgradeCommand,
   marketCommand,

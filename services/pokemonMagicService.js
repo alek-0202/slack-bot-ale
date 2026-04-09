@@ -4,6 +4,7 @@ const { createLogger } = require("../utils/logger");
 const { getOwnedPokemonById } = require("./pokemonLookupService");
 const { normalizePokemonTypes, normalizePokemonType } = require("./pokemonTypeService");
 const { getRandomMagicName, getElementIcon, getElementLabel } = require("./magicLibraryService");
+const { getSkillShortDescription } = require("../application/battle/domain/skillPresentationRegistry");
 const {
   ENABLE_ELEMENTAL_SKILLS,
   ENABLE_ELEMENTAL_SKILLS_REGISTRY,
@@ -55,11 +56,14 @@ function buildCharacteristicSkillEntriesFromElements(elements = [], pokemonLevel
         kind: 'characteristic',
         id: skill.id,
         name: skill.name,
-        description: skill.description || null,
+        description: getSkillShortDescription(skill),
         element,
         icon: skill.icon || getElementIcon(element),
         cooldownRounds: skill.cooldownRounds || null,
         extraEnergyCost: skill.extraEnergyCost || 0,
+        isPassive: Boolean(skill.isPassive || skill.activationType === "passive"),
+        activationType: skill.activationType || "active",
+        hiddenFromActionMenu: Boolean(skill.hiddenFromActionMenu),
       });
     }
   }
@@ -75,7 +79,86 @@ async function getPokemonMagicLoadout(pokemonId) {
     .maybeSingle();
 
   if (error) throw error;
-  return data || null;
+  const loadout = data || null;
+  const characteristicSkills = await getPersistedCharacteristicSkills({ pokemonId });
+  if (!loadout) {
+    return characteristicSkills.length
+      ? { pokemon_id: Number(pokemonId), spells: [...characteristicSkills] }
+      : null;
+  }
+
+  const regularSpells = Array.isArray(loadout.spells)
+    ? loadout.spells.filter((entry) => entry?.kind !== "characteristic")
+    : [];
+  return {
+    ...loadout,
+    spells: [...regularSpells, ...characteristicSkills],
+  };
+}
+
+async function getPersistedCharacteristicSkillRows({ pokemonId, slackUserId = null }) {
+  const supabase = getSupabaseClient();
+  let query = supabase
+    .from("user_pokemon_characteristic_skills")
+    .select("pokemon_id, slack_user_id, skill_id, slot, is_active")
+    .eq("pokemon_id", pokemonId)
+    .eq("is_active", true)
+    .order("slot", { ascending: true });
+
+  if (slackUserId) query = query.eq("slack_user_id", slackUserId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+async function getPersistedCharacteristicSkills({ pokemonId }) {
+  const rows = await getPersistedCharacteristicSkillRows({ pokemonId });
+  if (!rows.length) return [];
+
+  const pokemon = await getOwnedPokemonById(pokemonId);
+  const elementTypes = normalizePokemonTypes(pokemon?.pokemon_species?.element_types || []);
+  const available = dedupeBySkillId(buildCharacteristicSkillEntriesFromElements(elementTypes, pokemon?.level || 0));
+  const skillsById = new Map(available.map((entry) => [String(entry.id), entry]));
+
+  return rows
+    .map((row) => {
+      const skill = skillsById.get(String(row.skill_id));
+      if (!skill) return null;
+      return {
+        ...skill,
+        kind: "characteristic",
+        slot: `elemental:${row.skill_id}`,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 2);
+}
+
+async function replacePersistedCharacteristicSkills({ slackUserId, pokemonId, selectedSkillIds = [] }) {
+  const uniqueSkillIds = [...new Set((selectedSkillIds || []).map((entry) => String(entry)).filter(Boolean))].slice(0, 2);
+  const supabase = getSupabaseClient();
+
+  const { error: deleteError } = await supabase
+    .from("user_pokemon_characteristic_skills")
+    .delete()
+    .eq("pokemon_id", pokemonId)
+    .eq("slack_user_id", slackUserId);
+  if (deleteError) throw deleteError;
+
+  if (!uniqueSkillIds.length) return { ok: true, count: 0 };
+
+  const rows = uniqueSkillIds.map((skillId, index) => ({
+    pokemon_id: pokemonId,
+    slack_user_id: slackUserId,
+    skill_id: skillId,
+    slot: index + 1,
+    is_active: true,
+  }));
+  const { error: insertError } = await supabase
+    .from("user_pokemon_characteristic_skills")
+    .insert(rows);
+  if (insertError) throw insertError;
+  return { ok: true, count: rows.length };
 }
 
 async function upsertPokemonMagicLoadout({ slackUserId, pokemonId, selectedElements }) {
@@ -111,8 +194,9 @@ async function upsertPokemonMagicLoadout({ slackUserId, pokemonId, selectedEleme
     return { ok: false, reason: "invalid_selected_elements", pokemon, allElements };
   }
 
+  const persistedCharacteristicSkills = await getPersistedCharacteristicSkills({ pokemonId });
   const regularSpells = buildMagicEntriesFromElements(finalElements);
-  const spells = [...regularSpells];
+  const spells = [...regularSpells, ...persistedCharacteristicSkills];
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("pokemon_magic_loadouts")
@@ -176,21 +260,14 @@ function buildMagicSummary(spells = []) {
 
 async function clearCharacteristicSkillsFromLoadout({ slackUserId, pokemonId }) {
   const loadout = await getPokemonMagicLoadout(pokemonId);
-  if (!loadout || loadout.slack_user_id !== slackUserId) return { ok: true, removed: 0 };
+  if (!loadout || (loadout.slack_user_id && loadout.slack_user_id !== slackUserId)) return { ok: true, removed: 0 };
 
-  const spells = Array.isArray(loadout.spells) ? loadout.spells : [];
-  const nextSpells = spells.filter((entry) => entry?.kind !== 'characteristic');
-  if (nextSpells.length === spells.length) return { ok: true, removed: 0 };
+  const rows = await getPersistedCharacteristicSkillRows({ pokemonId, slackUserId });
+  if (!rows.length) return { ok: true, removed: 0 };
 
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
-    .from('pokemon_magic_loadouts')
-    .update({ spells: nextSpells })
-    .eq('pokemon_id', pokemonId)
-    .eq('slack_user_id', slackUserId);
-  if (error) throw error;
+  await replacePersistedCharacteristicSkills({ slackUserId, pokemonId, selectedSkillIds: [] });
 
-  return { ok: true, removed: spells.length - nextSpells.length };
+  return { ok: true, removed: rows.length };
 }
 
 async function clearLegacyCharacteristicSkillsFromAllLoadouts() {
@@ -289,9 +366,8 @@ async function getMrSkillSetup({ slackUserId, pokemonId }) {
   }
 
   const loadout = await getPokemonMagicLoadout(pokemonId);
-  const selectedSkillIds = Array.isArray(loadout?.spells)
-    ? loadout.spells.filter((entry) => entry?.kind === 'characteristic').map((entry) => String(entry.id)).slice(0, 2)
-    : [];
+  const persistedRows = await getPersistedCharacteristicSkillRows({ pokemonId });
+  const selectedSkillIds = persistedRows.map((entry) => String(entry.skill_id)).slice(0, 2);
 
   return {
     ok: true,
@@ -308,7 +384,11 @@ async function saveMrSkillSelection({ slackUserId, pokemonId, selectedSkillIds =
 
   const allowed = new Set(setup.availableSkills.map((entry) => String(entry.id)));
   const nextSkillIds = [...new Set((selectedSkillIds || []).map((id) => String(id)).filter((id) => allowed.has(id)))].slice(0, 2);
-  const characteristicSkills = setup.availableSkills.filter((entry) => nextSkillIds.includes(String(entry.id)));
+  await replacePersistedCharacteristicSkills({
+    slackUserId,
+    pokemonId: setup.pokemon.id,
+    selectedSkillIds: nextSkillIds,
+  });
 
   const selectedElements = normalizePokemonTypes(
     setup.loadout?.selected_elements?.length
@@ -316,6 +396,9 @@ async function saveMrSkillSelection({ slackUserId, pokemonId, selectedSkillIds =
       : setup.pokemon.pokemon_species?.element_types || [],
   ).slice(0, MAX_MAGIC_SLOTS);
   const regularSpells = buildMagicEntriesFromElements(selectedElements);
+  const characteristicSkills = setup.availableSkills
+    .filter((entry) => nextSkillIds.includes(String(entry.id)))
+    .map((entry) => ({ ...entry, slot: `elemental:${entry.id}` }));
   const spells = [...regularSpells, ...characteristicSkills];
 
   const supabase = getSupabaseClient();

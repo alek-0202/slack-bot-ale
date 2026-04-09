@@ -1,4 +1,6 @@
+const { GLOBAL_EFFECT_DEFINITIONS } = require("./globalEffectRegistry");
 const EFFECT_GAMEPLAY_DESCRIPTIONS = {
+  ...Object.fromEntries(Object.values(GLOBAL_EFFECT_DEFINITIONS).map((entry) => [entry.id, entry.gameplayDescription]).filter((entry) => entry[0] && entry[1])),
   burn: "causa dano ao longo do tempo no turno do afetado",
   choque: "acumula cargas que reduzem velocidade/iniciativa e atrapalham agir primeiro",
   electric_overcharge_debuff: "acumula cargas que reduzem velocidade/iniciativa e atrapalham agir primeiro",
@@ -29,6 +31,15 @@ const EFFECT_GAMEPLAY_DESCRIPTIONS = {
   fighting_stance_release: "converte carga acumulada em burst ofensivo",
   legendary_execute: "acumula stacks de execução e elimina o alvo quando o limiar de vida é alcançado",
   legendary_reactive_shield: "absorve dano antes do HP",
+  dragon_impetus_state: "acumula stacks ofensivos e amplifica dano/eficiência/energia",
+  dragon_impetus_stack: "acertos válidos acumulam stacks; cada stack aumenta ATK/MAG/eficiência e, no máximo, aumenta energia",
+  dragon_impetus_unlock: "passiva equipada que habilita o acúmulo automático de Ímpeto desde o início da batalha",
+  exhaustion: "reduz em 35% a geração de energia do alvo",
+  dragonic_rupture: "aumenta em 20% o dano de habilidades recebido",
+  legendary_true_burn: "causa dano verdadeiro por rodada e ignora mitigação",
+  ancestral_presence: "ativa aura ancestral com resistência e burn de fogo por turno",
+  ancestral_presence_enemy_aura: "reduz iniciativa e dano causado sob domínio ancestral",
+  execute: "acumula stacks de execução e elimina abaixo do limiar calculado",
 };
 
 function normalizeEffectKey(entry = {}) {
@@ -64,14 +75,20 @@ function inferGameplayDescription(entry = {}) {
   if (entry.cannotAct || entry.skipTurn || entry.blockAction) parts.push("impede o alvo de agir");
   if (entry.taunt || entry.forcedAction) parts.push("força ação básica e limita escolhas");
 
-  return parts.join("; ") || "altera o fluxo da luta enquanto estiver ativo";
+  return parts.join("; ") || "efeito ativo com impacto não mapeado; consulte nome/tags para origem";
+}
+
+function isGenericDescription(text) {
+  const normalized = String(text || "").trim().toLowerCase();
+  if (!normalized) return true;
+  return normalized.includes("altera o fluxo da luta");
 }
 
 function describeEffectGameplayImpact(entry = {}) {
   if (entry?.gameplayDescription) return String(entry.gameplayDescription);
   const key = normalizeEffectKey(entry);
   if (key && EFFECT_GAMEPLAY_DESCRIPTIONS[key]) return EFFECT_GAMEPLAY_DESCRIPTIONS[key];
-  if (entry?.description) return String(entry.description);
+  if (entry?.description && !isGenericDescription(entry.description)) return String(entry.description);
   return inferGameplayDescription(entry);
 }
 

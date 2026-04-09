@@ -36,6 +36,110 @@ test("renderBattleState inclui botão de troca quando há reservas vivas", () =>
   assert.equal(new Set(actionIds).size, actionIds.length);
 });
 
+test("renderBattleState mantém topo e inclui mini-ícones de status no bloco superior", () => {
+  const battle = createBattleStub();
+  battle.players.U1.elementalState = {
+    effects: [{ id: "psychic_barrier", name: "Barreira Psíquica", remainingRounds: 2, shieldCurrentHp: 25 }],
+    statuses: [{ id: "burn", name: "Burn", remainingRounds: 1, stacks: 1 }],
+  };
+  const payload = renderBattleState(battle);
+  const firstPokemonSection = payload.blocks.find((block) => block.type === "section" && block.text?.text?.includes("<@U1>"));
+
+  assert.ok(firstPokemonSection);
+  assert.match(firstPokemonSection.text.text, /⚡ Iniciativa/);
+  assert.match(firstPokemonSection.text.text, /🧩/);
+  assert.match(firstPokemonSection.text.text, /Barreira Psíquica \(2r\)/);
+  assert.match(firstPokemonSection.text.text, /Burn \(1r\)/);
+});
+
+test("renderBattleState publica ícone de status local em /rendered-images para Slack", () => {
+  const originalPublicBaseUrl = process.env.PUBLIC_BASE_URL;
+  process.env.PUBLIC_BASE_URL = "https://example.com";
+  try {
+    const battle = createBattleStub();
+    battle.players.U1.elementalState = {
+      effects: [],
+      statuses: [{ id: "burn", name: "Burn", remainingRounds: 1, stacks: 1 }],
+    };
+    const payload = renderBattleState(battle);
+    const statusContext = payload.blocks.find((block) => block.type === "context"
+      && block.elements?.some((element) => element.type === "image"));
+
+    assert.ok(statusContext);
+    const imageElement = statusContext.elements.find((element) => element.type === "image");
+    assert.ok(imageElement?.image_url?.startsWith("https://example.com/rendered-images/"));
+  } finally {
+    if (originalPublicBaseUrl == null) delete process.env.PUBLIC_BASE_URL;
+    else process.env.PUBLIC_BASE_URL = originalPublicBaseUrl;
+  }
+});
+
+test("renderBattleState inclui seção fixa de Details antes do resumo da rodada", () => {
+  const battle = createBattleStub();
+  battle.metadata = {
+    turnLog: ["⚔️ <@U1> atacou <@U2> e causou *35* de dano."],
+  };
+  battle.players.U1.selectedPokemon.legendaryPassive = { passiveId: "blindagem_reativa", values: {} };
+  battle.players.U2.selectedPokemon.legendaryPassive = { passiveId: "colapso_elemental", values: {} };
+
+  const payload = renderBattleState(battle);
+  const detailsIndex = payload.blocks.findIndex((block) => block.type === "section" && String(block.text?.text || "").includes("*Details*"));
+  const logIndex = payload.blocks.findIndex((block) => block.type === "section" && String(block.text?.text || "").includes("RESUMO DA RODADA"));
+
+  assert.ok(detailsIndex >= 0);
+  assert.ok(logIndex > detailsIndex);
+  assert.match(payload.blocks[detailsIndex].text.text, /Seu Pokémon ativo:/);
+  assert.match(payload.blocks[detailsIndex].text.text, /Pokémon inimigo ativo:/);
+});
+
+test("renderBattleState renderiza status do registro com imagem e sem texto/emoji de status na linha de HP", () => {
+  const originalPublicBaseUrl = process.env.PUBLIC_BASE_URL;
+  process.env.PUBLIC_BASE_URL = "https://example.com";
+  try {
+    const battle = createBattleStub();
+    battle.metadata = {
+      slackUserId: "U1",
+      turnLog: [{
+        kind: "action_summary",
+        actorUserId: "U1",
+        resolvedAction: {
+          actorId: "U1",
+          actorName: "Pikachu",
+          actionType: "attack",
+          actionName: "Ataque Básico",
+          didHit: true,
+          isCrit: false,
+          baseDamage: 20,
+          finalDamage: 20,
+          activeBuffs: ["Controle Mental [2]"],
+          activeDebuffs: ["Burn [1]"],
+          actorCurrentHp: 115,
+          actorMaxHp: 150,
+        },
+      }],
+    };
+    battle.players.U1.elementalState = {
+      effects: [{ id: "mind_control", name: "Controle Mental", remainingRounds: 2 }],
+      statuses: [{ id: "burn", name: "Burn", remainingRounds: 1, stacks: 1 }],
+    };
+    const payload = renderBattleState(battle);
+    const logSection = payload.blocks.find((block) => block.type === "section"
+      && String(block.text?.text || "").includes("RESUMO DA RODADA"));
+    assert.ok(logSection);
+    assert.match(logSection.text.text, /❤️ 115\/150/);
+    assert.doesNotMatch(logSection.text.text, /Controle Mental/);
+    assert.doesNotMatch(logSection.text.text, /Burn/);
+
+    const battleLogStatusContext = payload.blocks.find((block) => block.type === "context"
+      && block.elements?.some((element) => element.type === "mrkdwn" && /Status \(seu Pokémon ativo\)/.test(element.text))
+      && block.elements?.some((element) => element.type === "image"));
+    assert.ok(battleLogStatusContext);
+  } finally {
+    if (originalPublicBaseUrl == null) delete process.env.PUBLIC_BASE_URL;
+    else process.env.PUBLIC_BASE_URL = originalPublicBaseUrl;
+  }
+});
+
 test("renderMagicOptions gera um action_id único por slot de magia", () => {
   const payload = renderMagicOptions({
     battle: { channelId: "C1" },
@@ -83,12 +187,11 @@ test("formatBattleLogForSlack mantém perspectiva correta por lado e round no to
   };
 
   const text = formatBattleLogForSlack({ battle, lines: battle.metadata.turnLog, title: "LOG" });
-  assert.match(text, /\*Rodada:\* 1/);
-  assert.match(text, /\*\[Pikachu\]\*[\s\S]*Ação: \*Pikachu\* usou/);
-  assert.match(text, /\*\[Charmander\]\*[\s\S]*Ação: \*Charmander\* usou/);
-  assert.match(text, /DOT\/Contínuo/);
-  assert.match(text, /Buffs: Ritmo: \+10% dano/);
-  assert.match(text, /Debuffs: Lentidão: -25% velocidade/);
+  assert.match(text, /🧾 \*Rodada 1\*/);
+  assert.match(text, /\*Pikachu\*[\s\S]*Ação: ⚔️ Ataque Básico/);
+  assert.match(text, /\*Charmander\*[\s\S]*Ação: 🔥 Garras Ardentes/);
+  assert.doesNotMatch(text, /• Status:/);
+  assert.doesNotMatch(text, /Eventos da rodada/);
 });
 
 test("formatBattleLogForSlack usa critBonusDamage e resolvedAction como fonte única do bloco individual", () => {
@@ -120,10 +223,10 @@ test("formatBattleLogForSlack usa critBonusDamage e resolvedAction como fonte ú
     }],
   });
 
-  assert.match(text, /Dano: 48 \(\+crit 18\)/);
-  assert.match(text, /Dano status: Status 5/);
-  assert.match(text, /Vida: 111\/150 \| Barreira: 30/);
-  assert.match(text, /Buffs: Foco: \+15% chance crítica/);
+  assert.match(text, /Dano extra: Dano contínuo \(debuff\) 5 contínuo/);
+  assert.match(text, /Dano total: 48 \(\+crit 18\)/);
+  assert.match(text, /❤️ 111\/150 \| 🛡️ 30 \| Foco: \+15% chance crítica/);
+  assert.doesNotMatch(text, /• Status:/);
 });
 
 test("formatBattleLogForSlack exibe absorção de barreira e duração restante de efeitos", () => {
@@ -157,43 +260,9 @@ test("formatBattleLogForSlack exibe absorção de barreira e duração restante 
     }],
   });
 
-  assert.match(text, /Dano: 0 \(barreira absorveu 40\) \(vantagem elemental\)/);
-  assert.match(text, /Buffs: Controle Mental \[2\] \| Barreira Psíquica \[1\]/);
-  assert.match(text, /Debuffs: Burn \[3\]/);
-});
-
-test("formatBattleLogForSlack inclui Details global com explicação útil e sem duplicar", () => {
-  const battle = createBattleStub();
-  battle.players.U1.elementalState = {
-    effects: [{ id: "psychic_barrier", name: "Barreira Psíquica", remainingRounds: 2, shieldCurrentHp: 55 }],
-    statuses: [{ id: "burn", name: "Burn", stacks: 1, remainingRounds: 2, damagePerStack: 10 }],
-  };
-  battle.players.U2.elementalState = {
-    effects: [{ id: "psychic_barrier", name: "Barreira Psíquica", remainingRounds: 1, shieldCurrentHp: 20 }],
-    statuses: [],
-  };
-
-  const text = formatBattleLogForSlack({
-    battle,
-    title: "LOG",
-    lines: [{ kind: "text", text: "rodada" }],
-  });
-  assert.match(text, /\*Details\*/);
-  assert.match(text, /Barreira Psíquica -> absorve dano antes do HP/);
-  assert.match(text, /Burn -> causa dano ao longo do tempo no turno do afetado/);
-  assert.equal((text.match(/Barreira Psíquica ->/g) || []).length, 1);
-  assert.doesNotMatch(text, /Pikachu:|Charmander:/);
-});
-
-test("formatBattleLogForSlack não exibe Details sem buff\/debuff ativo", () => {
-  const battle = createBattleStub();
-  const text = formatBattleLogForSlack({
-    battle,
-    title: "LOG",
-    lines: [{ kind: "text", text: "rodada" }],
-  });
-
-  assert.doesNotMatch(text, /\*Details\*/);
+  assert.match(text, /Dano total: 0 \(🛡️ 40 absorvido\)/);
+  assert.match(text, /Controle Mental \(2r\) Barreira Psíquica \(1r\)/);
+  assert.match(text, /Burn \(3r\)/);
 });
 
 test("formatBattleLogForSlack usa fallback textual quando não há action_summary", () => {
@@ -209,9 +278,42 @@ test("formatBattleLogForSlack usa fallback textual quando não há action_summar
 
   const text = formatBattleLogForSlack({ battle, lines: battle.metadata.turnLog, title: "LOG" });
   assert.doesNotMatch(text, /Ação: —/);
-  assert.match(text, /Dano: 35/);
-  assert.match(text, /Cura recebida: Cura 18/);
-  assert.match(text, /DOT\/Contínuo: Burn/);
+  assert.match(text, /Dano total: 35/);
+  assert.match(text, /Cura: Cura 18/);
+  assert.doesNotMatch(text, /Eventos da rodada/);
+});
+
+test("formatBattleLogForSlack agrega múltiplas fontes em Dano extra acima do Dano total", () => {
+  const battle = createBattleStub();
+  const text = formatBattleLogForSlack({
+    battle,
+    title: "LOG",
+    lines: [{
+      kind: "action_summary",
+      actorUserId: "U1",
+      skillName: "Catalisador Instável",
+      skillIcon: "✨",
+      resolvedAction: {
+        actorId: "U1",
+        actorName: "Pikachu",
+        actionType: "magic",
+        actionName: "Catalisador Instável",
+        didHit: true,
+        isCrit: false,
+        baseDamage: 20,
+        finalDamage: 55,
+        statusDamage: 12,
+        extraNotes: ["🔥 Burn causou 12 em <@U2>.", "Passiva Lendária — Eco causou 23 de dano físico."],
+        actorCurrentHp: 120,
+        actorMaxHp: 150,
+      },
+    }],
+  });
+
+  const extraIndex = text.indexOf("• Dano extra:");
+  const totalIndex = text.indexOf("• Dano total:");
+  assert.ok(extraIndex >= 0 && totalIndex > extraIndex);
+  assert.match(text, /Dano extra: Dano contínuo \(debuff\) 12 contínuo \| Burn \(debuff\) 12 fogo \| Passiva Lendária — Eco 23 físico/);
 });
 
 function createBattleStub({ withReserves = false } = {}) {

@@ -12,12 +12,27 @@ function getBaseEnergyRegen() {
   return BASE_SKILL_ENERGY_REGEN;
 }
 
-function getEnergyRegenModifiers() {
-  return [];
+function getEnergyRegenModifiers(actor) {
+  const effects = Array.isArray(actor?.elementalState?.effects) ? actor.elementalState.effects : [];
+  return effects
+    .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0)
+    .map((effect) => ({
+      flat: Number(effect?.energyRegenFlat || 0),
+      multiplier: Number(effect?.energyRegenMultiplier || 1),
+    }));
 }
 
 function getModifiedEnergyRegen(actor, combat) {
-  return getEnergyRegenModifiers(actor, combat).reduce((acc, value) => acc + (Number(value) || 0), 0);
+  const base = getBaseEnergyRegen(actor, combat);
+  return getEnergyRegenModifiers(actor, combat).reduce((acc, value) => {
+    const flatRaw = value && typeof value === "object" ? value.flat : value;
+    const flat = Number.isFinite(Number(flatRaw)) ? Number(flatRaw) : 0;
+    const multiplier = Number(value?.multiplier || 1);
+    const byMultiplier = Number.isFinite(multiplier) && multiplier !== 1
+      ? Math.round(base * (multiplier - 1))
+      : 0;
+    return acc + flat + byMultiplier;
+  }, 0);
 }
 
 function regenerateSkillEnergy(actor, combat) {

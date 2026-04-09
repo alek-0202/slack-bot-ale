@@ -1,28 +1,30 @@
 const { ensureElementalState, addOrRefreshEffect } = require('./elementalRules');
+const { GLOBAL_EFFECT_IDS, applyExecuteStacks, getExecuteStatus, tryExecuteTarget } = require('./globalEffectRegistry');
 
-const EXECUTE_STATUS_ID = 'legendary_execute';
+const EXECUTE_STATUS_ID = GLOBAL_EFFECT_IDS.EXECUTE;
 const LEGENDARY_PREFIX = 'Passiva Lendária:';
 const EGG_MAX_TURNS = 6;
+const ULTIMO_SUSPIRO_REVIVE_PCT_PER_ROUND = 8;
 const PASSIVE_DETAILS_BY_ID = Object.freeze({
-  retalia_primordial: 'Armazena dano recebido e libera no próximo ataque.',
-  eco_arcano: 'Habilidade pode repetir automaticamente.',
-  dominio_elemental: 'Dano super efetivo cura e reduz cooldown.',
-  paradoxo_temporal: 'Repete automaticamente a última habilidade.',
-  sangue_adaptativo: 'Ganha resistência progressiva ao elemento recebido.',
-  fissura_caos: 'Pode aplicar status aleatório.',
-  espirito_sobrevivencia: 'Ao atingir baixo HP, ganha vida máxima e perde dano.',
-  vinculo_ruina: 'Parte do dano atinge outro alvo ou vira dano verdadeiro.',
-  blindagem_reativa: 'Receber dano gera escudo.',
-  colapso_elemental: 'Aplica stacks de execução.',
-  ascensao_crescente: 'Aumenta atributos a cada habilidade.',
-  ruptura_realidade: 'Ignora parte da defesa.',
-  essencia_vampirica: 'Converte dano em vida e energia.',
-  reflexo_dimensional: 'Pode invocar mímico.',
-  catalisador_instavel: 'Debuffs podem causar burn verdadeiro.',
-  sobreposicao_elemental: 'Aplica dano elemental adicional.',
-  regencia_absoluta: 'Pode conceder buffs aleatórios.',
-  marca_juizo: 'Marca o alvo e explode ao atingir limite.',
-  ultimo_suspiro: 'Ao morrer, se transforma em ovo e pode renascer.',
+  retalia_primordial: 'Armazena parte do dano recebido e libera no próximo ataque como retaliação.',
+  eco_arcano: 'Ao usar magia, pode repetir automaticamente o golpe com porcentagem do dano original.',
+  dominio_elemental: 'Quando acerta super efetivo, converte parte do dano em cura.',
+  paradoxo_temporal: 'Após intervalo de turnos, repete automaticamente a última magia registrada.',
+  sangue_adaptativo: 'Receber dano elemental acumula resistência contra aquele mesmo elemento.',
+  fissura_caos: 'Ataques podem aplicar um status aleatório adicional no alvo.',
+  espirito_sobrevivencia: 'Ao entrar em vida baixa, aumenta a vida máxima e troca parte do dano por resistência.',
+  vinculo_ruina: 'Parte do dano físico é transferida para alvo secundário ou convertida em dano verdadeiro.',
+  blindagem_reativa: 'Ao receber dano, gera escudo temporário com cooldown interno.',
+  colapso_elemental: 'Golpes super efetivos aplicam stacks de Execute no alvo.',
+  ascensao_crescente: 'Cada magia aumenta ataque, magia e defesa até o limite da passiva.',
+  ruptura_realidade: 'Aumenta o dano final ignorando parte efetiva da defesa do alvo.',
+  essencia_vampirica: 'Magias convertem parte do dano em cura e roubo de energia.',
+  reflexo_dimensional: 'Pode invocar mímico temporário que causa dano automático por turno.',
+  catalisador_instavel: 'Debuffs aplicados podem ativar burn adicional com dano verdadeiro.',
+  sobreposicao_elemental: 'Tem chance de adicionar dano extra do elemento principal.',
+  regencia_absoluta: 'Pode conceder buffs aleatórios de combate durante a luta.',
+  marca_juizo: 'Acumula marcas e, ao atingir o limite, explode com dano baseado na vida máxima do alvo.',
+  ultimo_suspiro: 'Ao morrer, vira ovo temporário e pode renascer se sobreviver rodadas suficientes.',
 });
 
 function getPassiveRuntime(player) {
@@ -73,31 +75,11 @@ function pushPassiveLog(logs, { passiveId: eventPassiveId = null, label, detail 
 }
 
 function ensureExecuteStatus(defender) {
-  const state = ensureElementalState(defender);
-  state.statuses = Array.isArray(state.statuses) ? state.statuses : [];
-  let status = state.statuses.find((entry) => entry.id === EXECUTE_STATUS_ID);
-  if (!status) {
-    status = {
-      id: EXECUTE_STATUS_ID,
-      name: 'EXECUTE',
-      stacks: 0,
-      maxStacks: 0,
-      gameplayDescription: 'acumula stacks de execução e elimina ao atingir o limiar de vida',
-    };
-    state.statuses.push(status);
-  }
-  return status;
+  return getExecuteStatus(defender);
 }
 
 function checkExecuteThreshold(defender) {
-  const status = ensureExecuteStatus(defender);
-  if (!status?.stacks) return false;
-  const threshold = Math.round(Number(defender?.battleHp?.max || 0) * (Number(status.stacks || 0) / 100));
-  if (Number(defender?.battleHp?.current || 0) > 0 && Number(defender?.battleHp?.current || 0) <= threshold) {
-    defender.battleHp.current = 0;
-    return true;
-  }
-  return false;
+  return tryExecuteTarget(defender);
 }
 
 function onBattleStart({ battle }) {
@@ -185,28 +167,14 @@ function onTurnStart({ battle, actorId, logs = [] }) {
 
   if (passive.passiveId === 'ultimo_suspiro' && runtime.eggActive) {
     runtime.eggTurns = Number(runtime.eggTurns || 0) + 1;
-    const heal = Math.max(1, Math.round(Number(player?.battleHp?.max || 0) * 0.08));
-    player.battleHp.current = Math.min(Number(player?.battleHp?.max || 0), Number(player?.battleHp?.current || 0) + heal);
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
-      effectType: 'heal',
-      detail: `Ovo regenerou ${heal} de vida.`,
+      effectType: 'egg_round_survived',
+      detail: `Ovo sobreviveu ao round ${runtime.eggTurns}.`,
     });
-    if (runtime.eggTurns >= EGG_MAX_TURNS) {
-      const reviveHp = Math.max(1, Math.round(Number(player?.battleHp?.max || 0) * 0.35));
-      runtime.eggActive = false;
-      runtime.eggTurns = 0;
-      player.battleHp.current = Math.max(Number(player?.battleHp?.current || 0), reviveHp);
-      pushPassiveLog(logs, {
-        passiveId: passive.passiveId,
-        effectType: 'revive',
-        detail: 'Ovo atingiu limite de turnos e renasceu.',
-      });
-      pushPassiveLog(logs, {
-        passiveId: passive.passiveId,
-        effectType: 'revive',
-        detail: `Renasceu com ${player.battleHp.current} de vida.`,
-      });
+    const maxEggTurns = Math.max(1, Number(passive.values.maxEggRounds || EGG_MAX_TURNS));
+    if (runtime.eggTurns >= maxEggTurns) {
+      reviveFromEgg({ player, passive, runtime, logs, reason: 'round_limit' });
     }
   }
 
@@ -290,9 +258,12 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
   }
 
   if (passive.passiveId === 'colapso_elemental' && isSuperEffective) {
-    const execute = ensureExecuteStatus(defender);
-    execute.maxStacks = Math.max(1, Number(passive.values.maxExecuteStacks || 7));
-    execute.stacks = Math.min(execute.maxStacks, Number(execute.stacks || 0) + 1);
+    const execute = applyExecuteStacks(defender, {
+      stacks: 1,
+      maxStacks: Math.max(1, Number(passive.values.maxExecuteStacks || 7)),
+      baseThresholdPct: 0.15,
+      stackThresholdPct: Math.max(0.005, 0.01),
+    });
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'stacks_gain',
@@ -428,15 +399,7 @@ function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], atta
       detail: `Ovo recebeu ${Math.max(0, Number(damage || 0))} de dano (HP atual: ${Math.max(0, Number(defender.battleHp.current || 0))})`,
     });
     if (Number(defender.battleHp.current || 0) <= 0) {
-      runtime.eggActive = false;
-      runtime.eggTurns = 0;
-      const reviveHp = Math.max(1, Math.round(Number(defender?.battleHp?.max || 0) * 0.35));
-      defender.battleHp.current = reviveHp;
-      pushPassiveLog(logs, {
-        passiveId: passive.passiveId,
-        effectType: 'revive',
-        detail: `Renasceu com ${reviveHp} de vida.`,
-      });
+      reviveFromEgg({ player: defender, passive, runtime, logs, reason: 'egg_hp_zero' });
     }
   }
 
@@ -517,6 +480,38 @@ function rememberLastMagic({ battle, actorId, baseDamage }) {
   runtime.lastMagic = { baseDamage: Number(baseDamage || 0) };
 }
 
+function isEggFormActive(player) {
+  const passive = getLegendaryPassive(player);
+  if (passive?.passiveId !== 'ultimo_suspiro') return false;
+  const runtime = getPassiveRuntime(player);
+  return Boolean(runtime?.eggActive);
+}
+
+function reviveFromEgg({ player, passive, runtime, logs = [], reason = null }) {
+  const turnsSurvived = Math.max(0, Number(runtime?.eggTurns || 0));
+  const pctPerRound = Number(passive?.values?.revivePctPerRound || ULTIMO_SUSPIRO_REVIVE_PCT_PER_ROUND);
+  const maxEggTurns = Math.max(1, Number(passive?.values?.maxEggRounds || EGG_MAX_TURNS));
+  const appliedTurns = Math.min(turnsSurvived, maxEggTurns);
+  const revivePct = Math.max(1, Math.min(100, Math.round(appliedTurns * pctPerRound)));
+  const reviveHp = Math.max(1, Math.round(Number(player?.battleHp?.max || 0) * (revivePct / 100)));
+  runtime.eggActive = false;
+  runtime.eggTurns = 0;
+  player.battleHp.current = reviveHp;
+
+  if (reason === 'round_limit') {
+    pushPassiveLog(logs, {
+      passiveId: passive?.passiveId,
+      effectType: 'revive',
+      detail: 'Ovo atingiu o limite de rounds e renasceu.',
+    });
+  }
+  pushPassiveLog(logs, {
+    passiveId: passive?.passiveId,
+    effectType: 'revive',
+    detail: `Renasceu com ${revivePct}% de HP (${reviveHp}).`,
+  });
+}
+
 module.exports = {
   onBattleStart,
   onTurnStart,
@@ -525,4 +520,5 @@ module.exports = {
   consumeRetaliationOnAttack,
   rememberLastMagic,
   getPassiveDetailsText,
+  isEggFormActive,
 };
