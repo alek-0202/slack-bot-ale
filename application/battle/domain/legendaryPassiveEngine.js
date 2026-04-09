@@ -1,7 +1,5 @@
 const { ensureElementalState, addOrRefreshEffect } = require('./elementalRules');
-const { GLOBAL_EFFECT_IDS, applyExecuteStacks, getExecuteStatus, tryExecuteTarget } = require('./globalEffectRegistry');
-
-const EXECUTE_STATUS_ID = GLOBAL_EFFECT_IDS.EXECUTE;
+const { applyExecuteStacks, tryExecuteTarget } = require('./globalEffectRegistry');
 const LEGENDARY_PREFIX = 'Passiva Lendária:';
 const EGG_MAX_TURNS = 6;
 const ULTIMO_SUSPIRO_REVIVE_PCT_PER_ROUND = 8;
@@ -72,10 +70,6 @@ function pushPassiveLog(logs, { passiveId: eventPassiveId = null, label, detail 
     detail,
     message,
   });
-}
-
-function ensureExecuteStatus(defender) {
-  return getExecuteStatus(defender);
 }
 
 function checkExecuteThreshold(defender) {
@@ -227,11 +221,10 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
   }
 
   if (passive.passiveId === 'marca_juizo') {
-    const status = ensureExecuteStatus(defender);
-    status.marcaJuizoStacks = Number(status.marcaJuizoStacks || 0) + 1;
+    runtime.marcaJuizoStacks = Number(runtime.marcaJuizoStacks || 0) + 1;
     const required = Math.max(1, Number(passive.values.requiredStacks || 3));
-    if (status.marcaJuizoStacks >= required) {
-      status.marcaJuizoStacks = 0;
+    if (runtime.marcaJuizoStacks >= required) {
+      runtime.marcaJuizoStacks = 0;
       const explode = Math.max(1, Math.round(Number(defender?.battleHp?.max || 0) * pct(passive.values.explosionPctTargetMaxHp)));
       defender.battleHp.current = Math.max(0, Number(defender.battleHp.current || 0) - explode);
       pushPassiveLog(logs, {
@@ -243,7 +236,7 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'stacks_gain',
-      detail: `Marca aplicada [${status.marcaJuizoStacks}/${required}]`,
+      detail: `Marca aplicada [${runtime.marcaJuizoStacks}/${required}]`,
     });
   }
 
@@ -261,7 +254,7 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
     const execute = applyExecuteStacks(defender, {
       stacks: 1,
       maxStacks: Math.max(1, Number(passive.values.maxExecuteStacks || 7)),
-      baseThresholdPct: 0.15,
+      baseThresholdPct: 0,
       stackThresholdPct: Math.max(0.005, 0.01),
     });
     pushPassiveLog(logs, {
