@@ -24,8 +24,8 @@ const FRAGMENT_SELL_RULES = Object.freeze({
     uncommon: 1,
     rare: 3,
     epic: 20,
-    legendary: 50,
-    mythical: 100,
+    legendary: 500,
+    mythical: 1000,
   },
   rarityFragments: {
     epic: { epicFragment: 1 },
@@ -38,6 +38,8 @@ const FRAGMENT_SELL_RULES = Object.freeze({
       uncommon: 1,
       rare: 2,
       epic: 50,
+      legendary: 100,
+      mythical: 100,
     },
     prime: {
       common: 1,
@@ -94,7 +96,7 @@ function calculateFragmentBonusesForPokemon(pokemon) {
   const commonFragment = Number(FRAGMENT_SELL_RULES.commonByRarity[rarity] || 0);
   const rarityBonus = FRAGMENT_SELL_RULES.rarityFragments[rarity] || {};
   const prismaticFragment = pokemon?.shiny
-    ? Number(FRAGMENT_SELL_RULES.prismatic[shinyType][rarity] || 0)
+    ? Number(resolveShinyPrismaticReward({ shinyType, rarity }))
     : 0;
 
   return {
@@ -104,6 +106,12 @@ function calculateFragmentBonusesForPokemon(pokemon) {
     mythicalFragment: Number(rarityBonus.mythicalFragment || 0),
     prismaticFragment,
   };
+}
+
+function resolveShinyPrismaticReward({ shinyType, rarity }) {
+  const normalizedShinyType = String(shinyType || "").toLowerCase() === "prime" ? "prime" : "normal";
+  const normalizedRarity = String(rarity || "").toLowerCase();
+  return Number(FRAGMENT_SELL_RULES.prismatic[normalizedShinyType]?.[normalizedRarity] || 0);
 }
 
 function sumFragmentBonuses(pokemons = []) {
@@ -541,4 +549,5 @@ module.exports = {
   sellAllPokemonBatch,
   calculateFragmentBonusesForPokemon,
   sumFragmentBonuses,
+  resolveShinyPrismaticReward,
 };

@@ -32,7 +32,7 @@ function calculateShinyTransferGoldCost({ sourceRarity, targetRarity }) {
   const sourceTier = getRarityTier(normalizeRarity(sourceRarity));
   const targetTier = getRarityTier(normalizeRarity(targetRarity));
   const upwardTierDiff = Math.max(targetTier - sourceTier, 0);
-  return SHINY_TRANSFER_BASE_GOLD_COST + (upwardTierDiff * SHINY_TRANSFER_STEP_GOLD_COST);
+  return upwardTierDiff * SHINY_TRANSFER_STEP_GOLD_COST;
 }
 
 function parseActionValue(value) {
@@ -80,6 +80,9 @@ async function getShinyTransferPreview({ slackUserId, sourcePokemonId, targetPok
   const targetRarity = target.pokemon_species?.rarity;
   if (!isShinyTransferTargetRarityAllowed(targetRarity)) {
     return { ok: false, reason: 'target_invalid_rarity' };
+  }
+  if (getRarityTier(normalizeRarity(targetRarity)) < getRarityTier(normalizeRarity(sourceRarity))) {
+    return { ok: false, reason: 'target_lower_rarity' };
   }
 
   const costGold = calculateShinyTransferGoldCost({ sourceRarity, targetRarity });
