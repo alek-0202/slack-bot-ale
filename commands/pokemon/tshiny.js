@@ -1,5 +1,4 @@
 const {
-  SHINY_TRANSFER_BASE_GOLD_COST,
   getShinyTransferPreview,
 } = require('../../services/pokemonEnhancementService');
 
@@ -11,7 +10,7 @@ function formatGold(value) {
 }
 
 function buildTshinyResultMessage({ sourcePokemonId, targetPokemonId, result }) {
-  const costGold = Number(result?.costGold ?? result?.cost_gold ?? SHINY_TRANSFER_BASE_GOLD_COST);
+  const costGold = Number(result?.costGold ?? result?.cost_gold ?? 0);
   if (!result?.ok) {
     const map = {
       same_pokemon: 'Origem e destino precisam ser Pokémons diferentes.',
@@ -19,6 +18,7 @@ function buildTshinyResultMessage({ sourcePokemonId, targetPokemonId, result }) 
       source_not_shiny: 'O Pokémon de origem precisa ser shiny.',
       target_already_shiny: 'O Pokémon de destino já é shiny.',
       target_invalid_rarity: 'Target inválido: apenas Pokémon de raridade épico para baixo podem receber transferência de shiny.',
+      target_lower_rarity: 'Target inválido: não é permitido transferir shiny para raridade inferior à origem.',
       insufficient_gold: `Gold insuficiente para transferir shiny. Custo: *${formatGold(costGold)}* gold.`,
     };
     return map[result.reason] || 'Não consegui transferir o shiny agora 😵';
