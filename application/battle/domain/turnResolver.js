@@ -218,6 +218,7 @@ function buildResolvedActionPayload({
   elementalMultiplier = 1,
   elementalRelation = "neutral",
   dodged = false,
+  damageBreakdown = [],
 }) {
   const actorState = battle.players?.[actorUserId];
   const targetState = targetUserId ? battle.players?.[targetUserId] : null;
@@ -254,6 +255,7 @@ function buildResolvedActionPayload({
     elementalMultiplier: Math.max(0, Number(elementalMultiplier) || 0),
     elementalRelation,
     dodged: Boolean(dodged),
+    damageBreakdown: Array.isArray(damageBreakdown) ? damageBreakdown : [],
     extraNotes: Array.isArray(extraNotes) ? extraNotes.filter(Boolean) : [],
   };
 }
@@ -268,8 +270,49 @@ function logBattleDebug(event, payload) {
 function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDamage, isMagic = false, isSuperEffective = false, attackElement = null }) {
   const attacker = battle.players?.[attackerId];
   const defender = battle.players[defenderId];
+  const damageBreakdown = [];
+  const initialBaseDamage = Math.max(0, Number(initialDamage || 0));
+  damageBreakdown.push({
+    sourceKind: isMagic ? "active_magic" : "active_attack",
+    sourceName: isMagic ? "Dano base de habilidade" : "Dano base de ataque",
+    baseDamage: initialBaseDamage,
+    finalDamage: initialBaseDamage,
+    addedDamage: 0,
+    multiplier: 1,
+    relation: "neutral",
+    damageType: attackElement || null,
+    metadata: {},
+  });
   const before = applyBeforeDamageHooks({ battle, attackerId, defenderId, damage: initialDamage, isMagic, attackElement });
+  if (before.finalDamage !== initialBaseDamage) {
+    damageBreakdown.push({
+      sourceKind: "multiplier",
+      sourceName: "Before damage hooks",
+      baseDamage: initialBaseDamage,
+      finalDamage: Math.max(0, Number(before.finalDamage || 0)),
+      addedDamage: Math.max(0, Number(before.finalDamage || 0) - initialBaseDamage),
+      multiplier: initialBaseDamage > 0 ? Number((Number(before.finalDamage || 0) / initialBaseDamage).toFixed(4)) : 1,
+      relation: "neutral",
+      damageType: attackElement || null,
+      metadata: {},
+    });
+  }
   const onHit = applyOnHitHooks({ battle, attackerId, defenderId, damage: before.finalDamage });
+  if (onHit.finalDamage !== before.finalDamage) {
+    const beforeValue = Math.max(0, Number(before.finalDamage || 0));
+    const afterValue = Math.max(0, Number(onHit.finalDamage || 0));
+    damageBreakdown.push({
+      sourceKind: "multiplier",
+      sourceName: "On-hit hooks",
+      baseDamage: beforeValue,
+      finalDamage: afterValue,
+      addedDamage: Math.max(0, afterValue - beforeValue),
+      multiplier: beforeValue > 0 ? Number((afterValue / beforeValue).toFixed(4)) : 1,
+      relation: "neutral",
+      damageType: attackElement || null,
+      metadata: {},
+    });
+  }
   const epicOutgoing = applyEpicAffixOutgoingDamage({ attacker, damage: onHit.finalDamage, logs: [] });
   const epicIncoming = applyEpicAffixIncomingDamage({ defender, damage: epicOutgoing.damage, logs: [] });
   let finalDamage = Math.max(0, Number(epicIncoming.damage || 0));
@@ -322,6 +365,8 @@ function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDama
     isMagic,
     logs: [],
     isSuperEffective,
+    attackElement,
+    damageBreakdown,
   });
   finalDamage = Math.max(0, Number(legendaryOutgoing.damage || finalDamage));
   onHit.logs.push(...(legendaryOutgoing.logs || []));
@@ -347,6 +392,7 @@ function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDama
     finalDamage,
     damageBeforeShield: Math.max(0, initialDamageAfterHooks),
     shieldAbsorbedDamage: Math.max(0, Math.round(shieldAbsorbedDamage)),
+    damageBreakdown: [...damageBreakdown, ...(legendaryOutgoing.damageBreakdown || [])],
     logs: [...before.logs, ...onHit.logs],
   };
 }
@@ -455,7 +501,8 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
     timing: EFFECT_TIMING.ON_OWNER_TURN_START,
   });
   if (ownerStartLogs.length) mergeRoundLogs(battle, ownerStartLogs);
-  const legendaryTurnStartLogs = applyLegendaryTurnStart({ battle, actorId: actorUserId, logs: [] });
+  const legendaryTurnStartBreakdown = [];
+  const legendaryTurnStartLogs = applyLegendaryTurnStart({ battle, actorId: actorUserId, logs: [], damageBreakdown: legendaryTurnStartBreakdown });
   if (legendaryTurnStartLogs.length) mergeRoundLogs(battle, legendaryTurnStartLogs);
   const actorControlLogs = clearImpetusIfControlled({ battle, userId: actorUserId });
   if (actorControlLogs.length) mergeRoundLogs(battle, actorControlLogs);
@@ -688,6 +735,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         attackerId: actorUserId,
         defenderId,
         initialDamage: result.finalDamage,
+        attackElement: regularMagic?.element || null,
       });
       const defenderArmor = ensureElementalState(defender).effects?.find((effect) => effect.id === ICE_EFFECT_ARMOR);
       if (defenderArmor?.retaliationApplyGelid) {
@@ -703,7 +751,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         lastMagicName: regularMagic?.name || null,
       };
 
-      rememberLastMagic({ battle, actorId: actorUserId, baseDamage: result.normalDamage });
+      rememberLastMagic({ battle, actorId: actorUserId, baseDamage: result.normalDamage, attackElement: regularMagic?.element || null });
       mergeRoundLogs(battle, damageWithHooks.logs, `✨ <@${actorUserId}> usou ${regularMagic?.name || "magia"} em <@${defenderId}>.`);
       const resolvedAction = buildResolvedActionPayload({
         battle,
@@ -718,6 +766,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         shieldAbsorbedDamage: Number(damageWithHooks.shieldAbsorbedDamage || 0),
         elementalMultiplier: Number(result?.multiplier || 1),
         elementalRelation: result?.elemental?.relation || "neutral",
+        damageBreakdown: damageWithHooks.damageBreakdown,
         appliedEffects: [
           ...listNewEffects({ before: defenderEffectsBefore, playerState: defender }),
           ...listNewEffects({ before: attackerEffectsBefore, playerState: attacker }),
@@ -827,7 +876,12 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       mergeRoundLogs(battle, multi.logs);
       multiTargetApplied = multi.applied;
     }
-    rememberLastMagic({ battle, actorId: actorUserId, baseDamage: castResult.baseDamage || castResult.normalDamage || castResult.damageDealt || 0 });
+    rememberLastMagic({
+      battle,
+      actorId: actorUserId,
+      baseDamage: castResult.baseDamage || castResult.normalDamage || castResult.damageDealt || 0,
+      attackElement: magicAction?.element || castResult?.damageElement || null,
+    });
     if (castResult.damageDealt != null) {
       if (castResult.consumeStanceRelease) {
         castResult.damageDealt += consumeStanceReleaseBonus(attacker);
@@ -849,6 +903,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         });
         castResult.damageDealt = hooksDamage.finalDamage;
         castResult.shieldAbsorbedDamage = Number(hooksDamage.shieldAbsorbedDamage || 0);
+        castResult.damageBreakdown = hooksDamage.damageBreakdown || [];
         castResult.defenderRemainingHp = battle.players[defenderId].battleHp.current;
         mergeRoundLogs(battle, hooksDamage.logs);
         const defenderArmor = ensureElementalState(defender).effects?.find((effect) => effect.id === ICE_EFFECT_ARMOR);
@@ -915,6 +970,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       shieldAbsorbedDamage: Number(castResult?.damageType === "true" ? 0 : castResult?.shieldAbsorbedDamage || 0),
       elementalMultiplier: Number(resolveElementalDamageRule({ attackElement: magicAction.element, defenderElements: defender.selectedPokemon?.elementTypes || [] }).multiplier || 1),
       elementalRelation: resolveElementalDamageRule({ attackElement: magicAction.element, defenderElements: defender.selectedPokemon?.elementTypes || [] }).relation || "neutral",
+      damageBreakdown: castResult?.damageType === "true" ? [] : (Array.isArray(castResult?.damageBreakdown) ? castResult.damageBreakdown : []),
       healingDone: Number(castResult.healAmount || 0),
       appliedEffects: [
         ...listNewEffects({ before: defenderEffectsBefore, playerState: defender }),
@@ -1089,6 +1145,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       elementalMultiplier: Number(result?.elemental?.multiplier || 1),
       elementalRelation: result?.elemental?.elemental?.relation || "neutral",
       dodged: Boolean(result.dodged),
+      damageBreakdown: damageWithHooks.damageBreakdown,
       appliedEffects: [
         ...listNewEffects({ before: defenderEffectsBefore, playerState: defender }),
         ...listNewEffects({ before: attackerEffectsBefore, playerState: attacker }),

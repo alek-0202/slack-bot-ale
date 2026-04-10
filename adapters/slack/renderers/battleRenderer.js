@@ -542,6 +542,17 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false, showSt
 
 function buildExtraDamageEntries(entry = {}) {
   const items = [];
+  const structured = Array.isArray(entry.damageBreakdown) ? entry.damageBreakdown : [];
+  for (const part of structured) {
+    const finalDamage = Math.max(0, Number(part?.finalDamage || 0));
+    if (finalDamage <= 0) continue;
+    const type = part?.damageType ? `[${part.damageType}]` : null;
+    const elementalLabel = part?.multiplier && Number(part.multiplier) !== 1
+      ? `x${Number(part.multiplier).toFixed(2)} (${part.relation || "neutral"})`
+      : null;
+    const source = [part?.sourceName || "Fonte", elementalLabel].filter(Boolean).join(" ");
+    items.push({ source, value: finalDamage, type });
+  }
   const statusDamage = Math.max(0, Number(entry.statusDamage || 0));
   if (statusDamage > 0) items.push({ source: "Dano contínuo (debuff)", value: statusDamage, type: "contínuo" });
   if (Number(entry.extraDamage || 0) > 0) items.push({ source: "Bônus adicional (stat extra)", value: Math.max(0, Number(entry.extraDamage || 0)), type: null });
@@ -709,6 +720,7 @@ function normalizeLogEntry(entry) {
         normalized.actorMaxHp = resolved.actorMaxHp;
         normalized.actorCurrentShield = resolved.actorCurrentShield;
         normalized.blockedReason = resolved.blockedReason;
+        normalized.damageBreakdown = resolved.damageBreakdown;
         normalized.extraNotes = resolved.extraNotes;
       }
     }

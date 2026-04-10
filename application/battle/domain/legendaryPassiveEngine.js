@@ -1,5 +1,6 @@
 const { ensureElementalState, addOrRefreshEffect } = require('./elementalRules');
 const { applyExecuteStacks, tryExecuteTarget } = require('./globalEffectRegistry');
+const { resolveElementalDamageAdjustment, createDamageBreakdownEntry } = require('./damagePipeline');
 const LEGENDARY_PREFIX = 'Passiva Lendária:';
 const EGG_MAX_TURNS = 6;
 const ULTIMO_SUSPIRO_REVIVE_PCT_PER_ROUND = 8;
@@ -94,7 +95,7 @@ function onBattleStart({ battle }) {
   }
 }
 
-function onTurnStart({ battle, actorId, logs = [] }) {
+function onTurnStart({ battle, actorId, logs = [], damageBreakdown = [] }) {
   const player = battle.players?.[actorId];
   const opponentId = actorId === battle.challengerId ? battle.challengedId : battle.challengerId;
   const opponent = battle.players?.[opponentId];
@@ -132,8 +133,23 @@ function onTurnStart({ battle, actorId, logs = [] }) {
     }
   }
   if (runtime.mimicTurns > 0 && opponent?.battleHp?.current > 0) {
-    const mimicDamage = Math.max(1, Math.round(Number(player?.stats?.attack || 1) * 0.35));
+    const mimicBase = Math.max(1, Math.round(Number(player?.stats?.attack || 1) * 0.35));
+    const elemental = resolveElementalDamageAdjustment({
+      baseDamage: mimicBase,
+      attackElement: player?.selectedPokemon?.elementTypes?.[0] || null,
+      defenderElements: opponent?.selectedPokemon?.elementTypes || [],
+    });
+    const mimicDamage = elemental.adjustedDamage;
     opponent.battleHp.current = Math.max(0, Number(opponent.battleHp.current || 0) - mimicDamage);
+    damageBreakdown.push(createDamageBreakdownEntry({
+      sourceKind: 'passive',
+      sourceName: 'Reflexo Dimensional (Mímico)',
+      baseDamage: mimicBase,
+      finalDamage: mimicDamage,
+      multiplier: elemental.multiplier,
+      relation: elemental.relation,
+      damageType: elemental.element,
+    }));
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'summon_attack',
@@ -147,9 +163,24 @@ function onTurnStart({ battle, actorId, logs = [] }) {
     const interval = Number(passive.values.intervalTurns || 5);
     if (runtime.paradoxoCounter >= interval && runtime.lastMagic?.baseDamage) {
       runtime.paradoxoCounter = 0;
-      const bonusDamage = Math.max(1, Math.round(Number(runtime.lastMagic.baseDamage || 0) * pct(passive.values.efficacyPct)));
+      const bonusBase = Math.max(1, Math.round(Number(runtime.lastMagic.baseDamage || 0) * pct(passive.values.efficacyPct)));
       if (opponent) {
+        const elemental = resolveElementalDamageAdjustment({
+          baseDamage: bonusBase,
+          attackElement: runtime.lastMagic.attackElement || null,
+          defenderElements: opponent?.selectedPokemon?.elementTypes || [],
+        });
+        const bonusDamage = elemental.adjustedDamage;
         opponent.battleHp.current = Math.max(0, Number(opponent.battleHp.current || 0) - bonusDamage);
+        damageBreakdown.push(createDamageBreakdownEntry({
+          sourceKind: 'passive',
+          sourceName: 'Paradoxo Temporal',
+          baseDamage: bonusBase,
+          finalDamage: bonusDamage,
+          multiplier: elemental.multiplier,
+          relation: elemental.relation,
+          damageType: elemental.element,
+        }));
         pushPassiveLog(logs, {
           passiveId: passive.passiveId,
           effectType: 'skill_repeat',
@@ -175,7 +206,7 @@ function onTurnStart({ battle, actorId, logs = [] }) {
   return logs;
 }
 
-function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, logs = [], isSuperEffective = false }) {
+function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, logs = [], isSuperEffective = false, attackElement = null, damageBreakdown = [] }) {
   const attacker = battle.players?.[attackerId];
   const defender = battle.players?.[defenderId];
   if (!attacker || !defender) return { damage, logs };
@@ -211,12 +242,28 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
   }
 
   if (passive.passiveId === 'sobreposicao_elemental' && Math.random() < pct(passive.values.chancePct)) {
-    const extra = Math.max(1, Math.round(Number(attacker?.stats?.magic || 1) * pct(passive.values.magicDamagePct)));
+    const extraBase = Math.max(1, Math.round(Number(attacker?.stats?.magic || 1) * pct(passive.values.magicDamagePct)));
+    const elementType = attacker?.selectedPokemon?.elementTypes?.[0] || 'elemental';
+    const elemental = resolveElementalDamageAdjustment({
+      baseDamage: extraBase,
+      attackElement: elementType,
+      defenderElements: defender?.selectedPokemon?.elementTypes || [],
+    });
+    const extra = elemental.adjustedDamage;
     defender.battleHp.current = Math.max(0, Number(defender?.battleHp?.current || 0) - extra);
+    damageBreakdown.push(createDamageBreakdownEntry({
+      sourceKind: 'passive',
+      sourceName: 'Sobreposição Elemental',
+      baseDamage: extraBase,
+      finalDamage: extra,
+      multiplier: elemental.multiplier,
+      relation: elemental.relation,
+      damageType: elementType,
+    }));
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'bonus_damage',
-      detail: `Causou ${extra} de dano ${String(attacker?.selectedPokemon?.elementTypes?.[0] || 'elemental')} adicional.`,
+      detail: `Causou ${extra} de dano ${String(elementType)} adicional.`,
     });
   }
 
@@ -265,12 +312,54 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
   }
 
   if (passive.passiveId === 'eco_arcano' && isMagic && Math.random() < pct(passive.values.chancePct)) {
-    const echo = Math.max(1, Math.round(finalDamage * pct(passive.values.echoDamagePct)));
+    const echoBase = Math.max(1, Math.round(finalDamage * pct(passive.values.echoDamagePct)));
+    const elemental = resolveElementalDamageAdjustment({
+      baseDamage: echoBase,
+      attackElement,
+      defenderElements: defender?.selectedPokemon?.elementTypes || [],
+    });
+    const echo = elemental.adjustedDamage;
     defender.battleHp.current = Math.max(0, Number(defender?.battleHp?.current || 0) - echo);
+    damageBreakdown.push(createDamageBreakdownEntry({
+      sourceKind: 'passive',
+      sourceName: 'Eco Arcano',
+      baseDamage: echoBase,
+      finalDamage: echo,
+      multiplier: elemental.multiplier,
+      relation: elemental.relation,
+      damageType: elemental.element,
+    }));
     pushPassiveLog(logs, {
       passiveId: passive.passiveId,
       effectType: 'skill_repeat',
       detail: `Eco Arcano ativado — habilidade repetida com ${Math.round(Number(passive.values.echoDamagePct || 0))}% de poder (${echo} de dano).`,
+    });
+  }
+
+  if (passive.passiveId === 'fissura_caos' && Math.random() < pct(passive.values.chancePct)) {
+    const statuses = ['burn', 'freeze', 'shock', 'poison'];
+    const picked = statuses[Math.floor(Math.random() * statuses.length)];
+    const effectId = `legendary_chaos_${picked}`;
+    addOrRefreshEffect(defender, {
+      id: effectId,
+      name: `Fissura do Caos (${picked})`,
+      remainingRounds: Math.max(1, Number(passive.values.durationTurns || 1)),
+      incomingDamageTakenMultiplier: picked === 'freeze' ? 1.08 : 1,
+      speedMultiplier: picked === 'shock' ? 0.85 : 1,
+    });
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'debuff_apply',
+      detail: `Aplicou ${picked} por ${Math.max(1, Number(passive.values.durationTurns || 1))} turno(s).`,
+    });
+  }
+
+  if (passive.passiveId === 'reflexo_dimensional' && Math.random() < pct(passive.values.chancePct)) {
+    runtime.mimicTurns = Math.max(Number(runtime.mimicTurns || 0), Math.max(1, Number(passive.values.durationTurns || 2)));
+    pushPassiveLog(logs, {
+      passiveId: passive.passiveId,
+      effectType: 'summon',
+      detail: `Criou mímico por ${runtime.mimicTurns} turno(s).`,
     });
   }
 
@@ -298,7 +387,7 @@ function onOutgoingDamage({ battle, attackerId, defenderId, damage, isMagic, log
     });
   }
 
-  return { damage: finalDamage, logs };
+  return { damage: finalDamage, logs, damageBreakdown };
 }
 
 function onDamageTaken({ battle, attackerId, defenderId, damage, logs = [], attackElement = null }) {
@@ -466,11 +555,14 @@ function consumeRetaliationOnAttack({ battle, attackerId, logs = [] }) {
   return logs;
 }
 
-function rememberLastMagic({ battle, actorId, baseDamage }) {
+function rememberLastMagic({ battle, actorId, baseDamage, attackElement = null }) {
   const actor = battle.players?.[actorId];
   if (!actor) return;
   const runtime = getPassiveRuntime(actor);
-  runtime.lastMagic = { baseDamage: Number(baseDamage || 0) };
+  runtime.lastMagic = {
+    baseDamage: Number(baseDamage || 0),
+    attackElement: attackElement || null,
+  };
 }
 
 function isEggFormActive(player) {

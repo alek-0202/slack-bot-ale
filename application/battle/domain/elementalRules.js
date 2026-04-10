@@ -1,5 +1,6 @@
 const { resolveElementalRelation, normalizeElementName } = require("../../../services/pokemonElementsService");
 const { normalizeElementList } = require("../../../services/elementType");
+const { resolveElementalDamageAdjustment } = require("./damagePipeline");
 
 const ELEMENTAL_COUNTER_REDUCTION_MULTIPLIER = 0.3;
 const ELEMENTAL_ADVANTAGE_MULTIPLIER = 2;
@@ -259,10 +260,20 @@ function processOwnerTurnEffects({ playerState, ownerUserId, timing }) {
       return true;
     }
     if (status.effectType === "burn") {
-      const damage = Math.max(0, Math.round(Number(status.damagePerStack || 0) * Number(status.stacks || 0)));
+      const burnBaseDamage = Math.max(0, Math.round(Number(status.damagePerStack || 0) * Number(status.stacks || 0)));
+      const elemental = resolveElementalDamageAdjustment({
+        baseDamage: burnBaseDamage,
+        attackElement: status.element || "fire",
+        defenderElements: playerState?.selectedPokemon?.elementTypes || [],
+      });
+      const damage = elemental.adjustedDamage;
       if (damage > 0) {
         playerState.battleHp.current = Math.max(0, Number(playerState?.battleHp?.current || 0) - damage);
-        logs.push(`🔥 Burn causou ${damage} em <@${ownerUserId}> (${playerState.battleHp.current}/${playerState.battleHp.max}).`);
+        if (elemental.hasElementalAdjustment) {
+          logs.push(`🔥 Burn causou ${damage} em <@${ownerUserId}> (${playerState.battleHp.current}/${playerState.battleHp.max}) [${elemental.element} ${elemental.relation} x${elemental.multiplier}].`);
+        } else {
+          logs.push(`🔥 Burn causou ${damage} em <@${ownerUserId}> (${playerState.battleHp.current}/${playerState.battleHp.max}).`);
+        }
       }
     }
     status.durationTurnsRemaining = Math.max(0, Number(status.durationTurnsRemaining || 0) - 1);
