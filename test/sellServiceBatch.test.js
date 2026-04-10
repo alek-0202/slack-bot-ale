@@ -308,16 +308,16 @@ test("sellAllPokemonBatch processa em chunks para alto volume e retorna resumo a
     const result = await context.sellService.sellAllPokemonBatch({ slackUserId: "U123" });
 
     assert.equal(result.ok, true);
-    assert.equal(result.soldCount, 245);
+    assert.equal(result.soldCount, 150);
     assert.equal(result.ignoredCount, 15);
     assert.equal(result.favoriteIgnoredCount, 10);
     assert.equal(result.blockedCount, 5);
-    assert.equal(result.goldReceived, String(245 * 300));
-    assert.equal(result.essenceReceived, String(245 * 100));
+    assert.equal(result.goldReceived, String(150 * 300));
+    assert.equal(result.essenceReceived, String(150 * 100));
 
     const batchRpcCalls = context.rpcCalls.filter((call) => call.name === "sell_user_pokemons_batch");
-    assert.equal(batchRpcCalls.length, 3);
-    assert.deepEqual(batchRpcCalls.map((call) => call.payload.p_pokemon_ids.length), [120, 120, 5]);
+    assert.equal(batchRpcCalls.length, 2);
+    assert.deepEqual(batchRpcCalls.map((call) => call.payload.p_pokemon_ids.length), [120, 30]);
   } finally {
     context.cleanup();
   }

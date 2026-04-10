@@ -9,6 +9,7 @@ const logger = createLogger("sell-service");
 const PREVIEW_FETCH_CHUNK_SIZE = 300;
 const TRADE_LOCK_QUERY_CHUNK_SIZE = 400;
 const SELL_RPC_CHUNK_SIZE = 120;
+const SELL_ALL_MAX_BATCH_SIZE = 150;
 const ESSENCE_BY_RARITY = {
   common: 100,
   uncommon: 300,
@@ -249,8 +250,10 @@ async function buildSellAllPreview({ slackUserId }) {
   const lockedIds = await getTradeLockedPokemonIds({ supabase, pokemonIds: nonFavoriteIds });
   const lockedIdSet = new Set(lockedIds);
   const eligibleIds = nonFavoriteIds.filter((id) => !lockedIdSet.has(id));
+  const limitedEligibleIds = eligibleIds.slice(0, SELL_ALL_MAX_BATCH_SIZE);
+  const sellAllBatchLimited = eligibleIds.length > limitedEligibleIds.length;
 
-  if (!eligibleIds.length) {
+  if (!limitedEligibleIds.length) {
     return {
       ok: false,
       reason: "no_sellable_pokemon",
@@ -263,7 +266,7 @@ async function buildSellAllPreview({ slackUserId }) {
     };
   }
 
-  const preview = await buildSellPreviewBatch({ slackUserId, pokemonIds: eligibleIds });
+  const preview = await buildSellPreviewBatch({ slackUserId, pokemonIds: limitedEligibleIds });
   if (!preview.ok) return preview;
 
   return {
@@ -273,6 +276,9 @@ async function buildSellAllPreview({ slackUserId }) {
     favoriteIgnoredCount: favoriteIds.length,
     blockedCount: lockedIds.length,
     ignoredCount: favoriteIds.length + lockedIds.length,
+    totalEligibleCount: eligibleIds.length,
+    sellAllBatchLimited,
+    maxBatchSize: SELL_ALL_MAX_BATCH_SIZE,
     favoriteIds,
     blockedIds: lockedIds,
   };
