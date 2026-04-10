@@ -40,7 +40,7 @@ test('buildShinyConsistencyPatch limpa shiny_type quando pokemon não é shiny',
   });
 });
 
-test('buildShinyConsistencyPatch não altera shiny normal consistente', () => {
+test('buildShinyConsistencyPatch corrige IV para shiny normal', () => {
   const patch = buildShinyConsistencyPatch({
     shiny: true,
     shiny_type: 'normal',
@@ -51,5 +51,11 @@ test('buildShinyConsistencyPatch não altera shiny normal consistente', () => {
     speed_iv: 1,
   });
 
-  assert.equal(patch, null);
+  assert.deepEqual(patch, {
+    attack_iv: 12,
+    magic_iv: 18,
+    defense_iv: 12,
+    hp_iv: 20,
+    speed_iv: 15,
+  });
 });
