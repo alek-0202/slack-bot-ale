@@ -904,7 +904,10 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         });
         castResult.damageDealt = hooksDamage.finalDamage;
         castResult.shieldAbsorbedDamage = Number(hooksDamage.shieldAbsorbedDamage || 0);
-        castResult.damageBreakdown = hooksDamage.damageBreakdown || [];
+        castResult.damageBreakdown = [
+          ...(Array.isArray(castResult.damageBreakdown) ? castResult.damageBreakdown : []),
+          ...(hooksDamage.damageBreakdown || []),
+        ];
         castResult.defenderRemainingHp = battle.players[defenderId].battleHp.current;
         mergeRoundLogs(battle, hooksDamage.logs);
         const defenderArmor = ensureElementalState(defender).effects?.find((effect) => effect.id === ICE_EFFECT_ARMOR);
@@ -986,6 +989,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
       baseDamage: castResult.baseDamage || castResult.normalDamage || 0,
       finalDamage: castResult.damageDealt || 0,
       appliedEffects: resolvedAction.appliedEffects,
+      efficiencyDebug: castResult.debug || null,
     });
 
     const finalized = applyRoundEndAndCheck(battle, actorUserId);

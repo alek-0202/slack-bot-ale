@@ -2,6 +2,7 @@ const {
   BATTLE_HOOK,
   registerElementalRules,
   getElementalEfficiencyMultiplier,
+  getElementalEfficiencyContext,
   ensureElementalState,
   getStatus,
   upsertStatus,
@@ -192,8 +193,9 @@ const dragonRules = {
 
         const baseMagic = Math.max(1, Number(actor?.stats?.magic || actor?.stats?.attack || 1));
         const scale = 0.95 + (0.05 * impetusStacks);
-        const efficiency = getElementalEfficiencyMultiplier(actor);
-        const damageDealt = Math.max(1, Math.round(baseMagic * scale * efficiency));
+        const efficiency = getElementalEfficiencyContext(actor);
+        const damageBeforeRounding = baseMagic * scale * efficiency.multiplier;
+        const damageDealt = Math.max(1, Math.round(damageBeforeRounding));
 
         addOrRefreshEffect(actor, {
           id: DRAGON_ANCESTRAL_BREATH_RECAST_EFFECT_ID,
@@ -230,6 +232,49 @@ const dragonRules = {
           consumedTurn: true,
           damageDealt,
           baseDamage: damageDealt,
+          damageBreakdown: [
+            {
+              sourceKind: "active_magic",
+              sourceName: "Sopro Ancestral (base MAG + escala)",
+              baseDamage: Math.max(0, Math.round(baseMagic * scale)),
+              finalDamage: Math.max(0, Math.round(baseMagic * scale)),
+              addedDamage: 0,
+              multiplier: Number(scale.toFixed(4)),
+              relation: "neutral",
+              damageType: "dragon",
+              metadata: {
+                baseMagic,
+                impetusStacks,
+              },
+            },
+            {
+              sourceKind: "multiplier",
+              sourceName: "Eficiência elemental/mágica",
+              baseDamage: Math.max(0, Math.round(baseMagic * scale)),
+              finalDamage: damageDealt,
+              addedDamage: Math.max(0, damageDealt - Math.round(baseMagic * scale)),
+              multiplier: Number(efficiency.multiplier.toFixed(4)),
+              relation: "neutral",
+              damageType: "dragon",
+              metadata: {
+                baseEfficiencyChance: Number(efficiency.baseEfficiencyChance || 0),
+                directStatsBonusPct: Number(efficiency.directStatsBonusPct || 0),
+                effectBonusPct: Number(efficiency.effectBonusPct || 0),
+                statusBonusPct: Number(efficiency.statusBonusPct || 0),
+                totalPctBonus: Number(efficiency.totalPctBonus || 0),
+                rawDamageBeforeRound: Number(damageBeforeRounding.toFixed(4)),
+              },
+            },
+          ],
+          debug: {
+            baseMagic,
+            scale,
+            efficiencyMultiplier: Number(efficiency.multiplier.toFixed(4)),
+            baseEfficiencyChance: Number(efficiency.baseEfficiencyChance || 0),
+            directStatsBonusPct: Number(efficiency.directStatsBonusPct || 0),
+            totalEfficiencyBonusPct: Number(efficiency.totalPctBonus || 0),
+            finalDamage: damageDealt,
+          },
           defenderId,
           battleLog: logs,
         };
