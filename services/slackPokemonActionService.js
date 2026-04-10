@@ -501,6 +501,9 @@ function buildSellPreviewMessage({ slackUserId, preview }) {
               ...(isLargeBatch ? [""] : []),
               `*Valor total da venda:* ${preview.totalSellPrice || "0"} gold`,
               `*Essência total prevista:* ${preview.totalEssenceReceived || "0"}`,
+              ...(preview.sellAllBatchLimited
+                ? [`*Limite por execução:* exibindo e vendendo até ${preview.maxBatchSize || 150} Pokémons (${preview.totalEligibleCount || preview.totalCount || 0} elegíveis no total).`]
+                : []),
               preview.ignoredCount
                 ? `*Ignorados/bloqueados:* ${preview.ignoredCount} (favoritos: ${preview.favoriteIgnoredCount || 0}, bloqueados: ${preview.blockedCount || 0})`
                 : "*Ignorados/bloqueados:* 0",
