@@ -83,6 +83,33 @@ test('colapso elemental e sangue adaptativo exibem stacks com marcador de passiv
   assert.match(JSON.stringify(takenLogs), /\[stack 1\]/);
 });
 
+test('sobreposição elemental aplica vantagem elemental no dano extra e registra breakdown', () => {
+  const battle = createBattleWithPassive('sobreposicao_elemental', { chancePct: 100, magicDamagePct: 50 });
+  battle.players.U1.selectedPokemon.elementTypes = ['fire'];
+  battle.players.U2.selectedPokemon.elementTypes = ['grass'];
+  battle.players.U1.stats.magic = 100;
+  const damageBreakdown = [];
+
+  const result = onOutgoingDamage({
+    battle,
+    attackerId: 'U1',
+    defenderId: 'U2',
+    damage: 20,
+    isMagic: true,
+    isSuperEffective: false,
+    attackElement: 'fire',
+    logs: [],
+    damageBreakdown,
+  });
+
+  const extraEntry = result.damageBreakdown.find((entry) => entry.sourceName === 'Sobreposição Elemental');
+  assert.ok(extraEntry);
+  assert.equal(extraEntry.baseDamage, 50);
+  assert.equal(extraEntry.finalDamage, 100);
+  assert.equal(extraEntry.multiplier, 2);
+  assert.equal(extraEntry.relation, 'advantage');
+});
+
 test('último suspiro mostra cooldown restante no início do turno', () => {
   const battle = createBattleWithPassive('ultimo_suspiro', { cooldownRounds: 3, eggHpPct: 20 });
   battle.players.U1.legendaryRuntime.eggActive = true;
