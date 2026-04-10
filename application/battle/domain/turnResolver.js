@@ -45,6 +45,7 @@ const {
   isEggFormActive,
 } = require('./legendaryPassiveEngine');
 const { applyEpicAffixOutgoingDamage, applyEpicAffixIncomingDamage } = require('./epicAffixBattleResolver');
+const { applyHpDamage, buildDamagePacket } = require('./damagePipeline');
 
 
 function consumeBattleEnergy({ battle, userId, amount }) {
@@ -371,7 +372,7 @@ function applyFinalDamageWithHooks({ battle, attackerId, defenderId, initialDama
   finalDamage = Math.max(0, Number(legendaryOutgoing.damage || finalDamage));
   onHit.logs.push(...(legendaryOutgoing.logs || []));
 
-  defender.battleHp.current = Math.max(0, defender.battleHp.current - finalDamage);
+  applyHpDamage({ target: defender, amount: finalDamage });
   const legendaryTakenLogs = applyLegendaryDamageTaken({
     battle,
     attackerId,
@@ -945,7 +946,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         const attackerEffects = ensureElementalState(attacker).effects || [];
         const hostileField = attackerEffects.find((effect) => String(effect.id || "").startsWith(ELECTRIC_EFFECT_FIELD_DEBUFF));
         if (hostileField?.actionShockDamage) {
-          attacker.battleHp.current = Math.max(0, Number(attacker?.battleHp?.current || 0) - Number(hostileField.actionShockDamage || 0));
+          applyHpDamage({ target: attacker, amount: Number(hostileField.actionShockDamage || 0) });
           mergeRoundLogs(battle, `🧲 Campo Eletrostático retaliou habilidade de alto custo em <@${actorUserId}>.`);
         }
       }
@@ -1088,7 +1089,16 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
         ? Number(forestThorn.reflectOnCommonAttack.lowHpSlowChance || 0.35)
         : Number(forestThorn.reflectOnCommonAttack.normalSlowChance || 0.2);
       const reflectedDamage = Math.max(0, Math.round(Number(damageWithHooks.finalDamage || 0) * reflectPct));
-      attacker.battleHp.current = Math.max(0, Number(attacker?.battleHp?.current || 0) - reflectedDamage);
+      const reflectedPacket = buildDamagePacket({
+        sourceKind: "reflect",
+        sourceName: "Espinho da Floresta",
+        origin: "effect:forest_thorn_reflect",
+        baseAmount: reflectedDamage,
+        damageType: "grass",
+        attackElement: "grass",
+        defenderElements: attacker?.selectedPokemon?.elementTypes || [],
+      });
+      const reflectedApply = applyHpDamage({ target: attacker, amount: reflectedPacket.finalAmount });
 
       addOrRefreshEffect(attacker, {
         id: GRASS_EFFECT_SHORT_CUT,
@@ -1111,7 +1121,7 @@ function resolveBattleTurn({ battle, actorUserId, actionType, actionPayload = {}
 
       mergeRoundLogs(
         battle,
-        `🌲 Espinho da Floresta refletiu ${reflectedDamage} em <@${actorUserId}> e aplicou Corte Curto por 2 rodadas.${slowed ? " Lentidão aplicada." : ""}`,
+        `🌲 Espinho da Floresta refletiu ${reflectedApply.damageApplied} em <@${actorUserId}> e aplicou Corte Curto por 2 rodadas.${slowed ? " Lentidão aplicada." : ""}`,
       );
     }
 

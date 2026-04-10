@@ -1,4 +1,5 @@
 const { ensureElementalState, addOrRefreshEffect } = require("./elementalRules");
+const { applyHpDamage } = require("./damagePipeline");
 
 function getOpponentUserIds(battle, actorId) {
   return Object.keys(battle.players || {}).filter((userId) => userId !== actorId);
@@ -104,13 +105,13 @@ function applyDamageToTargetRef(battle, targetRef, damage) {
   const index = team.findIndex((member) => Number(member.id) === Number(targetRef.pokemonId));
   if (index < 0) return { damageApplied: 0, remainingHp: 0 };
 
-  team[index].battleHp.current = Math.max(0, Number(team[index].battleHp.current || 0) - value);
+  const applyResult = applyHpDamage({ target: team[index], amount: value });
   if (index === Number(player.activeTeamIndex || 0) && player.battleHp) {
-    player.battleHp.current = team[index].battleHp.current;
+    player.battleHp.current = applyResult.remainingHp;
   }
   return {
-    damageApplied: value,
-    remainingHp: Number(team[index].battleHp.current || 0),
+    damageApplied: applyResult.damageApplied,
+    remainingHp: Number(applyResult.remainingHp || 0),
     isActiveTarget: index === Number(player.activeTeamIndex || 0),
   };
 }
