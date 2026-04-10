@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const { dragonRules, gainImpetusStack, getImpetusStacks, clearImpetusByControl, DRAGON_SKILLS, DRAGON_IMPETUS_EFFECT_ID } = require("../application/battle/domain/dragonElementRules");
 const { regenerateSkillEnergy } = require("../application/battle/domain/skillEnergy");
+const { getElementalEfficiencyContext } = require("../application/battle/domain/elementalRules");
 
 function createPlayer(userId, { elementTypes = ["dragon"] } = {}) {
   return {
@@ -113,4 +114,42 @@ test("Presença Ancestral aplica aura inimiga, burn de fogo e redução extra", 
   assert.ok(defender.elementalState.effects.some((entry) => String(entry.id).startsWith("ancestral_presence_enemy_aura")));
   assert.ok(logs.some((entry) => entry.includes("Burn ancestral")));
   assert.equal(actor.elementalState.skillCooldowns.dragon_ancestral_breath, 3);
+});
+
+test("Sopro Ancestral escala com eficiência 0%, +20% e +100% no mesmo contexto", () => {
+  const skill = dragonRules.skills.find((entry) => entry.id === DRAGON_SKILLS.ANCESTRAL_BREATH);
+  const defender = createPlayer("U2", { elementTypes: ["normal"] });
+  const actorZero = createPlayer("U0");
+  const actorPlus20 = createPlayer("U20");
+  const actorPlus100 = createPlayer("U100");
+
+  actorZero.stats.elementalChance = 0;
+  actorZero.stats.magicEfficiencyBonusPct = 0;
+
+  actorPlus20.stats.elementalChance = 0;
+  actorPlus20.stats.magicEfficiencyBonusPct = 20;
+
+  actorPlus100.stats.elementalChance = 0;
+  actorPlus100.stats.magicEfficiencyBonusPct = 100;
+
+  const castZero = skill.cast({ actor: actorZero, defender, actorId: "U0", defenderId: "U2" });
+  const castPlus20 = skill.cast({ actor: actorPlus20, defender, actorId: "U20", defenderId: "U2" });
+  const castPlus100 = skill.cast({ actor: actorPlus100, defender, actorId: "U100", defenderId: "U2" });
+
+  assert.equal(castZero.damageDealt, 190);
+  assert.equal(castPlus20.damageDealt, 228);
+  assert.equal(castPlus100.damageDealt, 380);
+
+  const zeroContext = getElementalEfficiencyContext(actorZero);
+  const plus20Context = getElementalEfficiencyContext(actorPlus20);
+  const plus100Context = getElementalEfficiencyContext(actorPlus100);
+
+  assert.equal(zeroContext.directStatsBonusPct, 0);
+  assert.equal(plus20Context.directStatsBonusPct, 20);
+  assert.equal(plus100Context.directStatsBonusPct, 100);
+  assert.equal(plus20Context.multiplier, 1.2);
+  assert.equal(plus100Context.multiplier, 2);
+
+  assert.ok(Array.isArray(castPlus20.damageBreakdown));
+  assert.ok(castPlus20.damageBreakdown.some((entry) => entry.sourceName === "Eficiência elemental/mágica"));
 });

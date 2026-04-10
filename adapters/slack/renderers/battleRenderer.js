@@ -427,7 +427,12 @@ function formatCombatantSummaryLines(summary, options = {}) {
   const shouldShowStatusBadgesInText = options.showStatusBadgesInText !== false;
   const details = [];
   if (summary.actionLabel) details.push(`• Ação: ${summary.actionLabel}`);
-  if (summary.extraDamageEntries.length) details.push(`• Dano extra: ${summary.extraDamageEntries.map((entry) => `${entry.source} ${entry.value}${entry.type ? ` ${entry.type}` : ""}`).join(" | ")}`);
+  if (summary.extraDamageEntries.length) {
+    details.push(`• Dano extra: ${summary.extraDamageEntries.map((entry) => `${entry.source} ${entry.value}${entry.type ? ` ${entry.type}` : ""}`).join(" | ")}`);
+    for (const entry of summary.extraDamageEntries) {
+      details.push(`  ◦ ${entry.block}: ${entry.source} ${entry.value}${entry.type ? ` ${entry.type}` : ""}${entry.composition ? ` (${entry.composition})` : ""}`);
+    }
+  }
   const shouldShowTotalDamage = Number(summary.directDamage || 0) > 0 || Number(summary.absorbedDamage || 0) > 0;
   if (shouldShowTotalDamage) details.push(`• Dano total: ${summary.directDamage || 0}${summary.absorbedDamage ? ` (🛡️ ${summary.absorbedDamage} absorvido)` : ""}${summary.critDamageBonus ? ` (+crit ${summary.critDamageBonus})` : ""}${summary.dodged ? " (esquivado)" : ""}`);
   if (summary.appliedEffects.length) details.push(`• Stat: ${summary.appliedEffects.join(" | ")}`);
@@ -542,14 +547,31 @@ function formatBattleLogForSlack({ battle, lines, title, rawMode = false, showSt
 
 function buildExtraDamageEntries(entry = {}) {
   const items = [];
+  const structured = Array.isArray(entry.damageBreakdown) ? entry.damageBreakdown : [];
+  for (const part of structured) {
+    const finalDamage = Math.max(0, Number(part?.finalDamage || 0));
+    if (finalDamage <= 0) continue;
+    const type = part?.damageType ? `[${part.damageType}]` : null;
+    const source = part?.sourceName || "Fonte";
+    const kind = String(part?.sourceKind || "").toLowerCase();
+    const block = kind.includes("status") || kind.includes("dot")
+      ? "DOT/Status"
+      : (kind.includes("reflect") || kind.includes("counter") ? "Reflect/Counter" : (kind.includes("active") ? "Golpe principal" : "Danos extras"));
+    const composition = [
+      `base ${Math.max(0, Number(part?.baseDamage || 0))}`,
+      Number(part?.multiplier || 1) !== 1 ? `mult x${Number(part.multiplier).toFixed(2)}` : null,
+      part?.relation && part.relation !== "neutral" ? `elemento ${part.relation}` : null,
+    ].filter(Boolean).join(" + ");
+    items.push({ source, value: finalDamage, type, block, composition });
+  }
   const statusDamage = Math.max(0, Number(entry.statusDamage || 0));
-  if (statusDamage > 0) items.push({ source: "Dano contínuo (debuff)", value: statusDamage, type: "contínuo" });
-  if (Number(entry.extraDamage || 0) > 0) items.push({ source: "Bônus adicional (stat extra)", value: Math.max(0, Number(entry.extraDamage || 0)), type: null });
+  if (statusDamage > 0) items.push({ source: "Dano contínuo (debuff)", value: statusDamage, type: "contínuo", block: "DOT/Status", composition: "status tick" });
+  if (Number(entry.extraDamage || 0) > 0) items.push({ source: "Bônus adicional (stat extra)", value: Math.max(0, Number(entry.extraDamage || 0)), type: null, block: "Danos extras", composition: "bônus adicional" });
 
   const notes = Array.isArray(entry.extraNotes) ? entry.extraNotes : [];
   for (const note of notes) {
     const parsed = parseExtraDamageNote(note);
-    if (parsed) items.push(parsed);
+    if (parsed) items.push({ block: "Danos extras", composition: null, ...parsed });
   }
   const unique = new Set();
   return items.filter((item) => {
@@ -709,6 +731,7 @@ function normalizeLogEntry(entry) {
         normalized.actorMaxHp = resolved.actorMaxHp;
         normalized.actorCurrentShield = resolved.actorCurrentShield;
         normalized.blockedReason = resolved.blockedReason;
+        normalized.damageBreakdown = resolved.damageBreakdown;
         normalized.extraNotes = resolved.extraNotes;
       }
     }

@@ -13,6 +13,16 @@ test('buildTshinyResultMessage mostra erro de target inválido', () => {
   assert.match(text, /épico para baixo/);
 });
 
+test('buildTshinyResultMessage mostra erro para target de raridade inferior', () => {
+  const text = buildTshinyResultMessage({
+    sourcePokemonId: 1,
+    targetPokemonId: 2,
+    result: { ok: false, reason: 'target_lower_rarity' },
+  });
+
+  assert.match(text, /raridade inferior/);
+});
+
 test('buildTshinyResultMessage mostra custo dinâmico em saldo insuficiente e sucesso', () => {
   const insufficient = buildTshinyResultMessage({
     sourcePokemonId: 1,

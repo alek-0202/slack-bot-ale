@@ -35,6 +35,7 @@ function sanitizeResolvedAction(action = {}) {
     actorCurrentShield: Math.max(0, Number(action.actorCurrentShield) || 0),
     targetCurrentShield: Math.max(0, Number(action.targetCurrentShield) || 0),
     blockedReason: action.blockedReason || null,
+    damageBreakdown: Array.isArray(action.damageBreakdown) ? action.damageBreakdown : [],
     extraNotes: Array.isArray(action.extraNotes) ? action.extraNotes.filter(Boolean) : [],
   };
 }
@@ -77,6 +78,7 @@ function buildActionSummaryFromResolvedAction(resolvedAction, fallback = {}) {
     actorCurrentShield: normalized.actorCurrentShield,
     targetCurrentShield: normalized.targetCurrentShield,
     blockedReason: normalized.blockedReason,
+    damageBreakdown: normalized.damageBreakdown,
     extraNotes: normalized.extraNotes,
     modifiers: Array.isArray(fallback.modifiers) ? fallback.modifiers.filter(Boolean) : [],
     extraDamage: fallback.extraDamage,

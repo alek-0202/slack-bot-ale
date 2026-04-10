@@ -64,6 +64,7 @@ function buildPokemonHelp() {
     "`!sell <pokemon_id[,pokemon_id,...]>` → abre confirmação para vender Pokémons (retorno em gold + essência)",
     "`!sellall` → abre confirmação para vender todos os Pokémons não favoritados e elegíveis",
     "`!resetpokeid <pokemon_id>` → reseta upgrades e devolve o gold investido",
+    "`!resetshiny <pokemon_id>` → remove shiny, zera IVs e devolve fragmentos prismáticos conforme tipo de shiny",
     "`Botão Stats` no `!pokeid` → upgrades extras: crit, esquiva e efeito elemental",
     ...linesFrom(["market", "invoke", "epictome"], sharedPokemonCommands),
     "`!mi` → abre o novo market padrão de itens com carrinho",

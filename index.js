@@ -57,6 +57,7 @@ const tshinyCommand = require("./commands/pokemon/tshiny");
 const applyitemCommand = require("./commands/pokemon/applyitem");
 const pokeplayerCommand = require("./commands/pokemon/pokeplayer");
 const resetpokeidCommand = require("./commands/pokemon/resetpokeid");
+const resetshinyCommand = require("./commands/pokemon/resetshiny");
 const healstationCommand = require("./commands/pokemon/healstation");
 const healpokeCommand = require("./commands/pokemon/healpoke");
 const upstationCommand = require("./commands/pokemon/upstation");
@@ -175,6 +176,7 @@ for (const commandModule of [
   applyitemCommand,
   pokeplayerCommand,
   resetpokeidCommand,
+  resetshinyCommand,
   healstationCommand,
   healpokeCommand,
   upstationCommand,
