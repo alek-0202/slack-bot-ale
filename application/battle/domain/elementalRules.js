@@ -60,8 +60,16 @@ function getRegisteredElementalRules() {
   return Array.from(elementalRegistry.entries()).map(([element, rules]) => ({ element, rules }));
 }
 
-function getElementalEfficiencyMultiplier(playerState) {
+function getElementalEfficiencyContext(playerState) {
   const efficiency = Math.max(0, Number(playerState?.stats?.elementalChance || 0));
+  const directStatsBonusPct = Math.max(
+    0,
+    Number(
+      playerState?.stats?.magicEfficiencyBonusPct
+      ?? playerState?.stats?.elementalEfficiencyBonusPct
+      ?? 0,
+    ) || 0,
+  );
   const state = ensureElementalState(playerState || {});
   const effectBonusPct = (state.effects || [])
     .filter((effect) => Number(effect?.remainingRounds ?? 1) > 0)
@@ -69,7 +77,20 @@ function getElementalEfficiencyMultiplier(playerState) {
   const statusBonusPct = (state.statuses || [])
     .filter((status) => Number(status?.remainingRounds ?? 1) > 0)
     .reduce((acc, status) => acc + Math.max(0, Number(status.elementalEfficiencyBonusPct || 0)), 0);
-  return 1 + efficiency + ((effectBonusPct + statusBonusPct) / 100);
+  const totalPctBonus = directStatsBonusPct + effectBonusPct + statusBonusPct;
+
+  return {
+    multiplier: 1 + efficiency + (totalPctBonus / 100),
+    baseEfficiencyChance: efficiency,
+    directStatsBonusPct,
+    effectBonusPct,
+    statusBonusPct,
+    totalPctBonus,
+  };
+}
+
+function getElementalEfficiencyMultiplier(playerState) {
+  return getElementalEfficiencyContext(playerState).multiplier;
 }
 
 function resolveElementalDamageRule({ attackElement, defenderElements = [] }) {
@@ -309,6 +330,7 @@ module.exports = {
   registerElementalRules,
   getElementalRules,
   getRegisteredElementalRules,
+  getElementalEfficiencyContext,
   getElementalEfficiencyMultiplier,
   resolveElementalDamageRule,
   ensureElementalState,
