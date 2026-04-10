@@ -6,9 +6,11 @@ const servicePath = path.resolve(__dirname, '../services/pokemonEnhancementServi
 const dbPath = path.resolve(__dirname, '../database/supabase.js');
 const economyPath = path.resolve(__dirname, '../services/economyService.js');
 const loggerPath = path.resolve(__dirname, '../utils/logger.js');
+const lookupPath = path.resolve(__dirname, '../services/pokemonLookupService.js');
+const shinyConsistencyPath = path.resolve(__dirname, '../services/shinyIvConsistencyService.js');
 
-function loadService({ supabaseClient, getRarityTierImpl }) {
-  [servicePath, dbPath, economyPath, loggerPath].forEach((modulePath) => delete require.cache[modulePath]);
+function loadService({ supabaseClient, getRarityTierImpl, getOwnedPokemonByIdImpl, applyShinyConsistencyIfNeededImpl }) {
+  [servicePath, dbPath, economyPath, loggerPath, lookupPath, shinyConsistencyPath].forEach((modulePath) => delete require.cache[modulePath]);
 
   require.cache[dbPath] = {
     id: dbPath,
@@ -28,9 +30,21 @@ function loadService({ supabaseClient, getRarityTierImpl }) {
     loaded: true,
     exports: { createLogger: () => ({ info: () => {} }) },
   };
+  require.cache[lookupPath] = {
+    id: lookupPath,
+    filename: lookupPath,
+    loaded: true,
+    exports: { getOwnedPokemonById: getOwnedPokemonByIdImpl || (async () => null) },
+  };
+  require.cache[shinyConsistencyPath] = {
+    id: shinyConsistencyPath,
+    filename: shinyConsistencyPath,
+    loaded: true,
+    exports: { applyShinyConsistencyIfNeeded: applyShinyConsistencyIfNeededImpl || (async (pokemon) => pokemon) },
+  };
 
   const service = require(servicePath);
-  [servicePath, dbPath, economyPath, loggerPath].forEach((modulePath) => delete require.cache[modulePath]);
+  [servicePath, dbPath, economyPath, loggerPath, lookupPath, shinyConsistencyPath].forEach((modulePath) => delete require.cache[modulePath]);
   return service;
 }
 
@@ -231,4 +245,26 @@ test('getShinyTransferPreview bloqueia transferência para raridade inferior', a
   const service = loadService({ supabaseClient, getRarityTierImpl });
   const result = await service.getShinyTransferPreview({ slackUserId: 'U1', sourcePokemonId: 11, targetPokemonId: 22 });
   assert.deepEqual(result, { ok: false, reason: 'target_lower_rarity' });
+});
+
+test('transferShiny aplica consistência de IV no target após sucesso', async () => {
+  let consistencyCalls = 0;
+  const targetPokemon = { id: 20, slack_user_id: 'U1', shiny: true, shiny_type: 'normal' };
+  const supabaseClient = {
+    rpc: async () => ({
+      data: [{ ok: true, reason: null, cost_gold: 5000000 }],
+      error: null,
+    }),
+  };
+
+  const service = loadService({
+    supabaseClient,
+    getRarityTierImpl,
+    getOwnedPokemonByIdImpl: async (id) => (id === 20 ? targetPokemon : null),
+    applyShinyConsistencyIfNeededImpl: async () => { consistencyCalls += 1; },
+  });
+  const result = await service.transferShiny({ slackUserId: 'U1', sourcePokemonId: 10, targetPokemonId: 20 });
+
+  assert.equal(result.ok, true);
+  assert.equal(consistencyCalls, 1);
 });

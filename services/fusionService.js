@@ -3,8 +3,9 @@ const { getOwnedPokemonById } = require('./pokemonLookupService');
 const { getUserItemQuantity, removeItem, addItem } = require('./inventoryService');
 const { getFusionItem, listFusionItems } = require('./fusionCatalogService');
 const { assertPokemonAvailableForAction } = require('./healingStationService');
-const { rollPokemonIvOffsets, calculatePokemonStats, IV_STAT_RANGES } = require('./pokemonStatsService');
+const { rollPokemonIvOffsets, calculatePokemonStats } = require('./pokemonStatsService');
 const { getUser } = require('./userService');
+const { getMaxIvOffsets } = require('./shinyIvConsistencyService');
 
 const FUSION_BUY_ACTION_ID = 'fusion_buy_item';
 const FUSION_QUANTITIES = [1, 10, 50, 100];
@@ -123,24 +124,11 @@ async function useTransform({ slackUserId, pokemonId, prime = false }) {
   const consume = await removeItem(slackUserId, prime ? 'prism_prime' : 'prism_shiny', 1);
   if (!consume.ok) return { ok: false, reason: 'missing_item' };
 
-  const currentIv = {
-    attack_iv: Number(pokemon.attack_iv || 0),
-    magic_iv: Number(pokemon.magic_iv || 0),
-    defense_iv: Number(pokemon.defense_iv || 0),
-    hp_iv: Number(pokemon.hp_iv || 0),
-    speed_iv: Number(pokemon.speed_iv || 0),
-  };
-  const primeMaxIv = {
-    attack_iv: Number(IV_STAT_RANGES.attack?.max || 0),
-    magic_iv: Number(IV_STAT_RANGES.magic?.max || 0),
-    defense_iv: Number(IV_STAT_RANGES.defense?.max || 0),
-    hp_iv: Number(IV_STAT_RANGES.hp?.max || 0),
-    speed_iv: Number(IV_STAT_RANGES.speed?.max || 0),
-  };
+  const shinyMaxIv = getMaxIvOffsets();
 
   const updated = await updatePokemonAfterMutation({
     pokemon,
-    nextIvOffsets: prime ? primeMaxIv : currentIv,
+    nextIvOffsets: shinyMaxIv,
     shiny: true,
     shinyType: prime ? 'prime' : 'normal',
   });

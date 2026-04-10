@@ -1,6 +1,8 @@
 const { getSupabaseClient } = require('../database/supabase');
 const { getRarityTier } = require('./economyService');
 const { createLogger } = require('../utils/logger');
+const { getOwnedPokemonById } = require('./pokemonLookupService');
+const { applyShinyConsistencyIfNeeded } = require('./shinyIvConsistencyService');
 
 const logger = createLogger('pokemon-enhancement-service');
 
@@ -49,6 +51,12 @@ async function transferShiny({ slackUserId, sourcePokemonId, targetPokemonId }) 
   if (error) throw error;
   const result = data?.[0];
   if (!result) return { ok: false, reason: 'unknown' };
+  if (result.ok) {
+    const targetPokemon = await getOwnedPokemonById(targetPokemonId);
+    if (targetPokemon && targetPokemon.slack_user_id === slackUserId) {
+      await applyShinyConsistencyIfNeeded(targetPokemon);
+    }
+  }
   logger.info('Transferência de shiny processada', { slackUserId, sourcePokemonId, targetPokemonId, ok: result.ok, reason: result.reason || null, costGold: result.cost_gold || null });
   return result;
 }

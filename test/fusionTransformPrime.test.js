@@ -168,3 +168,72 @@ test('useTransform com prime aplica IV máximo em todos os atributos', async () 
   assert.equal(updatePayload.shiny, true);
   assert.equal(updatePayload.shiny_type, 'prime');
 });
+
+test('useTransform com shiny normal também aplica IV máximo em todos os atributos', async () => {
+  let updatePayload = null;
+  const pokemon = {
+    id: 8891,
+    slack_user_id: 'U999',
+    level: 1,
+    attack: 80,
+    magic: 62,
+    defense: 83,
+    hp: 80,
+    current_hp: 80,
+    speed: 68,
+    attack_iv: -1,
+    magic_iv: -2,
+    defense_iv: -3,
+    hp_iv: -4,
+    speed_iv: -5,
+    shiny: false,
+    shiny_type: null,
+    pokemon_species: { rarity: 'rare' },
+  };
+  const ivRanges = {
+    attack: { min: -6, max: 12 },
+    defense: { min: -6, max: 12 },
+    magic: { min: -8, max: 18 },
+    hp: { min: -10, max: 20 },
+    speed: { min: -5, max: 15 },
+  };
+
+  const { useTransform } = loadFusionService({
+    getSupabaseClientImpl: () => ({
+      from() {
+        return {
+          update(payload) {
+            updatePayload = payload;
+            return {
+              eq() { return this; },
+              select() { return this; },
+              single: async () => ({ data: { id: pokemon.id }, error: null }),
+            };
+          },
+        };
+      },
+    }),
+    getOwnedPokemonByIdImpl: async () => pokemon,
+    removeItemImpl: async () => ({ ok: true }),
+    assertPokemonAvailableForActionImpl: async () => ({ ok: true }),
+    calculatePokemonStatsImpl: ({ ivOffsets }) => ({
+      attack: 100 + Number(ivOffsets.attack_iv || 0),
+      magic: 100 + Number(ivOffsets.magic_iv || 0),
+      defense: 100 + Number(ivOffsets.defense_iv || 0),
+      hp: 100 + Number(ivOffsets.hp_iv || 0),
+      speed: 100 + Number(ivOffsets.speed_iv || 0),
+    }),
+    ivRanges,
+  });
+
+  const result = await useTransform({ slackUserId: 'U999', pokemonId: pokemon.id, prime: false });
+
+  assert.equal(result.ok, true);
+  assert.equal(updatePayload.attack_iv, ivRanges.attack.max);
+  assert.equal(updatePayload.magic_iv, ivRanges.magic.max);
+  assert.equal(updatePayload.defense_iv, ivRanges.defense.max);
+  assert.equal(updatePayload.hp_iv, ivRanges.hp.max);
+  assert.equal(updatePayload.speed_iv, ivRanges.speed.max);
+  assert.equal(updatePayload.shiny, true);
+  assert.equal(updatePayload.shiny_type, 'normal');
+});
